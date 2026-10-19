@@ -1,0 +1,40 @@
+name: Runner smoke test
+run-name: "Runner smoke test on ${{ inputs.runner_type }}"
+
+# Manual only. Proves that an OctoHatchery runner of the chosen type picks up a job,
+# has the expected tools and can reach the buildkitd sidecar.
+on:
+  workflow_dispatch:
+    inputs:
+      runner_type:
+        description: Runner type label
+        type: choice
+        default: generic
+        options:
+          - generic
+          - deploy
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Smoke
+    runs-on: [self-hosted, "${{ inputs.runner_type }}"]
+    timeout-minutes: 10
+    steps:
+      - name: Who am I
+        run: |
+          echo "runner: $RUNNER_NAME on $(hostname)"
+          echo "tool cache: $RUNNER_TOOL_CACHE"
+          gh --version | head -1
+          docker --version
+          docker buildx version
+          git lfs version
+
+      - name: Check out
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Reach buildkitd
+        if: env.BUILDKIT_HOST != ''
+        run: docker buildx inspect --bootstrap | head -5
