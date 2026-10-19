@@ -1,0 +1,21 @@
+{
+  "name": "OctoHatchery",
+  "url": "https://github.com/rojosinalma/octohatchery",
+  "description": "Self-hosted GitHub Actions runners: one ephemeral runner per job.",
+  "public": false,
+  "default_permissions": {
+    "actions": "write",
+    "administration": "write",
+    "contents": "write",
+    "pull_requests": "write",
+    "metadata": "read"
+  },
+  "default_events": ["workflow_job"],
+  "hook_attributes": {
+    "url": "<PUBLIC_URL>/webhooks/github",
+    "active": true
+  },
+  "redirect_url": "<PUBLIC_URL>/",
+  "setup_url": "<PUBLIC_URL>/",
+  "setup_on_update": false
+}

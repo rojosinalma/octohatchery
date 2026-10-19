@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Verifies the project: dependencies, types, tests, and (optionally) a health probe from a container.
+# Usage: bin/verify            — install, typecheck, test
+#        VERIFY_URL=https://host bin/verify — also probes $VERIFY_URL/health from a curl container (never loopback)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+step() { printf '\n==> %s\n' "$*"; }
+
+step "bun install --frozen-lockfile"
+bun install --frozen-lockfile
+
+step "bunx tsc --noEmit"
+bunx tsc --noEmit
+
+# Each test area runs in its own process: Bun's mock.module() is process-wide and the
+# mcp/ui suites replace src/lib/service, which would leak into the core suite.
+for area in test/*/; do
+  step "bun test ${area%/}"
+  bun test "${area%/}"
+done
+
+if [ -n "${VERIFY_URL:-}" ]; then
+  step "probe ${VERIFY_URL%/}/health"
+  docker run --rm curlimages/curl:8.17.0 --fail --silent --show-error --max-time 15 "${VERIFY_URL%/}/health"
+  echo
+fi
+
+step "all checks passed"

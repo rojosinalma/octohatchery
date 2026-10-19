@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work the way the documentation says.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please check that you run the latest release before filing. Do not paste tokens, private keys, webhook secrets or JIT runner configurations.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The image tag or the `version` field from `GET /health`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode and database
+      options:
+        - single + SQLite
+        - single + PostgreSQL
+        - cluster + PostgreSQL
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: GitHub authentication
+      options:
+        - GitHub App
+        - Personal access token
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Adopt repository ...
+        2. Push a workflow with `runs-on: [self-hosted, generic]`
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and health output
+      description: Relevant lines from `docker compose logs app` and the JSON from `GET /health`. Redact anything secret.
+      render: text
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Docker version, host OS and architecture, reverse proxy in front, anything unusual.

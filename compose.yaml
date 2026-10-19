@@ -1,0 +1,65 @@
+name: octohatchery
+
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    container_name: octohatchery
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    # The app reads /app/.env itself (Bun loads dotenv); no env_file here so secrets never land in the compose config.
+    volumes:
+      - type: bind
+        source: ${PROJECT_DIR:-.}
+        target: /app
+        bind:
+          create_host_path: false
+      - type: volume
+        source: node_modules
+        target: /app/node_modules
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+    mem_limit: 512m
+    cpus: 1
+    depends_on:
+      - buildkitd
+    networks:
+      - default
+      # Remove the next line (and the `postgres` network below) when the database is not on this network.
+      - postgres
+
+  buildkitd:
+    image: moby/buildkit:v0.34.0
+    container_name: octohatchery-buildkitd
+    restart: unless-stopped
+    privileged: true
+    command: ["--addr", "tcp://0.0.0.0:1234"]
+    volumes:
+      - type: volume
+        source: buildkit
+        target: /var/lib/buildkit
+    mem_limit: ${BUILDKIT_MEM:-2g}
+    cpus: ${BUILDKIT_CPUS:-2}
+    networks:
+      - default
+
+volumes:
+  node_modules:
+  buildkit:
+  # Mounted into every runner on this host as RUNNER_TOOL_CACHE; declared here so it survives `compose down`.
+  tool-cache:
+    name: octohatchery-tool-cache
+
+networks:
+  default:
+    # Runners join this network so `octohatchery-buildkitd` resolves; RUNNER_NETWORK must match its name.
+    name: octohatchery_default
+  # Shared Postgres lives on an external network. Operators without one delete this block and the `- postgres` line above.
+  postgres:
+    external: true
+    name: postgres-cluster_default

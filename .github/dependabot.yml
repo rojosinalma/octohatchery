@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      bun-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /runner
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+    labels:
+      - dependencies

@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose something OctoHatchery should do.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How would you like it to work? Mention the surface (dashboard, API, MCP, runner image, scheduler) if you have one in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: design
+    attributes:
+      label: Design decisions
+      options:
+        - label: I read the "Design decisions" table in docs/SDD.md and this request does not conflict with it, or I explain above which row should change and why.

@@ -1,0 +1,131 @@
+import type { Event, HealthSnapshot, Host, Job, Repo, Runner, RunnerType, Slot } from '../../src/lib/types'
+
+export const hosts: Host[] = [
+  { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true },
+  { id: 2, name: 'node-b', status: 'offline', lastSeenAt: '2026-10-18T10:00:00Z', isLeader: false, dockerOk: false },
+]
+
+export const types: RunnerType[] = [
+  {
+    id: 1,
+    name: 'generic',
+    description: 'General purpose <builds>',
+    labels: ['linux', 'x64'],
+    image: 'ghcr.io/example/runner:1',
+    cpus: 2,
+    memoryMb: 4096,
+    mounts: ['/srv/cache:/cache:ro'],
+    env: { CI: 'true' },
+    secretEnv: ['NPM_TOKEN'],
+    createdAt: '2026-10-19T09:00:00Z',
+    updatedAt: '2026-10-19T09:00:00Z',
+  },
+]
+
+export const slots: Slot[] = [
+  { host: 'node-a', type: 'generic', count: 4, used: 1, free: 3 },
+  { host: 'node-b', type: 'generic', count: 1, used: 0, free: 1 },
+]
+
+export const repos: Repo[] = [
+  { id: 1, fullName: 'acme/widgets', adopted: true, isPrivate: false, webhookId: 42, adoptedAt: '2026-10-19T09:30:00Z' },
+  { id: 2, fullName: 'acme/old', adopted: false, isPrivate: true, webhookId: null, adoptedAt: null },
+]
+
+export const jobs: Job[] = [
+  {
+    id: 7,
+    repo: 'acme/widgets',
+    githubJobId: 700,
+    runId: 70,
+    name: 'build <main>',
+    labels: ['self-hosted', 'generic'],
+    status: 'in_progress',
+    conclusion: null,
+    runnerId: 3,
+    htmlUrl: 'https://github.com/acme/widgets/actions/runs/70/job/700',
+    queuedAt: '2026-10-19T10:00:00Z',
+    startedAt: '2026-10-19T10:00:30Z',
+    completedAt: null,
+  },
+  {
+    id: 8,
+    repo: 'acme/widgets',
+    githubJobId: 800,
+    runId: 80,
+    name: 'test',
+    labels: ['self-hosted', 'generic'],
+    status: 'completed',
+    conclusion: 'failure',
+    runnerId: 2,
+    htmlUrl: 'https://github.com/acme/widgets/actions/runs/80/job/800',
+    queuedAt: '2026-10-19T08:00:00Z',
+    startedAt: '2026-10-19T08:00:10Z',
+    completedAt: '2026-10-19T08:05:10Z',
+  },
+]
+
+export const runners: Runner[] = [
+  { id: 3, name: 'generic-node-a-3', host: 'node-a', type: 'generic', containerId: 'abc', state: 'busy', jobId: 7, repo: 'acme/widgets', jobName: 'build <main>', createdAt: '2026-10-19T10:00:20Z', exitedAt: null },
+  { id: 2, name: 'generic-node-a-2', host: 'node-a', type: 'generic', containerId: 'def', state: 'exited', jobId: 8, repo: 'acme/widgets', jobName: 'test', createdAt: '2026-10-19T08:00:05Z', exitedAt: '2026-10-19T08:05:12Z' },
+]
+
+export const events: Event[] = [
+  { id: 1, actor: 'user', action: 'repo.adopt', target: 'acme/widgets', detail: { webhookId: 42 }, at: '2026-10-19T09:30:00Z' },
+  { id: 2, actor: 'mcp:assistant', action: 'slots.set', target: 'generic@node-a', detail: { count: 4 }, at: '2026-10-19T09:31:00Z' },
+]
+
+export const settings: Record<string, string> = {
+  poll_interval_s: '300',
+  stale_runner_minutes: '5',
+  retention_days: '30',
+  sse_max_clients: '20',
+  sse_idle_s: '300',
+  log_level: 'info',
+  custom_flag: 'yes',
+  ui_skin: 'pico',
+  ui_palette: 'nord',
+}
+
+export const health: HealthSnapshot = {
+  ok: true,
+  mode: 'single',
+  host: 'node-a',
+  db: true,
+  docker: true,
+  leader: true,
+  slots,
+  queued: 0,
+  runnersBusy: 1,
+  lastWebhookAt: null,
+  version: '0.1.0-test',
+}
+
+export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: Repo[]; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string> }
+
+export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings }
+export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {} }
+
+/** A facade double over one fixture set; `data` can be swapped between tests. */
+export const makeService = (store: { data: FixtureSet }) => ({
+  listHosts: async () => store.data.hosts,
+  listRunnerTypes: async () => store.data.types,
+  getRunnerType: async (name: string) => store.data.types.find((t) => t.name === name)!,
+  upsertRunnerType: async () => store.data.types[0]!,
+  deleteRunnerType: async () => {},
+  listSlots: async () => store.data.slots,
+  setSlots: async () => store.data.slots[0]!,
+  listRepos: async () => store.data.repos,
+  adoptRepo: async () => store.data.repos[0]!,
+  unadoptRepo: async () => {},
+  applyRunsOn: async () => ({ ok: true, message: 'ok' }),
+  listJobs: async (filter?: { repo?: string; status?: string }) =>
+    store.data.jobs.filter((j) => (!filter?.repo || j.repo === filter.repo) && (!filter?.status || j.status === filter.status)),
+  listRunners: async () => store.data.runners,
+  spawn: async () => store.data.runners[0]!,
+  kill: async () => {},
+  listEvents: async () => store.data.events,
+  getSettings: async () => store.data.settings,
+  setSetting: async () => {},
+  health: async () => health,
+})

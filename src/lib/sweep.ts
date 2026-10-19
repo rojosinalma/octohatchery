@@ -1,0 +1,129 @@
+import { sql } from 'drizzle-orm'
+import { db } from '../db'
+import { backend } from './backends'
+import { config } from './config'
+import { recordEvent } from './events'
+import { github } from './github/auth'
+import { SELF_HOSTED } from './labels'
+import { log } from './log'
+import { settings } from './settings'
+import { activeRunners, adoptedRepos, insertJobIfNew, updateRunner, upsertHost } from './store'
+
+const logger = log('sweep')
+
+let leader = false
+let stopped = false
+let timers: ReturnType<typeof setTimeout>[] = []
+let lastPollAt = 0
+
+export function isLeader(): boolean {
+  return leader
+}
+
+/** Single mode is always leader; cluster mode asks Postgres for the advisory lock (kept until the process ends). */
+export async function electLeader(): Promise<boolean> {
+  if (leader) return true
+  leader = config().mode === 'single' ? true : await db().tryLeaderLock()
+  if (leader) logger.info(`this node (${config().hostName}) is the leader`)
+  return leader
+}
+
+/** Heartbeat: upsert this host as online with its docker state; mark silent hosts offline. */
+export async function heartbeat(): Promise<void> {
+  const dockerOk = await backend().ping()
+  await upsertHost({ name: config().hostName, isLeader: leader, dockerOk })
+  const grace = 3 * (await settings.fetchInt('heartbeat_s', 15))
+  const cutoff = new Date(Date.now() - grace * 1000).toISOString()
+  await db().run(sql`update hosts set status = 'offline' where last_seen_at < ${cutoff} and status <> 'offline'`)
+}
+
+/** Polling fallback: queued jobs GitHub knows about that no webhook delivered. */
+export async function pollQueuedJobs(): Promise<number> {
+  let added = 0
+  for (const repo of await adoptedRepos()) {
+    let jobs
+    try {
+      jobs = await github().listQueuedJobs(repo.fullName)
+    } catch (err) {
+      logger.warn(`poll ${repo.fullName} failed`, err instanceof Error ? err.message : String(err))
+      continue
+    }
+    for (const j of jobs) {
+      const status = j.labels.map((l) => l.toLowerCase()).includes(SELF_HOSTED) ? 'queued' : 'ignored'
+      const inserted = await insertJobIfNew({ repo: repo.fullName, ...j, status })
+      if (inserted) added++
+    }
+  }
+  if (added) logger.info(`poll found ${added} new queued job(s)`)
+  return added
+}
+
+/** Runners idle longer than `stale_runner_minutes`: remove the container, deregister, mark `removed`. */
+export async function removeStaleRunners(nowMs = Date.now()): Promise<number> {
+  const minutes = await settings.fetchInt('stale_runner_minutes', 5)
+  const cutoff = new Date(nowMs - minutes * 60_000).toISOString()
+  let removed = 0
+  for (const r of await activeRunners()) {
+    if (r.state !== 'idle' || r.createdAt >= cutoff) continue
+    if (r.containerId) await backend().remove(r.containerId).catch((err) => logger.warn(`remove ${r.containerId} failed`, err))
+    if (r.githubRunnerId !== null && r.repo) await github().deleteRunner(r.repo, r.githubRunnerId).catch((err) => logger.warn(`deregister ${r.name} failed`, err))
+    await updateRunner(r.id, { state: 'removed', exitedAt: new Date(nowMs).toISOString() })
+    await recordEvent('sweep', 'runner.stale', r.name, { idleMinutes: minutes })
+    removed++
+  }
+  return removed
+}
+
+/** Finished jobs, runners and events older than `retention_days` are deleted. */
+export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number; runners: number; events: number }> {
+  const days = await settings.fetchInt('retention_days', 30)
+  const cutoff = new Date(nowMs - days * 86_400_000).toISOString()
+  const d = db()
+  const jobs = await d.all(sql`delete from jobs where status in ('completed', 'ignored') and coalesce(completed_at, queued_at) < ${cutoff} returning id`)
+  const runners = await d.all(sql`delete from runners where state in ('exited', 'failed', 'removed') and coalesce(exited_at, created_at) < ${cutoff} returning id`)
+  const events = await d.all(sql`delete from events where at < ${cutoff} returning id`)
+  const out = { jobs: jobs.length, runners: runners.length, events: events.length }
+  if (out.jobs || out.runners || out.events) logger.info(`purged ${out.jobs} jobs, ${out.runners} runners, ${out.events} events older than ${days}d`)
+  return out
+}
+
+/** One leader pass; polling honours its own interval. Never throws. */
+export async function sweepOnce(): Promise<void> {
+  try {
+    if (!(await electLeader())) return
+    await removeStaleRunners()
+    await purgeRetention()
+    const pollEvery = (await settings.fetchInt('poll_interval_s', 300)) * 1000
+    if (Date.now() - lastPollAt >= pollEvery) {
+      lastPollAt = Date.now()
+      await pollQueuedJobs()
+    }
+  } catch (err) {
+    logger.error('sweep failed', err instanceof Error ? err : String(err))
+  }
+}
+
+export function startSweep(): void {
+  stopped = false
+  const every = async (name: string, fn: () => Promise<void>, intervalKey: string, fallback: number) => {
+    const loop = async () => {
+      if (stopped) return
+      try {
+        await fn()
+      } catch (err) {
+        logger.error(`${name} failed`, err instanceof Error ? err : String(err))
+      }
+      const s = await settings.fetchInt(intervalKey, fallback)
+      timers.push(setTimeout(loop, Math.max(1, s) * 1000))
+    }
+    void loop()
+  }
+  void every('heartbeat', heartbeat, 'heartbeat_s', 15)
+  void every('sweep', sweepOnce, 'scheduler_tick_s', 5)
+}
+
+export function stopSweep(): void {
+  stopped = true
+  for (const t of timers) clearTimeout(t)
+  timers = []
+}

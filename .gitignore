@@ -1,0 +1,23 @@
+# secrets and local state
+.env
+.env.*
+!.env.example
+data/
+
+# dependencies and build output
+node_modules/
+dist/
+out/
+*.tgz
+
+# tooling
+coverage/
+*.lcov
+*.tsbuildinfo
+.eslintcache
+.cache/
+.openchamber/
+
+# editors and OS
+.idea/
+.DS_Store

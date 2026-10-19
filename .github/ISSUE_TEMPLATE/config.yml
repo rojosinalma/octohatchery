@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/rojosinalma/octohatchery/security/advisories/new
+    about: Report security problems privately. Please do not open a public issue for them.
+  - name: Question or discussion
+    url: https://github.com/rojosinalma/octohatchery/discussions
+    about: Ask how something works or share how you use OctoHatchery.

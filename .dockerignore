@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+node_modules
+dist
+coverage
+docs
+test
+*.md
+.openchamber
+.idea
+.DS_Store

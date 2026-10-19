@@ -1,0 +1,225 @@
+# OctoHatchery — software design document
+
+This document describes how OctoHatchery is built and why. It is the reference for anyone changing the code. The "Design decisions" table at the end is append-only: a change to the stack, the data model, the modes, the security model or the stable interfaces gets a new dated row, never an edit to an old one.
+
+## 1. Purpose
+
+OctoHatchery turns queued GitHub Actions jobs into short-lived, single-use self-hosted runners. It serves accounts that cannot share one runner across repositories (personal accounts register runners per repository) and anyone who wants a clean container per job without paying for hosted minutes. It takes `workflow_job` events from the repositories you adopt, matches the job's labels to a runner type, picks a host with a free slot for that type, registers a just-in-time (JIT) runner with GitHub, starts a container with that configuration, and removes everything when the job ends.
+
+Non-goals, on purpose:
+
+- No built-in authentication. A reverse proxy with SSO is the gate.
+- No Kubernetes and no Actions Runner Controller. Docker on plain hosts.
+- No execution of workflow steps. GitHub's runner binary does that inside the container.
+- No automatic host discovery or scaling. A host appears when you start a node on it.
+- No unasked edits to workflows. `apply_runs_on` runs only when you call it.
+
+## 2. Context
+
+```
+ GitHub ──webhooks (workflow_job, HMAC)──▶ OctoHatchery node(s) ──REST (JIT config, webhooks, workflow edits)──▶ GitHub
+                                                │
+   browser / scripts / agents ──HTTPS via proxy─┤  dashboard · /api · /mcp · /health · /metrics · /events/stream
+                                                │
+                                                ├── Docker daemon (local socket)  → runner containers
+                                                ├── buildkitd sidecar              → container builds inside jobs
+                                                └── database (SQLite or PostgreSQL)
+```
+
+External systems: GitHub (REST and webhooks, authenticated as a GitHub App or with a personal access token), one Docker daemon per node, one database. Clients: a browser for the dashboard, scripts over the JSON API, agents over MCP, monitoring over `/health` and `/metrics`.
+
+## 3. Architecture
+
+### 3.1 Node
+
+A node is one `app` container plus one `buildkitd` sidecar, started by `compose.yaml` on one host. The `app` process runs everything: HTTP server (API, dashboard, MCP, webhook, SSE, health, metrics), the scheduler loop for its host, and, when it holds the lease, the leader sweep. There is no separate worker, queue broker or cron.
+
+The `app` container reaches the host's Docker daemon through the mounted socket (or `DOCKER_HOST`). Runners it starts join the node's compose network so they can reach `buildkitd` at `BUILDKIT_HOST`.
+
+### 3.2 Modules
+
+```
+src/index.ts           mounts the Elysia plugins and listens
+src/lib/               logic: scheduler, sweep, github, backends, settings, bus, log, service facade
+src/db/                Drizzle schema, migrations, drivers (postgres, sqlite)
+src/routes/            HTTP: validate → lib → { ok, message, ...data }
+src/mcp/               MCP server and one file per tool, each a thin call into lib
+src/views/             server-rendered pages (JSX, no SPA)
+runner/                runner image (Dockerfile + entrypoint)
+test/<area>/           bun tests per area
+```
+
+`src/lib/service.ts` is the single facade the routes, the MCP tools and the views call. It owns validation of business rules, writes the `events` audit row for every mutation (with the actor), emits change notifications on the in-process bus, and throws `ServiceError` with a code (`not_found`, `invalid`, `conflict`, `unavailable`) that the HTTP layer maps to 404, 400, 409 or 503.
+
+### 3.3 Registries
+
+Each extension point is a registry: one file per entry, one lookup by name, and a new entry is one new file plus one registration line.
+
+| Registry | Entries today | Selected by |
+|---|---|---|
+| GitHub auth `src/lib/github/auth/` | `app`, `pat` | `GITHUB_AUTH` |
+| Container backend `src/lib/backends/` | `docker` | fixed for now, `DOCKER_HOST` points it at a daemon |
+| Database driver `src/db/drivers/` | `postgres`, `sqlite` | scheme of `DATABASE_URL` |
+| MCP tools `src/mcp/tools/` | one file per tool | file name |
+
+Runner types are not a registry. They are rows in `runner_types`, created from the dashboard, the API or MCP, so adding one needs no code and no restart.
+
+### 3.4 Scheduler (per node)
+
+Each node runs one loop for its own host. On every tick it:
+
+1. Counts free slots per type for this host (`slots.count` minus runners of that type on this host in state `spawning`, `idle` or `busy`).
+2. Opens a transaction and selects queued jobs whose labels match a type with a free slot here, with `FOR UPDATE SKIP LOCKED` on PostgreSQL (SQLite is single-writer, so a plain transaction is enough). Labels are matched only against known runner types; a job with unknown labels is marked `ignored` with a reason.
+3. Marks each selected job `claimed` with this host, inserts a `runners` row in state `spawning`, and commits.
+4. Outside the transaction, asks GitHub for a JIT runner configuration for the job's repository with labels `self-hosted`, `<type>`, `<host>` plus the type's extra labels, then asks the backend to start a container from the type's image with the configuration in `RUNNER_JITCONFIG`.
+5. Reaps: lists containers labelled `octohatchery.runner=true` on this host, reconciles them with the `runners` table (exited container → `exited`, missing container → `failed` or `removed`), and removes exited containers.
+
+A failure in any step is logged with its stack trace, the affected rows are moved to `failed` with the reason, and the loop continues on the next tick. The loop never exits on an error and backs off while the database or Docker is unreachable.
+
+On restart a node re-attaches to its running runners by container label, so an upgrade does not kill jobs in flight, and it reaps orphans whose rows are gone.
+
+### 3.5 Leader sweep
+
+One node at a time holds the leader lease: a PostgreSQL advisory lock in cluster mode, trivially the only node in single mode. The leader runs:
+
+- **Migrations** on boot, additive only.
+- **Polling fallback** every `poll_interval_s`: lists queued jobs for adopted repositories through the REST API and inserts any the webhook missed.
+- **Stale runner removal**: a runner that has been `idle` or `spawning` longer than `stale_runner_minutes` without a job has its container deleted and its GitHub registration revoked.
+- **Host liveness**: a host whose node has not updated `last_seen_at` recently is shown `offline`; its slots are not counted as available.
+- **Retention purge**: finished `jobs`, `runners` and `events` older than `retention_days` are deleted.
+
+If the leader dies, the lock is released by PostgreSQL and the next node that tries takes it on its following tick.
+
+### 3.6 Data model
+
+Eight tables, schema owned by this project, Drizzle migrations, additive only.
+
+| Table | Holds | Notes |
+|---|---|---|
+| `hosts` | one row per node: name, status, last seen, leader flag, Docker reachable | registered on start, updated every tick |
+| `runner_types` | name, description, labels, image, CPU and memory caps, mounts, env, secret env names | secrets are names only; values live in the node's environment |
+| `slots` | `(host, type) → count` | how many runners of a type a host may run at once |
+| `repos` | adopted repositories: full name, private flag, webhook id, adopted at | jobs from repositories not in this table are ignored |
+| `jobs` | one row per `workflow_job`: repository, GitHub job id, run id, name, labels, status, conclusion, runner, timestamps | status `queued → claimed → in_progress → completed`, or `ignored` |
+| `runners` | one row per runner container: name, host, type, container id, state, job, timestamps | state `spawning → idle → busy → exited`, or `failed`, then `removed` |
+| `events` | audit log: actor, action, target, detail, time | actors: `user`, `mcp:<client>`, `webhook`, `scheduler`, `sweep` |
+| `settings` | key → value | tunables with defaults in code, read at use time with a short cache |
+
+Timestamps are stored as ISO-8601 UTC strings. `labels`, `mounts`, `env`, `secret_env` and `detail` are JSON columns.
+
+### 3.7 Sequence: one job
+
+```
+GitHub          webhook route        jobs table      scheduler (host A)     GitHub REST     Docker (host A)
+  │ workflow_job queued  │                │                │                      │               │
+  ├─────────────────────▶│ verify HMAC    │                │                      │               │
+  │                      │ check repo adopted              │                      │               │
+  │                      ├─ insert queued ▶│               │                      │               │
+  │                      │                 │◀── claim (FOR UPDATE SKIP LOCKED) ───┤               │
+  │                      │                 │   job=claimed, runner=spawning       │               │
+  │                      │                 │                ├─ generate JIT config ▶│              │
+  │                      │                 │                │◀── encoded config ────┤              │
+  │                      │                 │                ├─ create + start container ──────────▶│
+  │                      │                 │                │   runner=idle                        │
+  │ runner registers, picks the job        │                │                      │               │
+  │ workflow_job in_progress ─────────────▶│ job=in_progress, runner=busy          │               │
+  │ … job runs inside the container …      │                │                      │               │
+  │ workflow_job completed ───────────────▶│ job=completed (conclusion)            │               │
+  │                      │                 │                │◀── container exits (run.sh once) ────┤
+  │                      │                 │                ├─ reap: runner=exited, remove ───────▶│
+  │                      │                 │                │   slot free again                    │
+```
+
+Every state change emits an event on the in-process bus. The SSE route forwards `runner`, `job`, `event` and `slot` changes to connected dashboards, so the Overview page updates without polling.
+
+## 4. Interfaces
+
+All of them run in the same process on the same port.
+
+| Interface | Path | Shape |
+|---|---|---|
+| JSON API | `/api/hosts`, `/api/runner-types`, `/api/slots`, `/api/repos`, `/api/jobs`, `/api/runners`, `/api/events`, `/api/settings` | every response `{ ok, message, ...data }`, errors with the same shape and an HTTP status, never a redirect |
+| Dashboard | `/`, `/jobs`, `/repos`, `/runner-types`, `/events`, `/settings` | server-rendered HTML, small scripts for fetch, toasts and SSE |
+| MCP | `/mcp` | Streamable HTTP; tools `list_hosts`, `list_runners`, `list_jobs`, `list_repos`, `adopt_repo`, `unadopt_repo`, `apply_runs_on`, `list_runner_types`, `upsert_runner_type`, `set_slots`, `spawn`, `kill`; each tool is one call into the service facade |
+| Webhook | `POST /webhooks/github` | `workflow_job` events, `X-Hub-Signature-256` HMAC verified before parsing, payload schema-checked |
+| SSE | `GET /events/stream` | `event: <name>` + `data: <json>`; capped at `sse_max_clients`, idle clients dropped after `sse_idle_s` |
+| Health | `GET /health` | 200 only when the database and the local Docker daemon answer; JSON with mode, host, leader flag, slots used and free, queued jobs, busy runners, last webhook time, version |
+| Metrics | `GET /metrics` | Prometheus text: slots, jobs by status, runner spawn and exit counters, webhook counters |
+
+The JSON API, the MCP tool list, the webhook contract, the runner labels and the additive-only schema are the stable contracts. Changing one is a design decision.
+
+## 5. Modes
+
+| | `single` | `cluster` |
+|---|---|---|
+| Nodes | one | several, one per host |
+| Database | SQLite (file) or PostgreSQL | PostgreSQL only; SQLite fails fast at start with a reason |
+| Leader | the node itself | advisory lock, re-elected on failure |
+| Slots | this host's | each node claims only for its own host |
+| Use | one machine, quick start | a pool of hosts sharing one queue |
+
+Both modes run the same code paths. `MODE` only changes the database requirement and how the leader is chosen.
+
+## 6. Security model
+
+- **Exposure.** No authentication is built in. The dashboard, API and MCP endpoint are meant to sit behind a reverse proxy that authenticates users (SSO). `POST /webhooks/github` is the one path that must bypass that proxy, and it is protected by the HMAC check instead.
+- **Webhook.** Signature over the raw body with `GITHUB_WEBHOOK_SECRET`, constant-time compare, then schema validation. Unsigned, badly signed or malformed requests are rejected and counted in `/metrics`.
+- **Input validation at the boundary.** HTTP and MCP parameters are validated with Elysia schemas. GitHub API responses are schema-checked before they are persisted. Job labels are matched only against known runner types.
+- **Secrets.** Bootstrap secrets (`DATABASE_URL`, GitHub App key or token, webhook secret) live in `.env`, read through Bun's dotenv. Runner types store the **names** of secret environment variables; the node resolves values from its own process environment at spawn time. A missing secret fails the spawn with a reason rather than passing an empty string. No secret value is stored in the database, shown in the dashboard or written to logs. JIT configurations and installation tokens are held in memory only as long as needed.
+- **Docker trust.** The `app` container has the host's Docker socket. Whoever controls the app controls that daemon. The app host is a trusted host; the proxy in front is what keeps control with you.
+- **Runner privileges.** Runners get exactly what their type grants: image, CPU and memory caps (`memswap` equal to memory), `pids_limit`, named tool-cache volume, the type's mounts and environment. No Docker socket, no added capabilities, no host network. Container builds inside a job go through the `buildkitd` sidecar over `BUILDKIT_HOST`.
+- **Adoption.** Only repositories you adopted can produce jobs. Public repositories can be adopted; the README explains the fork pull-request risk and the GitHub settings that mitigate it.
+- **Audit.** Every mutation writes an `events` row with its actor. MCP clients are recorded as `mcp:<client>`.
+
+## 7. Configuration surface
+
+Two layers, documented in full in [operations.md](operations.md#configuration):
+
+- `.env`: bootstrap values and secrets, read once at start. Mode, host name, port, database URL, Docker host, GitHub auth method and credentials, webhook secret, public URL.
+- `settings` table: tunables read at use time through `settings.fetch(key, default)` with a cache of at most 5 seconds, editable from the Settings page, the API and MCP without a restart: `poll_interval_s`, `stale_runner_minutes`, `retention_days`, `sse_max_clients`, `sse_idle_s`, `log_level`, `buildkit_host`.
+
+Nothing else is tunable, and nothing is hardcoded per host: anything that differs between installations is in one of those two places.
+
+## 8. Observability
+
+- Logs to stdout with a level and a subsystem prefix: `[http] [scheduler] [github] [docker] [sweep] [mcp]`. Every call to GitHub or Docker logs method, target and outcome. Background errors log the full stack trace.
+- `/health` for probes, `/metrics` for Prometheus, `events` for the audit trail. There is no alerting code in the app; point your monitoring at `/health`.
+
+## 9. Operations summary
+
+Deploy with `docker compose up -d` per host. Upgrade by pulling the new image and recreating the `app` container; running runners survive because the node re-attaches by label. Back up the database; everything else (runner containers, tool cache, webhooks) is re-creatable. Full procedures, including cluster setup, troubleshooting and teardown, are in [operations.md](operations.md).
+
+## 10. Current scope
+
+Today OctoHatchery supports Docker as the container backend, GitHub Apps and personal access tokens for authentication, SQLite and PostgreSQL as databases, and one runner image that covers container builds and general CI. The registries exist so that a Podman or SSH backend, another auth method or another driver is one file each.
+
+## 11. Design decisions
+
+Append-only. One row per decision, dated. Reopen a decision by adding a new row that names the one it supersedes.
+
+| Decision | Option chosen | Reason | Date |
+|---|---|---|---|
+| Language | TypeScript on Bun 1.4 | one runtime for server, tests and tooling; `bun build --compile` gives a single binary; large contributor pool for a public tool | 2026-10-19 |
+| HTTP framework | Elysia 1.4 | schema validation on every route with `t`, plugin composition for the six surfaces, native Bun performance | 2026-10-19 |
+| Database | PostgreSQL for shared state, SQLite for single-node, both through Drizzle with a driver registry chosen by the `DATABASE_URL` scheme | cluster nodes need one shared queue with row locks; single-node users should not need a database server | 2026-10-19 |
+| Migrations | Drizzle, additive only, run on boot by the leader | schema is a stable contract; additive keeps older nodes working during a rolling upgrade | 2026-10-19 |
+| Background work | in-process scheduler loop per node plus a leader-elected sweep (PostgreSQL advisory lock); no external scheduler, queue broker or cron | the project must be self-contained; the database already serialises claims with `FOR UPDATE SKIP LOCKED` | 2026-10-19 |
+| Configuration | `settings` table read at use time (cache ≤ 5 s) for tunables; `.env` via dotenv for bootstrap values and secrets | tunables change without a restart; secrets never enter the database | 2026-10-19 |
+| Runtime | containers via `compose.yaml`: `app` + `buildkitd` sidecar per host; `unless-stopped` | one unit per host, same shape on every host, builds inside jobs without Docker-in-Docker | 2026-10-19 |
+| Interfaces | JSON API `{ ok, message, ...data }`, server-rendered dashboard, MCP over Streamable HTTP, webhook, SSE, `/health`, `/metrics`, all in one process | one facade serves humans, scripts and agents the same actions; no SPA to maintain | 2026-10-19 |
+| Authentication | none built in; a reverse proxy with SSO gates everything except the webhook | avoids a second identity system; every deployment already has a proxy in front | 2026-10-19 |
+| Webhook verification | HMAC SHA-256 over the raw body with `GITHUB_WEBHOOK_SECRET`, then schema check | GitHub's standard; the only unauthenticated path must verify origin | 2026-10-19 |
+| Container backend | local Docker socket per node (`DOCKER_HOST` configurable) behind a backend registry | simplest working backend; the registry leaves room for Podman or remote hosts | 2026-10-19 |
+| GitHub authentication | GitHub App and personal access token, both from day one, behind an auth registry | an App gives scoped, rotating tokens; a PAT is the quickest path for one account | 2026-10-19 |
+| Runner identity | one ephemeral JIT runner per job, labels `self-hosted`, `<type>`, `<host>` plus the type's labels | per-job registration is what lets one pool serve many repositories on a personal account | 2026-10-19 |
+| Runner types | rows in `runner_types`, not code; secrets referenced by env var name and resolved at spawn time | adding a type must not need a release; secret values stay out of the database | 2026-10-19 |
+| Runner privileges | caps from the type, `pids_limit`, named tool-cache volume, no socket, no added capabilities by default | a runner executes untrusted workflow code; the default must be the least privilege that still builds | 2026-10-19 |
+| Workflow editing | `apply_runs_on` with modes `snippet`, `pr`, `commit`, only on explicit request | the tool must never change a repository on its own | 2026-10-19 |
+| Repository adoption | explicit adoption per repository; unadopted jobs are ignored; public repositories allowed with the fork risk documented | the operator decides which code runs on their hardware | 2026-10-19 |
+| Retention | finished `jobs`, `runners`, `events` purged after `retention_days` (default 30) by the sweep | nothing grows unbounded; 30 days covers debugging a flaky pipeline | 2026-10-19 |
+| Live updates | SSE with `sse_max_clients` and `sse_idle_s` caps | pushes state to the dashboard without polling; caps keep the connection set bounded | 2026-10-19 |
+| Logging | stdout, levels, subsystem prefixes, every external call logged, stack traces on background errors | containers ship stdout; the prefixes make a multi-node log readable | 2026-10-19 |
+| Licence | AGPL-3.0-only | hosted forks must stay open | 2026-10-19 |
+| CI/CD | GitHub Actions on GitHub-hosted runners, three stages: checks on PR and push, `edge` images from `main`, versioned images and a release on `v*` tags; actions pinned by commit SHA | fork pull requests must never run on private hardware; pinned SHAs make the supply chain reviewable | 2026-10-19 |
+| Versioning | semver tags `vX.Y.Z`, `CHANGELOG.md` (Keep a Changelog), image tags `X.Y.Z`, `X.Y`, `latest`, `edge`, `sha-<short>` | every stable point on `main` is a tag and a release with its changelog section | 2026-10-19 |
+| Dependencies | pinned in `bun.lock`, frozen install in CI, Dependabot grouped weekly (bun, github-actions, docker) | reproducible builds; grouped updates keep review cheap | 2026-10-19 |

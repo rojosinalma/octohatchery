@@ -1,0 +1,23 @@
+# Changelog
+
+All notable changes to OctoHatchery are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-19
+
+First scaffold.
+
+### Added
+
+- Scheduler that claims queued `workflow_job` events for adopted repositories and starts one ephemeral, just-in-time registered runner per job on a host with a free slot.
+- Runner types as database rows: image, labels, CPU and memory caps, mounts, environment and secret names resolved at spawn time.
+- Slots per host and per type, with `single` mode (SQLite or PostgreSQL) and `cluster` mode (PostgreSQL, several nodes, leader-elected housekeeping).
+- GitHub authentication through a GitHub App or a personal access token.
+- Repository adoption with automatic webhook registration, and `apply_runs_on` to show, propose or commit the `runs-on` change in a repository's workflows.
+- JSON API under `/api/`, server-rendered dashboard (Overview, Jobs, Repos, Runner types, Events, Settings), MCP endpoint at `/mcp`, `/health`, Prometheus `/metrics` and an SSE stream at `/events/stream`.
+- Runner image `ghcr.io/rojosinalma/octohatchery-runner` based on GitHub's `actions-runner`, with `gh`, Docker CLI and buildx, git-lfs, jq, curl and unzip, plus a `buildkitd` sidecar in the compose file for container builds inside jobs.
+- Audit log (`events`) and retention purge for finished jobs, runners and events.
+
+[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.1.0

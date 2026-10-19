@@ -1,0 +1,46 @@
+/* OctoHatchery — project styles on top of tailor. Tokens only, no colour literals. */
+
+.brand-mark {
+  width: 1.4em;
+  height: 1.4em;
+}
+
+.brand-tagline {
+  margin-right: var(--t-space-3);
+  font-style: italic;
+}
+
+.slot-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  min-width: 8rem;
+}
+
+.slot-bar .t-progress {
+  flex: 1 1 auto;
+}
+
+.slot-cell .t-input {
+  width: 4.5rem;
+}
+
+.event-kv + .event-kv::before {
+  content: " ";
+}
+
+#live-dot {
+  margin-left: var(--t-space-2);
+}
+
+/* Appearance section hosts the skin/palette selects; keep them side by side. */
+#appearance .t-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--t-space-2);
+}
+
+/* The runs-on dialog shows one snippet per type; keep the code line readable. */
+#runs-on-dlg .t-code-pre {
+  white-space: pre-wrap;
+}
