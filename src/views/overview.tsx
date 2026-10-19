@@ -28,7 +28,7 @@ const HostsTable = ({ hosts }: { hosts: Host[] }) => (
                 {h.name}
               </span>{' '}
               {h.isLeader ? (
-                <span class="t-badge" data-tone="accent" data-tip="Runs the sweep: polling fallback, cleanup, retention">
+                <span class="t-badge" data-tone="accent" data-tip="Leader: the one node that runs the cluster-wide chores (GitHub polling, stale-runner cleanup, retention purge, migrations). Elected with a database lock; another node takes over when it goes away. Every node schedules its own runners.">
                   <Icon id="bi-star-fill" size="xs" /> leader
                 </span>
               ) : null}
@@ -66,7 +66,7 @@ const SlotsTable = ({ slots }: { slots: Slot[] }) => {
             {hosts.map((h) => (
               <th safe>{h}</th>
             ))}
-            <th>Total</th>
+            <th class="t-col-num">Total</th>
           </tr>
         </thead>
         <tbody>

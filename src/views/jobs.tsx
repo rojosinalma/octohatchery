@@ -123,7 +123,7 @@ export const JobsPage = ({ jobs, repos, filter }: JobsData) => (
       <h1 class="t-page-title">Jobs</h1>
       <span class="t-page-lead">Queue and history. Filter by repo and status.</span>
     </header>
-    <div class="t-toolbar" role="toolbar" aria-label="Job filters">
+    <div class="t-toolbar page-toolbar" role="toolbar" aria-label="Job filters">
       <div class="t-btn-group" role="group" data-role="filter" aria-label="Status">
         <a class="t-btn" data-size="sm" href={`/jobs${query({ repo: filter.repo })}`} aria-pressed={filter.status ? 'false' : 'true'}>
           All

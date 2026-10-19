@@ -1,5 +1,23 @@
 /* OctoHatchery — project styles on top of tailor. Tokens only, no colour literals. */
 
+/* The main column scrolls, not the document: header and footer span the full width and the
+   scrollbar sits under them. The sidebar scrolls on its own next to it. */
+.t-shell {
+  height: 100vh;
+  min-height: 0;
+}
+
+.t-shell-main,
+.t-shell-side {
+  overflow-y: auto;
+  max-height: none;
+}
+
+/* A page-level toolbar (filters, adopt form) sits above a table. */
+.page-toolbar {
+  margin-bottom: var(--t-space-3);
+}
+
 .brand-mark {
   width: 1.4em;
   height: 1.4em;
@@ -18,7 +36,11 @@
 }
 
 .slot-bar .t-progress {
-  flex: 1 1 auto;
+  flex: 0 0 6rem;
+}
+
+.slot-bar .t-small {
+  min-width: 3ch;
 }
 
 .slot-cell .t-input {

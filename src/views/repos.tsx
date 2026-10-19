@@ -129,7 +129,7 @@ export const ReposPage = ({ repos, types }: ReposData) => (
       <h1 class="t-page-title">Repos</h1>
       <span class="t-page-lead">Adopted repos send their queued jobs here.</span>
     </header>
-    <form class="t-toolbar" id="adopt-form" data-action="adopt" aria-label="Adopt a repo">
+    <form class="t-toolbar page-toolbar" id="adopt-form" data-action="adopt" aria-label="Adopt a repo">
       <div class="t-field">
         <label class="t-label t-visually-hidden" for="adopt-name">
           Repo (owner/name)

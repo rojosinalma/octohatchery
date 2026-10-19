@@ -253,7 +253,41 @@
     wireSettings()
     connect()
     var side = $('.t-shell-side .t-sidebar')
-    if (side && T.scrollspy) T.scrollspy(side)
+    var main = $('.t-shell-main')
+    if (side && main) scrollspy(side, main)
+  }
+
+  /* Sidebar scrollspy over the scrolling main column. The current section is the last one whose
+     top passed the reference line; at the end of the page it is the last section, and a click on a
+     sidebar link wins until the user scrolls again (sections that fit on one screen never cross the line). */
+  function scrollspy(nav, scroller) {
+    var links = $$('a[href^="#"]', nav)
+    var sections = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)) }).filter(Boolean)
+    if (!sections.length) return
+    var pinned = null
+    function mark(target) {
+      links.forEach(function (a) {
+        if (a.getAttribute('href') === '#' + target.id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current')
+      })
+    }
+    function update() {
+      if (pinned) { mark(pinned); pinned = null; return }
+      var line = scroller.getBoundingClientRect().top + 24
+      var atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2
+      var current = sections[0]
+      if (atEnd) current = sections[sections.length - 1]
+      else sections.forEach(function (s) { if (s.getBoundingClientRect().top <= line) current = s })
+      mark(current)
+    }
+    links.forEach(function (a) {
+      a.addEventListener('click', function () {
+        var target = document.getElementById(a.getAttribute('href').slice(1))
+        if (target) { pinned = target; mark(target) }
+      })
+    })
+    scroller.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    update()
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot()
 })()
