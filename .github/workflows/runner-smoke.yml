@@ -36,5 +36,9 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Reach buildkitd
-        if: env.BUILDKIT_HOST != ''
-        run: docker buildx inspect --bootstrap | head -5
+        run: |
+          if [ -z "${BUILDKIT_HOST:-}" ]; then echo "BUILDKIT_HOST not set on this runner type"; exit 0; fi
+          docker buildx create --name smoke --driver remote "$BUILDKIT_HOST" --use
+          docker buildx inspect --bootstrap | head -8
+          printf 'FROM scratch\nCOPY . /src\n' > Dockerfile.smoke
+          docker buildx build -f Dockerfile.smoke --output type=cacheonly .

@@ -73,8 +73,17 @@ browser and press the button:
 For an organisation, change the form action to
 `https://github.com/organizations/<org>/settings/apps/new`.
 
-After you confirm, GitHub redirects to `<PUBLIC_URL>/?code=...`. OctoHatchery does not consume that
-code; instead, open the App's settings page, which GitHub shows right after creation, and continue below.
+After you confirm, GitHub redirects to `<PUBLIC_URL>/?code=...`. **The App does not exist yet at this
+point.** The `code` is a one-time ticket, valid for one hour, that you exchange for the App's credentials:
+
+```sh
+gh api -X POST /app-manifests/<code>/conversions > app.json
+```
+
+The answer carries `id` (→ `GITHUB_APP_ID`), `pem` (→ `GITHUB_APP_PRIVATE_KEY`), `webhook_secret`
+(→ `GITHUB_WEBHOOK_SECRET`, GitHub generated it for you) and `html_url`. Only after this call does the
+App show up under your developer settings. Then continue at "Install it" below; the private key and
+webhook secret steps are already done.
 
 ### Or create it by hand
 
@@ -89,6 +98,8 @@ code; instead, open the App's settings page, which GitHub shows right after crea
 
 ### Install it and collect the values
 
+(Manifest route: you already have the App ID, key and secret from `app.json`; do steps 3 and 4 only.)
+
 1. On the App's page, note the **App ID** → `GITHUB_APP_ID`.
 2. **Private keys → Generate a private key**. GitHub downloads a `.pem` file. Put its content in
    `GITHUB_APP_PRIVATE_KEY`. In `.env` keep it on one line with `\n` for line breaks, or point to a file
@@ -96,7 +107,8 @@ code; instead, open the App's settings page, which GitHub shows right after crea
 3. **Install App** (left menu) → choose your account or organisation → **All repositories** or a
    selection. Repos you leave out cannot be adopted later until you add them here.
 4. After the install, the browser URL ends in `/installations/<number>`. That number is
-   `GITHUB_APP_INSTALLATION_ID`.
+   `GITHUB_APP_INSTALLATION_ID`. You can also list it: `GET /app/installations` with an App JWT
+   (for example `bun -e` with `@octokit/app`: `new App({appId, privateKey}).octokit.request('GET /app/installations')`).
 5. Set the webhook secret you used → `GITHUB_WEBHOOK_SECRET`.
 
 `.env` for App mode:
