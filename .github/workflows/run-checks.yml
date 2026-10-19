@@ -35,7 +35,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test
+        run: bun run test
 
   dockerfiles:
     name: Lint Dockerfiles
