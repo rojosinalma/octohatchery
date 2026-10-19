@@ -21,3 +21,4 @@ coverage/
 # editors and OS
 .idea/
 .DS_Store
+compose.override.yaml

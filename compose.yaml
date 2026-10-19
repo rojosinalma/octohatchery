@@ -1,14 +1,12 @@
 name: octohatchery
 
 services:
-  app:
+  octohatchery:
     build:
       context: .
       target: dev
     container_name: octohatchery
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     # The app reads /app/.env itself (Bun loads dotenv); no env_file here so secrets never land in the compose config.
     volumes:
       - type: bind
@@ -30,6 +28,8 @@ services:
       - buildkitd
     networks:
       - default
+      # Operators without a reverse-proxy network delete `ingress` here and below.
+      - ingress
       # Remove the next line (and the `postgres` network below) when the database is not on this network.
       - postgres
 
@@ -56,10 +56,14 @@ volumes:
     name: octohatchery-tool-cache
 
 networks:
+  # Your reverse proxy's network (set INGRESS_NETWORK in .env). Standalone: delete it and add a `ports:` block to the app.
+  ingress:
+    external: true
+    name: ${INGRESS_NETWORK:-ingress}
   default:
     # Runners join this network so `octohatchery-buildkitd` resolves; RUNNER_NETWORK must match its name.
     name: octohatchery_default
   # Shared Postgres lives on an external network. Operators without one delete this block and the `- postgres` line above.
   postgres:
     external: true
-    name: postgres-cluster_default
+    name: ${POSTGRES_NETWORK:-postgres}

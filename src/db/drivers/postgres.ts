@@ -28,7 +28,7 @@ export const postgresDriver: Driver = {
   async open(url) {
     const parsed = new URL(url)
     const ssl = parsed.searchParams.get('sslmode') === 'require' ? ('require' as const) : undefined
-    const client = postgres(url, { ssl, max: 10, idle_timeout: 30, connect_timeout: 10 })
+    const client = postgres(url, { ssl, max: 10, idle_timeout: 30, connect_timeout: 10, onnotice: () => {} })
     const orm = drizzle(client)
     await migrate(orm, { migrationsFolder: MIGRATIONS })
 
