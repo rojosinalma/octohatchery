@@ -1,4 +1,4 @@
-import type { Event, Host, Job, JobStatus, Repo, Runner, RunnerState, RunnerType } from '../lib/types'
+import type { Event, Host, Job, JobStatus, LogLine, Repo, Runner, RunnerState, RunnerType } from '../lib/types'
 import type { Row } from './driver'
 
 // Row → domain mappers. SQLite returns booleans as 0/1 and JSON as text; Postgres returns booleans natively.
@@ -87,7 +87,14 @@ export function toJob(r: Row): Job & { retries: number } {
     startedAt: strOrNull(r.started_at),
     completedAt: strOrNull(r.completed_at),
     retries: num(r.retries ?? 0),
+    logSource: r.log_source === 'runner' || r.log_source === 'github' ? r.log_source : null,
+    logBytes: num(r.log_bytes ?? 0),
+    logTruncated: bool(r.log_truncated),
   }
+}
+
+export function toLogLine(r: Row): LogLine {
+  return { seq: num(r.seq), at: str(r.at), line: str(r.line) }
 }
 
 export function toRunner(r: Row): Runner & { githubRunnerId: number | null } {

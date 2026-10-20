@@ -24,6 +24,8 @@ export type GitHubClient = {
   createBranch(repo: string, name: string, fromBranch: string): Promise<void>
   openPullRequest(repo: string, input: { title: string; body: string; head: string; base: string }): Promise<{ url: string }>
   listWorkflowFiles(repo: string, ref?: string): Promise<string[]>
+  /** Plain-text log of a finished job (follows GitHub's redirect). Throws with `status: 404` while the log is not ready. */
+  getJobLog(repo: string, githubJobId: number): Promise<string>
 }
 
 export type GitHubAuthAdapter = {

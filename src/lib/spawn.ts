@@ -2,6 +2,7 @@ import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
 import { github } from './github/auth'
+import { ensureFollower } from './joblog'
 import { runnerLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
@@ -18,6 +19,8 @@ export const MAX_CLAIM_RETRIES = 3
 export async function runnerEnv(type: RunnerType, env: Record<string, string | undefined> = Bun.env): Promise<Record<string, string>> {
   const out: Record<string, string> = {
     RUNNER_TOOL_CACHE: TOOL_CACHE_PATH,
+    // The runner prints every step's output to its stdout, which the node follows into the job log.
+    ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT: '1',
     BUILDKIT_HOST: await settings.fetch('buildkit_host', 'tcp://octohatchery-buildkitd:1234'),
     ...type.env,
   }
@@ -54,6 +57,7 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
       network: config().runnerNetwork,
     })
     const updated = await updateRunner(runner.id, { state: 'idle', containerId, githubRunnerId: jit.runnerId, repo })
+    if (updated) ensureFollower(updated)
     metrics.runnerSpawns.inc()
     await recordEvent(actor, 'runner.spawn', runner.name, { host: runner.host, type: runner.type, repo, jobId: runner.jobId })
     return updated

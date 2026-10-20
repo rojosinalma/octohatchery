@@ -10,11 +10,12 @@ so what you can click you can also script.
 | Path | Screen | Fast task |
 |---|---|---|
 | `/` | Overview | See which hosts are online, how many slots each runner type has left per host, and what every runner is working on right now. Kill a runner. |
-| `/jobs` | Jobs | Queue and history. Filter by repo (select) and status (button group); both are query parameters, so a filtered view has a URL. Open the run on GitHub. |
+| `/jobs` | Jobs | Queue and history. Filter by repo (select) and status (button group); both are query parameters, so a filtered view has a URL. Open the run on GitHub, or the job name for its log. |
+| `/jobs/:id` | Job | One job: runner, host, type, labels, timings, and its log — live while the job runs, GitHub's final log afterwards. Follow, copy. |
 | `/repos` | Repos | Adopt a repo by `owner/name`. Per adopted repo: copy the `runs-on` snippet for a runner type, open a pull request or commit that changes the workflows, or unadopt. |
 | `/runner-types` | Runner types | Create and edit runner types (image, labels, CPUs, memory, mounts, environment, secret names). Set slots per host in a matrix; spawn a runner by hand. |
 | `/events` | Events | Audit trail: actor, action, target, detail, time. |
-| `/settings` | Settings | Scheduler, retention, live-update and logging tunables, plus the skin and palette of the dashboard. |
+| `/settings` | Settings | Scheduler, retention (including the per-job log size cap), live-update and logging tunables, plus the skin and palette of the dashboard. |
 
 Every page has the same top bar (six sections), a footer with the version and the light/dark
 toggle, and a status dot in the top-right corner that shows whether the live connection is up.
@@ -37,6 +38,24 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Finished jobs show their conclusion (`success`, `failure`, …) instead of `completed`; a
   failed row is tinted.
 - Duration is computed from `startedAt` to `completedAt` (or now).
+- The job name links to `/jobs/:id`; so does the job column of the Runners table on the Overview.
+
+### Job
+
+- Header: job name, repo (links to the filtered Jobs list), status or conclusion badge, "Run on
+  GitHub". Facts: runner name and state, host and type, labels, queued / started / finished with
+  the duration.
+- Log: a `<pre>` with one line per row and the time of day in the gutter (the full timestamp is on
+  the element). While the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>`
+  and appends each `line` batch; at most 5000 lines stay in the page, older ones drop off the top.
+  **Follow** keeps the newest lines in view and switches itself off when you scroll up (and on
+  again at the bottom). **Copy** puts every line in view on the clipboard and reports the count.
+- Source badge: `runner (live)` while the runner prints, `GitHub` once the job finished and GitHub's
+  log replaced the live lines (the page reloads the view and says so in a toast), `runner` when
+  GitHub did not hand out the log within two minutes, `none` when nothing was collected. A
+  `truncated` badge appears when the stored log hit the `log_max_kb` cap; the full log is on GitHub.
+- Empty state: "Waiting for the runner to start…" until the first line arrives; a finished job
+  without lines says so.
 
 ### Repos
 

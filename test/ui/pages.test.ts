@@ -83,7 +83,7 @@ describe('overview', () => {
     // only live runners are listed
     expect(body).not.toContain('generic-node-a-2')
     expect(body).toContain('data-action="kill"')
-    expect(body).toContain('href="/jobs?job=7"')
+    expect(body).toContain('href="/jobs/7"')
     // user-controlled text is escaped
     expect(body).toContain('build &lt;main&gt;')
     expect(body).not.toContain('>build <main><')
@@ -142,6 +142,61 @@ describe('jobs', () => {
     expect(body).not.toContain('<html')
     expect(body).toContain('data-job-id="7"')
     expect(body).not.toContain('data-job-id="8"')
+  })
+
+  test('job names link to the job page', async () => {
+    const { body } = await get('/jobs')
+    expect(body).toContain('href="/jobs/7"')
+    expect(body).toContain('href="/jobs/8"')
+  })
+})
+
+describe('job page', () => {
+  test('live job: header, runner facts, lines escaped, follow on, source runner (live)', async () => {
+    const { res, body } = await get('/jobs/7')
+    expect(res.status).toBe(200)
+    expect(body).toContain('<title>build &lt;main&gt; · OctoHatchery</title>')
+    expect(body).toContain('<h1 class="t-page-title">build &lt;main&gt;</h1>')
+    expect(body).toContain('class="t-page-back" href="/jobs"')
+    expect(body).toContain('href="https://github.com/acme/widgets/actions/runs/70/job/700"')
+    expect(body).toContain('generic-node-a-3')
+    expect(body).toContain('>node-a<')
+    expect(body).toContain('>in progress<')
+    expect(body).toContain('id="log" data-job-id="7" data-last-seq="2" data-live="log" data-complete="false"')
+    expect(body).toContain('source: runner (live)')
+    expect(body).toContain('data-action="log-follow" aria-pressed="true"')
+    expect(body).toContain('data-action="log-copy"')
+    expect(body).toContain('class="log-text">##[group]Run &lt;script&gt;alert(1)&lt;/script&gt;<')
+    expect(body).toContain('class="log-time">10:00:32<')
+    expect(body).toContain('id="log-truncated" hidden')
+    expect(body).toContain('<pre class="t-code-pre log-view" id="log-view"')
+    expect(body).not.toMatch(/\stitle="/)
+    expect(body).not.toMatch(/style="(?!--t-)/)
+  })
+
+  test('finished job with GitHub log: complete, follow disabled, truncated badge shown', async () => {
+    const { body } = await get('/jobs/8')
+    expect(body).toContain('data-complete="true"')
+    expect(body).not.toContain('data-live="log"')
+    expect(body).toContain('source: GitHub')
+    expect(body).toContain('aria-pressed="false" disabled')
+    expect(body).toMatch(/id="log-truncated"(?! hidden)/)
+    expect(body).toContain('>failure<')
+  })
+
+  test('no lines yet: empty state says the runner has not started', async () => {
+    store.data = { ...full, logs: {} }
+    const { body } = await get('/jobs/7')
+    expect(body).toContain('Waiting for the runner to start…')
+    expect(body).toContain('id="log-view"')
+    expect(body).toMatch(/id="log-view"[^>]*hidden/)
+    expect(body).toContain('data-last-seq="0"')
+  })
+
+  test('unknown job is a 404 with a reason, bad id a 400', async () => {
+    expect((await get('/jobs/999')).res.status).toBe(404)
+    expect((await get('/jobs/999')).body).toContain('job 999 is unknown')
+    expect((await get('/jobs/abc')).res.status).toBe(400)
   })
 })
 

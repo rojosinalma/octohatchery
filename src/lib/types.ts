@@ -30,7 +30,14 @@ export type Job = {
   queuedAt: string
   startedAt: string | null
   completedAt: string | null
+  /** Where the stored log came from: `runner` (container stdout), `github` (final log) or null while it is still being collected. */
+  logSource: LogSource
+  logBytes: number
+  logTruncated: boolean
 }
+export type LogSource = 'runner' | 'github' | null
+export type LogLine = { seq: number; at: string; line: string }
+export type JobLog = { lines: LogLine[]; source: LogSource; truncated: boolean; complete: boolean }
 export type RunnerState = 'spawning' | 'idle' | 'busy' | 'exited' | 'failed' | 'removed'
 export type Runner = {
   id: number

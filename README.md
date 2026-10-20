@@ -95,10 +95,10 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 
 ### Interfaces
 
-- Dashboard at `/`: Overview, Jobs, Repos, Runner types, Events, Settings. See [docs/dashboard.md](docs/dashboard.md).
+- Dashboard at `/`: Overview, Jobs (with a live log per job), Repos, Runner types, Events, Settings. See [docs/dashboard.md](docs/dashboard.md).
 - JSON API under `/api/`: every response is `{ "ok": true|false, "message": "...", ...data }`.
 - MCP at `/mcp` (Streamable HTTP) with the same actions as tools. See [docs/mcp.md](docs/mcp.md).
-- `GET /health` for monitoring, `GET /metrics` for Prometheus, `GET /events/stream` for live updates over SSE.
+- `GET /health` for monitoring, `GET /metrics` for Prometheus, `GET /events/stream` for live updates over SSE, `GET /api/jobs/:id/log/stream` for one job's log.
 
 ### Documentation
 

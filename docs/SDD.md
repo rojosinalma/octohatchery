@@ -40,7 +40,7 @@ The `app` container reaches the host's Docker daemon through the mounted socket 
 
 ```
 src/index.ts           mounts the Elysia plugins and listens
-src/lib/               logic: scheduler, sweep, github, backends, settings, bus, log, service facade
+src/lib/               logic: scheduler, sweep, joblog, github, backends, settings, bus, log, service facade
 src/db/                Drizzle schema, migrations, drivers (postgres, sqlite)
 src/routes/            HTTP: validate → lib → { ok, message, ...data }
 src/mcp/               MCP server and one file per tool, each a thin call into lib
@@ -86,13 +86,13 @@ One node at a time holds the leader lease: a PostgreSQL advisory lock in cluster
 - **Polling fallback** every `poll_interval_s`: lists queued jobs for adopted repositories through the REST API and inserts any the webhook missed.
 - **Stale runner removal**: a runner that has been `idle` or `spawning` longer than `stale_runner_minutes` without a job has its container deleted and its GitHub registration revoked.
 - **Host liveness**: a host whose node has not updated `last_seen_at` recently is shown `offline`; its slots are not counted as available.
-- **Retention purge**: finished `jobs`, `runners` and `events` older than `retention_days` are deleted.
+- **Retention purge**: finished `jobs` (with their `job_logs`), `runners` and `events` older than `retention_days` are deleted.
 
 If the leader dies, the lock is released by PostgreSQL and the next node that tries takes it on its following tick.
 
 ### 3.6 Data model
 
-Eight tables, schema owned by this project, Drizzle migrations, additive only.
+Nine tables, schema owned by this project, Drizzle migrations, additive only.
 
 | Table | Holds | Notes |
 |---|---|---|
@@ -100,7 +100,8 @@ Eight tables, schema owned by this project, Drizzle migrations, additive only.
 | `runner_types` | name, description, labels, image, CPU and memory caps, mounts, env, secret env names | secrets are names only; values live in the node's environment |
 | `slots` | `(host, type) → count` | how many runners of a type a host may run at once |
 | `repos` | adopted repositories: full name, private flag, webhook id, adopted at | jobs from repositories not in this table are ignored |
-| `jobs` | one row per `workflow_job`: repository, GitHub job id, run id, name, labels, status, conclusion, runner, timestamps | status `queued → claimed → in_progress → completed`, or `ignored` |
+| `jobs` | one row per `workflow_job`: repository, GitHub job id, run id, name, labels, status, conclusion, runner, timestamps, log source / size / truncated flag | status `queued → claimed → in_progress → completed`, or `ignored` |
+| `job_logs` | log lines of one job: `(job_id, seq)`, the line's own timestamp, text | written by the node that owns the runner; replaced by GitHub's log when the job ends; deleted with the job |
 | `runners` | one row per runner container: name, host, type, container id, state, job, timestamps | state `spawning → idle → busy → exited`, or `failed`, then `removed` |
 | `events` | audit log: actor, action, target, detail, time | actors: `user`, `mcp:<client>`, `webhook`, `scheduler`, `sweep` |
 | `settings` | key → value | tunables with defaults in code, read at use time with a short cache |
@@ -132,17 +133,25 @@ GitHub          webhook route        jobs table      scheduler (host A)     GitH
 
 Every state change emits an event on the in-process bus. The SSE route forwards `runner`, `job`, `event` and `slot` changes to connected dashboards, so the Overview page updates without polling.
 
+### 3.8 Job logs
+
+The node that owns a runner (the one whose host name matches `runner.host`) follows the container's output from the moment it starts: `docker logs --follow` with timestamps, demultiplexed, split into lines, written to `job_logs` in batches of at most 64 lines or 500 ms, each batch announced on the bus as a `log` event. The runner prints step output to its stdout because every runner gets `ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1`. On a node restart the reaper re-attaches to still-running containers it owns, asking the engine for output `since` the last stored timestamp and skipping lines it already has.
+
+When the container exits the same node fetches the job's log from GitHub (`GET /repos/{owner}/{repo}/actions/jobs/{id}/logs`), which is complete and authoritative, and replaces the live lines with it. GitHub answers 404 until the log is ready, so the fetch retries with backoff for about two minutes; after that the live lines stay and the job's `log_source` says `runner`. A job's log is capped by the `log_max_kb` setting: past the cap nothing more is stored, the job is marked truncated and one notice line closes the stored log; the full log stays on GitHub.
+
+Readers on any node see the same thing because the lines are in the database: the JSON endpoint pages by sequence number, the per-job SSE stream sends stored lines first, then live batches (from the bus on the owning node, from a two-second database poll on the others), and `end` once the log is final. The dashboard keeps at most 5000 lines in the DOM.
+
 ## 4. Interfaces
 
 All of them run in the same process on the same port.
 
 | Interface | Path | Shape |
 |---|---|---|
-| JSON API | `/api/hosts`, `/api/runner-types`, `/api/slots`, `/api/repos`, `/api/jobs`, `/api/runners`, `/api/events`, `/api/settings` | every response `{ ok, message, ...data }`, errors with the same shape and an HTTP status, never a redirect |
-| Dashboard | `/`, `/jobs`, `/repos`, `/runner-types`, `/events`, `/settings` | server-rendered HTML, small scripts for fetch, toasts and SSE |
-| MCP | `/mcp` | Streamable HTTP; tools `list_hosts`, `list_runners`, `list_jobs`, `list_repos`, `adopt_repo`, `unadopt_repo`, `apply_runs_on`, `list_runner_types`, `upsert_runner_type`, `set_slots`, `spawn`, `kill`; each tool is one call into the service facade |
+| JSON API | `/api/hosts`, `/api/runner-types`, `/api/slots`, `/api/repos`, `/api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/log`, `/api/runners`, `/api/events`, `/api/settings` | every response `{ ok, message, ...data }`, errors with the same shape and an HTTP status, never a redirect |
+| Dashboard | `/`, `/jobs`, `/jobs/:id`, `/repos`, `/runner-types`, `/events`, `/settings` | server-rendered HTML, small scripts for fetch, toasts and SSE |
+| MCP | `/mcp` | Streamable HTTP; tools `list_hosts`, `list_runners`, `list_jobs`, `get_job_log`, `list_repos`, `adopt_repo`, `unadopt_repo`, `apply_runs_on`, `list_runner_types`, `upsert_runner_type`, `set_slots`, `spawn`, `kill`; each tool is one call into the service facade |
 | Webhook | `POST /webhooks/github` | `workflow_job` events, `X-Hub-Signature-256` HMAC verified before parsing, payload schema-checked |
-| SSE | `GET /events/stream` | `event: <name>` + `data: <json>`; capped at `sse_max_clients`, idle clients dropped after `sse_idle_s` |
+| SSE | `GET /events/stream`, `GET /api/jobs/:id/log/stream` | `event: <name>` + `data: <json>`; one shared cap of `sse_max_clients` per node, idle clients dropped after `sse_idle_s`; the job stream sends `line` batches and `end` |
 | Health | `GET /health` | 200 only when the database and the local Docker daemon answer; JSON with mode, host, leader flag, slots used and free, queued jobs, busy runners, last webhook time, version |
 | Metrics | `GET /metrics` | Prometheus text: slots, jobs by status, runner spawn and exit counters, webhook counters |
 
@@ -176,13 +185,13 @@ Both modes run the same code paths. `MODE` only changes the database requirement
 Two layers, documented in full in [operations.md](operations.md#configuration):
 
 - `.env`: bootstrap values and secrets, read once at start. Mode, host name, port, database URL, Docker host, GitHub auth method and credentials, webhook secret, public URL.
-- `settings` table: tunables read at use time through `settings.fetch(key, default)` with a cache of at most 5 seconds, editable from the Settings page, the API and MCP without a restart: `poll_interval_s`, `stale_runner_minutes`, `retention_days`, `sse_max_clients`, `sse_idle_s`, `log_level`, `buildkit_host`.
+- `settings` table: tunables read at use time through `settings.fetch(key, default)` with a cache of at most 5 seconds, editable from the Settings page, the API and MCP without a restart: `poll_interval_s`, `stale_runner_minutes`, `retention_days`, `log_max_kb`, `sse_max_clients`, `sse_idle_s`, `log_level`, `buildkit_host`.
 
 Nothing else is tunable, and nothing is hardcoded per host: anything that differs between installations is in one of those two places.
 
 ## 8. Observability
 
-- Logs to stdout with a level and a subsystem prefix: `[http] [scheduler] [github] [docker] [sweep] [mcp]`. Every call to GitHub or Docker logs method, target and outcome. Background errors log the full stack trace.
+- Logs to stdout with a level and a subsystem prefix: `[http] [scheduler] [github] [docker] [sweep] [joblog] [mcp]`. Every call to GitHub or Docker logs method, target and outcome. Background errors log the full stack trace.
 - `/health` for probes, `/metrics` for Prometheus, `events` for the audit trail. There is no alerting code in the app; point your monitoring at `/health`.
 
 ## 9. Operations summary
@@ -223,3 +232,9 @@ Append-only. One row per decision, dated. Reopen a decision by adding a new row 
 | CI/CD | GitHub Actions on GitHub-hosted runners, three stages: checks on PR and push, `edge` images from `main`, versioned images and a release on `v*` tags; actions pinned by commit SHA | fork pull requests must never run on private hardware; pinned SHAs make the supply chain reviewable | 2026-10-19 |
 | Versioning | semver tags `vX.Y.Z`, `CHANGELOG.md` (Keep a Changelog), image tags `X.Y.Z`, `X.Y`, `latest`, `edge`, `sha-<short>` | every stable point on `main` is a tag and a release with its changelog section | 2026-10-19 |
 | Dependencies | pinned in `bun.lock`, frozen install in CI, Dependabot grouped weekly (bun, github-actions, docker) | reproducible builds; grouped updates keep review cheap | 2026-10-19 |
+| Job log source | the owning node follows the runner container's stdout (`ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT=1`) while the job runs; GitHub's job log replaces it once the job ends, with ~2 min of retries before falling back to the runner lines | the container is the only live source; GitHub's log is the complete, timestamped record and costs one call per job | 2026-10-20 |
+| Job log storage | table `job_logs (job_id, seq, at, line)` plus `jobs.log_source / log_bytes / log_truncated`; capped per job by `log_max_kb` (default 2048) with one notice line; purged with the job | lines in the database make the log readable from every node; a cap keeps a chatty job from growing the database without bound | 2026-10-20 |
+| Job log follower | one module (`src/lib/joblog.ts`): follow → store in batches (64 lines / 500 ms) → emit; re-attach from the scheduler's reap with `since` = last stored timestamp; once truncated it drains without storing until the container exits | batching bounds write load and memory; re-attaching from the existing reap avoids a second loop; draining keeps the GitHub fetch aligned with the container's exit | 2026-10-20 |
+| Job log delivery | `GET /api/jobs/:id/log?after=` (pages of ≤5000, max 20000), SSE `GET /api/jobs/:id/log/stream` (stored lines, then `line` batches from the bus plus a 2 s database poll for lines written on another node, then `end`), MCP `get_job_log {job_id, tail}` as text; `complete` = final log stored, or job finished and its runner gone for longer than the finalise window | one data path serves scripts, agents and the dashboard on any node; the SSE cap is shared with `/events/stream` | 2026-10-20 |
+| Job page | `/jobs/:id` server-rendered: facts, `<pre class="t-code-pre">` with at most 5000 lines in the DOM, follow toggle (off when the user scrolls up), copy button with a toast, source and truncated badges; job names in the Jobs and Runners tables link to it | reading a log is the first thing an operator wants from a job; a bounded DOM keeps long logs usable | 2026-10-20 |
+| Followers for hand-spawned runners | runners started with `spawn` have no job row at spawn time and are not followed; only runners claimed for a job get a log | the job row is what the log hangs on; linking idle runners to the job GitHub later hands them is a separate feature | 2026-10-20 |

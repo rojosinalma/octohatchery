@@ -8,6 +8,8 @@ import { stream, streamClients } from '../../src/routes/stream'
 import { webhooks } from '../../src/routes/webhooks'
 import { settings } from '../../src/lib/settings'
 import { bus } from '../../src/lib/bus'
+import { updateJob } from '../../src/lib/store'
+import { sql } from 'drizzle-orm'
 
 /** The core app without the mcp and ui plugins (owned by other areas). */
 function coreApp() {
@@ -143,5 +145,85 @@ describe('sse stream', () => {
     await Bun.sleep(10)
     expect(streamClients()).toBe(0)
     expect(bus.listenerCount('job')).toBe(0)
+  })
+})
+
+describe('job log api', () => {
+  async function seeded() {
+    const w = await fresh()
+    await w.db.run(sql`insert into jobs (repo, github_job_id, run_id, name, labels, status, html_url, queued_at, completed_at, log_source, log_bytes, log_truncated)
+      values ('a/b', 1, 1, 'done', '[]', 'completed', '', '2026-01-01T00:00:00Z', '2026-01-01T00:01:00Z', 'github', 12, true),
+             ('a/b', 2, 1, 'running', '[]', 'in_progress', '', '2026-01-01T00:00:00Z', null, null, 0, false)`)
+    await w.db.run(sql`insert into job_logs (job_id, seq, at, line) values (1, 1, '2026-01-01T00:00:01Z', 'one'), (1, 2, '2026-01-01T00:00:02Z', 'two'), (1, 3, '2026-01-01T00:00:03Z', 'three')`)
+    return coreApp()
+  }
+
+  test('GET /api/jobs/:id and /log with paging, 404 for unknown ids, 400 for bad params', async () => {
+    const app = await seeded()
+    let r = await call(app, 'GET', '/api/jobs/1')
+    expect(r.status).toBe(200)
+    expect(r.json.job).toMatchObject({ id: 1, name: 'done', logSource: 'github', logTruncated: true, logBytes: 12 })
+    expect(r.json.job).not.toHaveProperty('retries')
+
+    r = await call(app, 'GET', '/api/jobs/1/log')
+    expect(r.json).toMatchObject({ ok: true, source: 'github', truncated: true, complete: true })
+    expect((r.json.lines as { line: string }[]).map((l) => l.line)).toEqual(['one', 'two', 'three'])
+    r = await call(app, 'GET', '/api/jobs/1/log?after=1&limit=1')
+    expect((r.json.lines as { seq: number }[]).map((l) => l.seq)).toEqual([2])
+
+    r = await call(app, 'GET', '/api/jobs/2/log')
+    expect(r.json).toMatchObject({ ok: true, lines: [], source: null, truncated: false, complete: false })
+
+    expect((await call(app, 'GET', '/api/jobs/9/log')).status).toBe(404)
+    expect((await call(app, 'GET', '/api/jobs/9')).json).toMatchObject({ ok: false, code: 'not_found' })
+    expect((await call(app, 'GET', '/api/jobs/x/log')).status).toBe(400)
+    expect((await call(app, 'GET', '/api/jobs/1/log?after=-1')).status).toBe(400)
+  })
+
+  test('SSE log stream: stored lines first, bus batches, end on completion; shares the client cap', async () => {
+    const app = await seeded()
+    await settings.set('sse_max_clients', '1')
+    const ctrl = new AbortController()
+    const res = await app.handle(new Request('http://local/api/jobs/2/log/stream', { signal: ctrl.signal }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+    expect(streamClients()).toBe(1)
+    expect((await app.handle(new Request('http://local/events/stream'))).status).toBe(503)
+
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    const read = async (until: string) => {
+      let buf = ''
+      while (!buf.includes(until)) buf += dec.decode((await reader.read()).value)
+      return buf
+    }
+    await read(': connected')
+    bus.emit('log', { jobId: 2, lines: [{ seq: 1, at: '2026-01-01T00:00:01Z', line: 'hello' }] })
+    bus.emit('log', { jobId: 1, lines: [{ seq: 9, at: 't', line: 'other job' }] }) // filtered out
+    let buf = await read('hello')
+    expect(buf).toContain('event: line\ndata: {"lines":[{"seq":1,"at":"2026-01-01T00:00:01Z","line":"hello"}]}\n\n')
+    expect(buf).not.toContain('other job')
+    // the job becomes final: the stream reports the source and closes
+    await updateJob(2, { status: 'completed', completedAt: '2026-01-01T00:02:00Z', logSource: 'runner' })
+    bus.emit('log', { jobId: 2, lines: [], done: true })
+    buf = await read('event: end')
+    expect(buf).toContain('event: end\ndata: {"source":"runner","truncated":false,"replaced":false}\n\n')
+    expect((await reader.read()).done).toBe(true)
+    await Bun.sleep(10)
+    expect(streamClients()).toBe(0)
+    expect(bus.listenerCount('log')).toBe(0)
+    ctrl.abort()
+  })
+
+  test('SSE log stream: `after` skips stored lines, a complete log ends at once, unknown job is 404', async () => {
+    const app = await seeded()
+    const res = await app.handle(new Request('http://local/api/jobs/1/log/stream?after=2'))
+    const text = await res.text()
+    expect(text).toContain('event: line\ndata: {"lines":[{"seq":3,"at":"2026-01-01T00:00:03Z","line":"three"}]}\n\n')
+    expect(text).not.toContain('"two"')
+    expect(text).toContain('event: end\ndata: {"source":"github","truncated":true,"replaced":false}\n\n')
+    expect(streamClients()).toBe(0)
+    const missing = await app.handle(new Request('http://local/api/jobs/9/log/stream'))
+    expect(missing.status).toBe(404)
   })
 })

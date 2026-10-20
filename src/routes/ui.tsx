@@ -2,10 +2,12 @@ import { Elysia, t } from 'elysia'
 import { html } from '@elysiajs/html'
 import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
-import type { JobStatus } from '../lib/types'
+import { STATUS_BY_CODE } from '../lib/json'
+import { ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
 import { OverviewLive, OverviewPage } from '../views/overview'
 import { JOB_STATUSES, JobsPage, JobsTable } from '../views/jobs'
+import { JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
 import { RunnerTypesPage } from '../views/runner-types'
 import { EventsPage, EventsTable } from '../views/events'
@@ -56,6 +58,17 @@ const partialQuery = t.Object({ partial: t.Optional(t.String()) })
 
 export const ui = new Elysia({ name: 'ui' })
   .use(html())
+  // A facade error on a page (unknown job id) becomes a plain status with the reason instead of a 500.
+  .onError({ as: 'scoped' }, ({ error, code, set }) => {
+    if (error instanceof ServiceError) {
+      set.status = STATUS_BY_CODE[error.code] ?? 400
+      return error.message
+    }
+    if (code === 'VALIDATION') {
+      set.status = 400
+      return error.message.split('\n')[0] ?? 'invalid request'
+    }
+  })
   .get('/public/*', ({ params }) => serveStatic(params['*']))
   .get('/tailor/*', ({ params }) => serveStatic(`tailor/${params['*']}`))
   .get('/favicon.svg', () => serveStatic('favicon.svg'))
@@ -81,6 +94,19 @@ export const ui = new Elysia({ name: 'ui' })
       return page('jobs', 'Jobs', <JobsPage jobs={jobs} repos={repos} filter={filter} />)
     },
     { query: t.Object({ partial: t.Optional(t.String()), repo: t.Optional(t.String()), status: t.Optional(t.String()), job: t.Optional(t.String()) }) },
+  )
+
+  .get(
+    '/jobs/:id',
+    async ({ params }) => {
+      const job = await service.getJob(params.id)
+      const [runner, log] = await Promise.all([
+        job.runnerId === null ? Promise.resolve(null) : service.getRunner(job.runnerId).catch(() => null),
+        service.getJobLog(params.id, { tail: LOG_DOM_LINES }),
+      ])
+      return page('jobs', job.name, <JobPage job={job} runner={runner} log={log} />)
+    },
+    { params: t.Object({ id: t.Integer({ minimum: 1 }) }) },
   )
 
   .get('/repos', async () => {

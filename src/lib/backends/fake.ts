@@ -1,5 +1,38 @@
-import type { BackendAdapter, ContainerBackend, ContainerInfo, SpawnInput } from './types'
+import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, SpawnInput } from './types'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_TYPE_LABEL } from './types'
+
+/** A hand-driven log feed: `push` lines, `end` when the container exits. */
+export type FakeLogFeed = AsyncIterable<ContainerLogLine> & { push(line: string, at?: string): void; end(): void }
+
+export function createLogFeed(): FakeLogFeed {
+  const queue: ContainerLogLine[] = []
+  let ended = false
+  let wake: (() => void) | undefined
+  const notify = () => {
+    wake?.()
+    wake = undefined
+  }
+  return {
+    push(line, at = new Date().toISOString()) {
+      queue.push({ at, line })
+      notify()
+    },
+    end() {
+      ended = true
+      notify()
+    },
+    async *[Symbol.asyncIterator]() {
+      while (true) {
+        if (queue.length) {
+          yield queue.shift()!
+          continue
+        }
+        if (ended) return
+        await new Promise<void>((resolve) => (wake = resolve))
+      }
+    },
+  }
+}
 
 /** In-memory backend for tests: containers are records; `exit(id)` simulates the runner finishing. */
 export type FakeBackend = ContainerBackend & {
@@ -7,11 +40,16 @@ export type FakeBackend = ContainerBackend & {
   spawns: SpawnInput[]
   up: boolean
   exit(containerId: string, code?: number): void
+  /** Log feed per container; `logs()` drains it. Created on demand so tests can push before or after following. */
+  feed(containerId: string): FakeLogFeed
+  /** Simulates a node restart: the current follower stays stuck on the old feed, the next `logs()` call gets a new one. */
+  replaceFeed(containerId: string): FakeLogFeed
 }
 
 export function createFakeBackend(): FakeBackend {
   const containers = new Map<string, ContainerInfo & { input: SpawnInput }>()
   const spawns: SpawnInput[] = []
+  const feeds = new Map<string, FakeLogFeed>()
   let n = 0
   const fake: FakeBackend = {
     kind: 'fake',
@@ -21,6 +59,17 @@ export function createFakeBackend(): FakeBackend {
     exit(id, code = 0) {
       const c = containers.get(id)
       if (c) Object.assign(c, { running: false, status: 'exited', exitCode: code })
+      feeds.get(id)?.end()
+    },
+    feed(id) {
+      let f = feeds.get(id)
+      if (!f) feeds.set(id, (f = createLogFeed()))
+      return f
+    },
+    replaceFeed(id) {
+      const f = createLogFeed()
+      feeds.set(id, f)
+      return f
     },
     async ping() {
       return fake.up
@@ -51,6 +100,9 @@ export function createFakeBackend(): FakeBackend {
     },
     async listOwned() {
       return [...containers.values()]
+    },
+    logs(id) {
+      return fake.feed(id)
     },
   }
   return fake

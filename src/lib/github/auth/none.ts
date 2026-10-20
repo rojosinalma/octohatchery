@@ -7,6 +7,8 @@ export type FakeGitHub = GitHubClient & {
   queued: Map<string, QueuedJob[]>
   files: Map<string, string>
   deletedRunners: number[]
+  /** `repo#githubJobId` → log text; a missing entry answers 404 like GitHub does before the log is ready. */
+  jobLogs: Map<string, string>
 }
 
 export function createFakeGitHub(): FakeGitHub {
@@ -14,6 +16,7 @@ export function createFakeGitHub(): FakeGitHub {
   const queued = new Map<string, QueuedJob[]>()
   const files = new Map<string, string>()
   const deletedRunners: number[] = []
+  const jobLogs = new Map<string, string>()
   let nextRunnerId = 1000
   const rec = (method: string, ...args: unknown[]) => calls.push({ method, args })
   return {
@@ -22,6 +25,7 @@ export function createFakeGitHub(): FakeGitHub {
     queued,
     files,
     deletedRunners,
+    jobLogs,
     async getInstallationOctokit(): Promise<Octokit> {
       throw new Error('GITHUB_AUTH=none has no Octokit')
     },
@@ -68,6 +72,12 @@ export function createFakeGitHub(): FakeGitHub {
     async openPullRequest(repo, input) {
       rec('openPullRequest', repo, input)
       return { url: `https://example.invalid/${repo}/pull/1` }
+    },
+    async getJobLog(repo, githubJobId) {
+      rec('getJobLog', repo, githubJobId)
+      const text = jobLogs.get(`${repo}#${githubJobId}`)
+      if (text === undefined) throw Object.assign(new Error(`Not Found: log for job ${githubJobId}`), { status: 404 })
+      return text
     },
     async listWorkflowFiles(repo) {
       rec('listWorkflowFiles', repo)

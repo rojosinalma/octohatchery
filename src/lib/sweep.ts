@@ -79,7 +79,10 @@ export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number
   const days = await settings.fetchInt('retention_days', 30)
   const cutoff = new Date(nowMs - days * 86_400_000).toISOString()
   const d = db()
-  const jobs = await d.all(sql`delete from jobs where status in ('completed', 'ignored') and coalesce(completed_at, queued_at) < ${cutoff} returning id`)
+  const finished = sql`status in ('completed', 'ignored') and coalesce(completed_at, queued_at) < ${cutoff}`
+  // Explicit, so the purge does not depend on foreign-key enforcement being on in the database.
+  await d.run(sql`delete from job_logs where job_id in (select id from jobs where ${finished})`)
+  const jobs = await d.all(sql`delete from jobs where ${finished} returning id`)
   const runners = await d.all(sql`delete from runners where state in ('exited', 'failed', 'removed') and coalesce(exited_at, created_at) < ${cutoff} returning id`)
   const events = await d.all(sql`delete from events where at < ${cutoff} returning id`)
   const out = { jobs: jobs.length, runners: runners.length, events: events.length }

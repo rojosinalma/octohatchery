@@ -5,6 +5,7 @@ import { createFakeBackend, type FakeBackend } from '../../src/lib/backends/fake
 import { loadConfig, setConfig, type Config } from '../../src/lib/config'
 import { createFakeGitHub, type FakeGitHub } from '../../src/lib/github/auth/none'
 import { setGitHub } from '../../src/lib/github/auth'
+import { configureJobLog } from '../../src/lib/joblog'
 import { settings } from '../../src/lib/settings'
 import { upsertHost } from '../../src/lib/store'
 
@@ -26,6 +27,7 @@ export type TestWorld = { db: Db; github: FakeGitHub; docker: FakeBackend; confi
 export async function fresh(env: Record<string, string> = {}): Promise<TestWorld> {
   await closeDb()
   settings.reset()
+  configureJobLog({ retryDelaysMs: [], flushMs: 10 })
   const config = loadConfig({ ...TEST_ENV, ...env })
   setConfig(config)
   const github = createFakeGitHub()

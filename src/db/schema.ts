@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 // Canonical schema (SQLite flavour). `schema.pg.ts` mirrors it for Postgres; a test keeps them in sync.
 // Timestamps are ISO-8601 text and JSON columns are text in both dialects so one query layer serves both.
@@ -68,6 +68,9 @@ export const jobs = sqliteTable(
     queuedAt: text('queued_at').notNull(),
     startedAt: text('started_at'),
     completedAt: text('completed_at'),
+    logSource: text('log_source'),
+    logBytes: integer('log_bytes').notNull().default(0),
+    logTruncated: integer('log_truncated', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [index('jobs_status_queued').on(t.status, t.queuedAt), index('jobs_repo').on(t.repo)],
 )
@@ -102,6 +105,20 @@ export const events = sqliteTable(
     at: text('at').notNull(),
   },
   (t) => [index('events_at').on(t.at)],
+)
+
+/** Log lines of one job, in order; deleted with the job. `at` is the line's own timestamp (runner or GitHub). */
+export const jobLogs = sqliteTable(
+  'job_logs',
+  {
+    jobId: integer('job_id')
+      .notNull()
+      .references(() => jobs.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    at: text('at').notNull(),
+    line: text('line').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.jobId, t.seq] })],
 )
 
 export const settings = sqliteTable('settings', {

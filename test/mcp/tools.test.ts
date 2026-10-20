@@ -22,6 +22,7 @@ const cases: Record<string, { good: unknown; bad: unknown }> = {
   unadopt_repo: { good: { repo: 'owner/name' }, bad: { repo: 'a/b/c' } },
   apply_runs_on: { good: { repo: 'owner/name', mode: 'snippet', type: 'generic' }, bad: { repo: 'owner/name', mode: 'push', type: 'generic' } },
   list_jobs: { good: { status: 'queued', limit: 10 }, bad: { status: 'running' } },
+  get_job_log: { good: { job_id: 7, tail: 50 }, bad: { job_id: 7, tail: 0 } },
   list_runners: { good: { state: 'busy' }, bad: { limit: 0 } },
   spawn: { good: { type: 'generic', host: 'node-a' }, bad: { type: 'generic' } },
   kill: { good: { runner_id: 3 }, bad: { runner_id: 'three' } },
@@ -80,6 +81,14 @@ describe('actor and argument mapping', () => {
       { fullName: 'owner/name', mode: 'pr', type: 'generic', host: 'node-a', workflows: undefined },
       'mcp:test',
     )
+  })
+
+  test('get_job_log returns text: a header line then timestamped lines, tail defaults to 200', async () => {
+    const out = await findTool('get_job_log')!.handler({ job_id: 7 } as never, ctx)
+    expect(service.getJobLog).toHaveBeenCalledWith(7, { tail: 200 })
+    expect(out).toBe('# job 7: source=runner truncated=false complete=true lines=2\n2026-10-20T10:00:00Z first\n2026-10-20T10:00:01Z second')
+    await findTool('get_job_log')!.handler({ job_id: 7, tail: 5 } as never, ctx)
+    expect(service.getJobLog).toHaveBeenLastCalledWith(7, { tail: 5 })
   })
 
   test('kill passes the numeric id and actor', async () => {

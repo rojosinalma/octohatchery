@@ -6,6 +6,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   poll_interval_s: '300',
   stale_runner_minutes: '5',
   retention_days: '30',
+  log_max_kb: '2048',
   sse_max_clients: '20',
   sse_idle_s: '300',
   log_level: 'info',

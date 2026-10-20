@@ -25,6 +25,9 @@ export const RUNNER_ID_LABEL = 'octohatchery.runner-id'
 export const RUNNER_TYPE_LABEL = 'octohatchery.type'
 export const RUNNER_HOST_LABEL = 'octohatchery.host'
 
+/** One line of container output with the engine's timestamp (ISO-8601). */
+export type ContainerLogLine = { at: string; line: string }
+
 export type ContainerBackend = {
   kind: 'docker' | 'fake'
   ping(): Promise<boolean>
@@ -35,6 +38,11 @@ export type ContainerBackend = {
   remove(containerId: string): Promise<void>
   /** Every container labelled `octohatchery.runner=true`, running or exited. */
   listOwned(): Promise<ContainerInfo[]>
+  /**
+   * Follows stdout and stderr of a running container until it exits; `since` (ISO-8601) skips older output.
+   * Returning from the iterator (`break`) stops following. A missing container yields nothing.
+   */
+  logs(containerId: string, opts?: { since?: string }): AsyncIterable<ContainerLogLine>
 }
 
 export type BackendAdapter = { kind: ContainerBackend['kind']; create(): ContainerBackend }

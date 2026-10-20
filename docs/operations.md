@@ -34,7 +34,8 @@ Every node in a cluster needs the same GitHub values and webhook secret, its own
 |---|---|---|
 | `poll_interval_s` | `300` | How often the leader lists queued jobs over the REST API to catch webhooks that were missed. |
 | `stale_runner_minutes` | `5` | A runner without a job for this long is removed and deregistered. |
-| `retention_days` | `30` | Finished jobs, runners and events older than this are deleted. |
+| `retention_days` | `30` | Finished jobs, runners and events older than this are deleted, together with their stored logs. |
+| `log_max_kb` | `2048` | Most log text stored per job. Beyond it the stored log stops with a notice; the full log stays on GitHub. |
 | `sse_max_clients` | `20` | Maximum open `/events/stream` connections per node. |
 | `sse_idle_s` | `300` | An SSE client that received nothing for this long is disconnected. |
 | `log_level` | `info` | `debug`, `info`, `warn` or `error`. |

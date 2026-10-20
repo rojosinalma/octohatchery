@@ -61,6 +61,13 @@ export const SETTING_GROUPS: Group[] = [
         control: { kind: 'number', min: 1, unit: 'days' },
         default: '30',
       },
+      {
+        key: 'log_max_kb',
+        label: 'Log size cap',
+        help: 'Most log text kept per job. Beyond it the stored log stops with a notice; the full log stays on GitHub.',
+        control: { kind: 'number', min: 1, unit: 'KB' },
+        default: '2048',
+      },
     ],
   },
   {

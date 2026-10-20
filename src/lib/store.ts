@@ -1,8 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { db, type Db } from '../db'
-import { toHost, toJob, toRepo, toRunner, toRunnerType } from '../db/rows'
+import { toHost, toJob, toLogLine, toRepo, toRunner, toRunnerType } from '../db/rows'
 import { bus } from './bus'
-import type { Host, Job, JobStatus, Repo, Runner, RunnerState, RunnerType, Slot } from './types'
+import type { Host, Job, JobStatus, LogLine, Repo, Runner, RunnerState, RunnerType, Slot } from './types'
 
 // Shared queries used by the service, scheduler, sweep and webhook handlers.
 
@@ -113,9 +113,10 @@ export async function insertJobIfNew(j: NewJob, d: Db = db()): Promise<JobRow | 
   return job
 }
 
-export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries'>>
+export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries' | 'logSource' | 'logBytes' | 'logTruncated'>>
 
-export async function updateJob(id: number, patch: JobPatch, d: Db = db()): Promise<JobRow | undefined> {
+/** `silent` skips the bus notification (log bookkeeping that changes nothing a dashboard table shows). */
+export async function updateJob(id: number, patch: JobPatch, d: Db = db(), opts: { silent?: boolean } = {}): Promise<JobRow | undefined> {
   const sets: SQL[] = []
   if (patch.status !== undefined) sets.push(sql`status = ${patch.status}`)
   if (patch.conclusion !== undefined) sets.push(sql`conclusion = ${patch.conclusion}`)
@@ -123,12 +124,50 @@ export async function updateJob(id: number, patch: JobPatch, d: Db = db()): Prom
   if (patch.startedAt !== undefined) sets.push(sql`started_at = ${patch.startedAt}`)
   if (patch.completedAt !== undefined) sets.push(sql`completed_at = ${patch.completedAt}`)
   if (patch.retries !== undefined) sets.push(sql`retries = ${patch.retries}`)
+  if (patch.logSource !== undefined) sets.push(sql`log_source = ${patch.logSource}`)
+  if (patch.logBytes !== undefined) sets.push(sql`log_bytes = ${patch.logBytes}`)
+  if (patch.logTruncated !== undefined) sets.push(sql`log_truncated = ${patch.logTruncated}`)
   if (!sets.length) return jobById(id, d)
   const [row] = await d.all(sql`update jobs set ${sql.join(sets, sql`, `)} where id = ${id} returning *`)
   if (!row) return undefined
   const job = toJob(row)
-  bus.emit('job', job)
+  if (!opts.silent) bus.emit('job', job)
   return job
+}
+
+// job logs
+
+/** Lines after `after` (exclusive) in order, at most `limit`. */
+export async function logLinesAfter(jobId: number, after: number, limit: number, d: Db = db()): Promise<LogLine[]> {
+  const rows = await d.all(sql`select seq, at, line from job_logs where job_id = ${jobId} and seq > ${after} order by seq limit ${limit}`)
+  return rows.map(toLogLine)
+}
+
+/** The last `n` lines in order. */
+export async function logTail(jobId: number, n: number, d: Db = db()): Promise<LogLine[]> {
+  const rows = await d.all(sql`select seq, at, line from job_logs where job_id = ${jobId} order by seq desc limit ${n}`)
+  return rows.map(toLogLine).reverse()
+}
+
+/** Highest stored seq and its timestamp, or `{ seq: 0, at: null }` when nothing is stored. */
+export async function logCursor(jobId: number, d: Db = db()): Promise<{ seq: number; at: string | null }> {
+  const [row] = await d.all<{ seq: unknown; at: unknown }>(sql`select seq, at from job_logs where job_id = ${jobId} order by seq desc limit 1`)
+  return row ? { seq: Number(row.seq), at: String(row.at) } : { seq: 0, at: null }
+}
+
+/** Appends lines with consecutive seqs starting at `fromSeq`; one statement per batch. */
+export async function appendLogLines(jobId: number, fromSeq: number, lines: { at: string; line: string }[], d: Db = db()): Promise<LogLine[]> {
+  if (!lines.length) return []
+  const out = lines.map((l, i) => ({ seq: fromSeq + i, at: l.at, line: l.line }))
+  await d.run(sql`insert into job_logs (job_id, seq, at, line) values ${sql.join(
+    out.map((l) => sql`(${jobId}, ${l.seq}, ${l.at}, ${l.line})`),
+    sql`, `,
+  )}`)
+  return out
+}
+
+export async function deleteLogLines(jobId: number, d: Db = db()): Promise<void> {
+  await d.run(sql`delete from job_logs where job_id = ${jobId}`)
 }
 
 // runners

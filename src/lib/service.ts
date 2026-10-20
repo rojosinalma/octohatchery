@@ -9,6 +9,7 @@ import { github } from './github/auth'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { rewriteRunsOn, runsOnSnippet } from './runs-on'
+import { FINALISE_GRACE_MS } from './joblog'
 import { SETTING_DEFAULTS, settings } from './settings'
 import { materialise } from './spawn'
 import * as store from './store'
@@ -22,6 +23,7 @@ import {
   type HealthSnapshot,
   type Host,
   type Job,
+  type JobLog,
   type JobStatus,
   type Repo,
   type Runner,
@@ -37,6 +39,8 @@ const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]*$/
 const MOUNT_RE = /^[^:]+:\/[^:]*(?::ro|:rw)?$/
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 1000
+const LOG_PAGE_LIMIT = 5000
+const LOG_PAGE_MAX = 20_000
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 
 function limitOf(n: number | undefined): number {
@@ -65,6 +69,24 @@ async function requireType(name: string): Promise<RunnerType> {
   const type = await store.runnerTypeByName(name)
   if (!type) throw new ServiceError(`runner type "${name}" is unknown`, 'not_found')
   return type
+}
+
+async function requireJob(id: number): Promise<store.JobRow> {
+  const job = await store.jobById(id)
+  if (!job) throw new ServiceError(`job ${id} is unknown`, 'not_found')
+  return job
+}
+
+/** No more lines can arrive: the final log is stored, or the job finished and its runner is gone past the finalise window. */
+async function logComplete(job: Job): Promise<boolean> {
+  if (job.logSource !== null) return true
+  if (job.status !== 'completed' && job.status !== 'ignored') return false
+  if (job.runnerId === null) return true
+  const runner = await store.runnerById(job.runnerId)
+  if (!runner) return true
+  if (store.ACTIVE_RUNNER_STATES.includes(runner.state)) return false
+  const endedAt = runner.exitedAt ?? job.completedAt
+  return !endedAt || Date.now() - Date.parse(endedAt) > FINALISE_GRACE_MS
 }
 
 export const service = {
@@ -214,12 +236,35 @@ export const service = {
     return rows.map(toJob).map(({ retries: _retries, ...job }) => job)
   },
 
+  async getJob(id: number): Promise<Job> {
+    const { retries: _retries, ...job } = await requireJob(id)
+    return job
+  },
+
+  /**
+   * Stored log lines of a job: `after` pages forward (exclusive seq), `tail` returns the last n lines instead.
+   * `complete` is true once the final log is stored, or when the job finished and nothing can add lines any more.
+   */
+  async getJobLog(id: number, opts: { after?: number; limit?: number; tail?: number } = {}): Promise<JobLog> {
+    const job = await requireJob(id)
+    const limit = Math.min(Math.max(1, opts.limit ?? LOG_PAGE_LIMIT), LOG_PAGE_MAX)
+    const lines = opts.tail !== undefined ? await store.logTail(id, Math.min(Math.max(1, opts.tail), LOG_PAGE_MAX)) : await store.logLinesAfter(id, opts.after ?? 0, limit)
+    return { lines, source: job.logSource, truncated: job.logTruncated, complete: await logComplete(job) }
+  },
+
   async listRunners(filter: { host?: string; state?: RunnerState; limit?: number } = {}): Promise<Runner[]> {
     const where = [sql`1 = 1`]
     if (filter.host) where.push(sql`host = ${filter.host}`)
     if (filter.state) where.push(sql`state = ${filter.state}`)
     const rows = await db().all(sql`select * from runners where ${sql.join(where, sql` and `)} order by created_at desc, id desc limit ${limitOf(filter.limit)}`)
     return rows.map(toRunner).map(({ githubRunnerId: _id, ...runner }) => runner)
+  },
+
+  async getRunner(id: number): Promise<Runner> {
+    const runner = await store.runnerById(id)
+    if (!runner) throw new ServiceError(`runner ${id} is unknown`, 'not_found')
+    const { githubRunnerId: _ghId, ...out } = runner
+    return out
   },
 
   /** Starts a runner outside the queue. Local host: spawned now; other hosts: their scheduler picks it up. */

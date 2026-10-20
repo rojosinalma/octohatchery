@@ -26,6 +26,16 @@ export const service = {
   unadoptRepo: ok(undefined),
   applyRunsOn: ok({ ok: true, message: 'snippet', snippet: 'runs-on: [self-hosted, generic]' }),
   listJobs: ok([]),
+  getJob: ok({ id: 1, name: 'build' }),
+  getJobLog: ok({
+    lines: [
+      { seq: 1, at: '2026-10-20T10:00:00Z', line: 'first' },
+      { seq: 2, at: '2026-10-20T10:00:01Z', line: 'second' },
+    ],
+    source: 'runner',
+    truncated: false,
+    complete: true,
+  }),
   listRunners: ok([]),
   spawn: ok({ id: 9, name: 'r', host: 'node-a', type: 'generic', state: 'spawning' }),
   kill: ok(undefined),

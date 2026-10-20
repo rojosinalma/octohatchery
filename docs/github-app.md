@@ -23,7 +23,7 @@ Repository permissions:
 
 | Permission | Level | Used for |
 |---|---|---|
-| Actions | Read and write | list queued jobs and workflow runs; write lets a later version cancel runs |
+| Actions | Read and write | list queued jobs and workflow runs, download job logs; write lets a later version cancel runs |
 | Administration | Read and write | create the just-in-time runner registration for each job |
 | Contents | Read and write | read workflows; write them when you ask for `apply_runs_on` with `commit` or `pr` |
 | Pull requests | Read and write | open the pull request for `apply_runs_on` with `pr` |

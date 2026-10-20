@@ -17,14 +17,15 @@ export const createServer = (): McpServer => {
       {
         description: tool.description,
         inputSchema: tool.inputSchema,
-        annotations: { destructiveHint: tool.destructive, readOnlyHint: tool.name.startsWith('list_') || tool.name === 'health' || tool.name === 'get_settings' },
+        annotations: { destructiveHint: tool.destructive, readOnlyHint: tool.name.startsWith('list_') || tool.name.startsWith('get_') || tool.name === 'health' },
       },
       async (args) => {
         const who = actor()
         try {
           const result = await tool.handler(args, { actor: who })
           logger.info(`${who} ${tool.name} ok`)
-          return { content: [{ type: 'text', text: JSON.stringify(result ?? null) }] }
+          // Tools that produce text (logs) return it verbatim; everything else is JSON.
+          return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result ?? null) }] }
         } catch (err) {
           if (err instanceof ServiceError) {
             logger.warn(`${who} ${tool.name} rejected (${err.code}): ${err.message}`)

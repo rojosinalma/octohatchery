@@ -5,6 +5,7 @@ import { backend } from './backends'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL } from './backends/types'
 import { config } from './config'
 import { recordEvent } from './events'
+import { ensureFollower } from './joblog'
 import { matchesLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
@@ -36,7 +37,10 @@ export async function reap(host = config().hostName): Promise<number> {
   for (const runner of active) {
     if (runner.state === 'spawning' && !runner.containerId) continue // not started yet
     const info = runner.containerId ? await be.inspect(runner.containerId) : owned.get(String(runner.id))
-    if (info && info.running) continue
+    if (info && info.running) {
+      ensureFollower(runner) // re-attach after a restart; a no-op while a follower is live
+      continue
+    }
     const exitedAt = new Date().toISOString()
     await updateRunner(runner.id, { state: 'exited', exitedAt })
     if (runner.jobId !== null) {

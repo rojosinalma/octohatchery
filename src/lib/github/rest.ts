@@ -137,6 +137,17 @@ export function restClient(
       return { url: res.data.html_url }
     },
 
+    async getJobLog(fullName, githubJobId) {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      const res = await call(`GET ${fullName} job ${githubJobId} logs`, () => o.rest.actions.downloadJobLogsForWorkflowRun({ owner, repo, job_id: githubJobId }))
+      const data: unknown = res.data
+      if (typeof data === 'string') return data
+      if (data instanceof ArrayBuffer) return new TextDecoder().decode(data)
+      if (data && typeof data === 'object' && 'byteLength' in data) return Buffer.from(data as Uint8Array).toString('utf8')
+      throw new Error(`job ${githubJobId} log: unexpected response body (${typeof data})`)
+    },
+
     async listWorkflowFiles(fullName, ref) {
       const o = await getOctokit(fullName)
       const { owner, repo } = splitRepo(fullName)

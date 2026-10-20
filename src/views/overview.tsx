@@ -186,7 +186,7 @@ export const RunnersTable = ({ runners }: { runners: Runner[] }) => {
               </td>
               <td>
                 {r.jobId ? (
-                  <a href={`/jobs?job=${r.jobId}`} safe>
+                  <a href={`/jobs/${r.jobId}`} data-tip="Open the job and its log" safe>
                     {r.jobName ?? `job #${r.jobId}`}
                   </a>
                 ) : (

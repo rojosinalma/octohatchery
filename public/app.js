@@ -246,11 +246,111 @@
     })
   }
 
+  /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy ──────── */
+  var LOG_DOM_LINES = 5000
+  function wireJobLog() {
+    var section = $('#log')
+    if (!section) return
+    var view = $('#log-view'), empty = $('#log-empty'), count = $('#log-count')
+    var followBtn = $('[data-action="log-follow"]', section), copyBtn = $('[data-action="log-copy"]', section)
+    var sourceBadge = $('#log-source'), truncatedBadge = $('#log-truncated')
+    var jobId = section.dataset.jobId, lastSeq = Number(section.dataset.lastSeq || 0)
+    var following = followBtn.getAttribute('aria-pressed') === 'true'
+    var es = null
+
+    function setFollow(on) {
+      following = on
+      followBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
+      if (on) view.scrollTop = view.scrollHeight
+    }
+    function lineNode(l) {
+      var span = document.createElement('span')
+      span.className = 'log-line'
+      span.dataset.seq = String(l.seq)
+      span.dataset.at = l.at
+      var m = /T(\d{2}:\d{2}:\d{2})/.exec(l.at)
+      span.innerHTML = '<span class="log-time">' + esc(m ? m[1] : l.at) + '</span><span class="log-text">' + esc(l.line) + '</span>\n'
+      return span
+    }
+    function append(lines) {
+      if (!lines.length) return
+      var frag = document.createDocumentFragment()
+      lines.forEach(function (l) { if (l.seq > lastSeq) { frag.appendChild(lineNode(l)); lastSeq = l.seq } })
+      view.appendChild(frag)
+      var extra = view.children.length - LOG_DOM_LINES
+      while (extra-- > 0) view.removeChild(view.firstElementChild)
+      view.hidden = false
+      empty.hidden = true
+      count.textContent = view.children.length + ' lines'
+      if (following) view.scrollTop = view.scrollHeight
+    }
+    function finish(info) {
+      section.removeAttribute('data-live')
+      section.dataset.complete = 'true'
+      followBtn.disabled = true
+      followBtn.dataset.tip = 'The log is complete'
+      setFollow(false)
+      if (info.truncated) truncatedBadge.hidden = false
+      if (info.source === 'github') {
+        sourceBadge.dataset.tone = 'accent'
+        sourceBadge.textContent = 'source: GitHub'
+        sourceBadge.dataset.tip = 'The log GitHub stores for this job: complete and authoritative'
+      } else if (info.source === 'runner') {
+        sourceBadge.dataset.tone = 'neutral'
+        sourceBadge.textContent = 'source: runner'
+        sourceBadge.dataset.tip = 'Captured from the runner container; GitHub did not hand out its log in time'
+      } else {
+        sourceBadge.dataset.tone = 'neutral'
+        sourceBadge.textContent = view.children.length ? 'source: runner' : 'source: none'
+      }
+      if (info.replaced) {
+        // GitHub's log replaced the live lines: reload the view from the start.
+        api('GET', '/api/jobs/' + jobId + '/log?limit=' + LOG_DOM_LINES).then(function (res) {
+          if (!res.ok) return
+          view.textContent = ''
+          lastSeq = 0
+          append(res.lines)
+          view.scrollTop = 0
+          T.toast('info', 'Log replaced with the final one from GitHub')
+        })
+      }
+    }
+    function connectLog() {
+      if (!window.EventSource || section.dataset.complete === 'true') return
+      es = new EventSource('/api/jobs/' + jobId + '/log/stream?after=' + lastSeq)
+      es.addEventListener('line', function (e) { try { append(JSON.parse(e.data).lines || []) } catch (err) { /* malformed batch: wait for the next */ } })
+      es.addEventListener('end', function (e) {
+        var info = {}
+        try { info = JSON.parse(e.data) } catch (err) { /* keep defaults */ }
+        es.close(); es = null
+        finish(info)
+      })
+      es.onerror = function () { /* the browser reconnects; `after` is re-read on the next open */ es.close(); es = null; setTimeout(connectLog, 3000) }
+    }
+    // Scrolling up turns follow off; scrolling to the bottom turns it on again.
+    view.addEventListener('scroll', function () {
+      var atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 8
+      if (!atBottom && following) setFollow(false)
+      else if (atBottom && !following && !followBtn.disabled) setFollow(true)
+    }, { passive: true })
+    followBtn.addEventListener('click', function () { setFollow(!following) })
+    copyBtn.addEventListener('click', function () {
+      var text = Array.prototype.map.call(view.children, function (n) { return n.textContent.replace(/\n$/, '') }).join('\n')
+      if (!navigator.clipboard) { T.toast('warning', 'Clipboard is not available in this browser'); return }
+      navigator.clipboard.writeText(text).then(
+        function () { T.toast('success', 'Copied ' + view.children.length + ' lines') },
+        function (err) { T.toast('danger', 'Copy failed: ' + err.message) })
+    })
+    if (following) view.scrollTop = view.scrollHeight
+    connectLog()
+  }
+
   /* ── Boot ────────────────────────────────────────────────────────────────── */
   function boot() {
     if (!T) return
     wireSlots(document)
     wireSettings()
+    wireJobLog()
     connect()
     var side = $('.t-shell-side .t-sidebar')
     var main = $('.t-shell-main')

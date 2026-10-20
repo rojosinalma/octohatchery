@@ -1,4 +1,4 @@
-import type { Event, HealthSnapshot, Host, Job, Repo, Runner, RunnerType, Slot } from '../../src/lib/types'
+import { ServiceError, type Event, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
 
 export const hosts: Host[] = [
   { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true },
@@ -47,6 +47,9 @@ export const jobs: Job[] = [
     queuedAt: '2026-10-19T10:00:00Z',
     startedAt: '2026-10-19T10:00:30Z',
     completedAt: null,
+    logSource: null,
+    logBytes: 120,
+    logTruncated: false,
   },
   {
     id: 8,
@@ -62,8 +65,29 @@ export const jobs: Job[] = [
     queuedAt: '2026-10-19T08:00:00Z',
     startedAt: '2026-10-19T08:00:10Z',
     completedAt: '2026-10-19T08:05:10Z',
+    logSource: 'github',
+    logBytes: 2048,
+    logTruncated: true,
   },
 ]
+
+export const logs: Record<number, JobLog> = {
+  7: {
+    lines: [
+      { seq: 1, at: '2026-10-19T10:00:31.000000000Z', line: 'Current runner version: 2.3' },
+      { seq: 2, at: '2026-10-19T10:00:32.000000000Z', line: '##[group]Run <script>alert(1)</script>' },
+    ],
+    source: null,
+    truncated: false,
+    complete: false,
+  },
+  8: {
+    lines: [{ seq: 1, at: '2026-10-19T08:00:11.1234567Z', line: 'Set up job' }],
+    source: 'github',
+    truncated: true,
+    complete: true,
+  },
+}
 
 export const runners: Runner[] = [
   { id: 3, name: 'generic-node-a-3', host: 'node-a', type: 'generic', containerId: 'abc', state: 'busy', jobId: 7, repo: 'acme/widgets', jobName: 'build <main>', createdAt: '2026-10-19T10:00:20Z', exitedAt: null },
@@ -101,10 +125,12 @@ export const health: HealthSnapshot = {
   version: '0.1.0-test',
 }
 
-export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: Repo[]; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string> }
+export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: Repo[]; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
 
-export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings }
-export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {} }
+export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings, logs }
+export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {}, logs: {} }
+
+const notFound = (message: string) => new ServiceError(message, 'not_found')
 
 /** A facade double over one fixture set; `data` can be swapped between tests. */
 export const makeService = (store: { data: FixtureSet }) => ({
@@ -122,6 +148,17 @@ export const makeService = (store: { data: FixtureSet }) => ({
   listJobs: async (filter?: { repo?: string; status?: string }) =>
     store.data.jobs.filter((j) => (!filter?.repo || j.repo === filter.repo) && (!filter?.status || j.status === filter.status)),
   listRunners: async () => store.data.runners,
+  getJob: async (id: number) => {
+    const job = store.data.jobs.find((j) => j.id === id)
+    if (!job) throw notFound(`job ${id} is unknown`)
+    return job
+  },
+  getJobLog: async (id: number) => store.data.logs[id] ?? { lines: [], source: null, truncated: false, complete: false },
+  getRunner: async (id: number) => {
+    const runner = store.data.runners.find((r) => r.id === id)
+    if (!runner) throw notFound(`runner ${id} is unknown`)
+    return runner
+  },
   spawn: async () => store.data.runners[0]!,
   kill: async () => {},
   listEvents: async () => store.data.events,

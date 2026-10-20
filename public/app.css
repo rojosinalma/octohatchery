@@ -69,3 +69,47 @@
   flex: 1 1 10rem;
   display: block;
 }
+
+/* Job page: facts in a compact grid, the log as a scrolling terminal-like pane. */
+.job-facts {
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--t-space-4);
+}
+
+.log-toolbar {
+  margin-bottom: var(--t-space-2);
+  align-items: center;
+  gap: var(--t-space-2);
+}
+
+.log-toolbar .t-section-title {
+  margin: 0;
+}
+
+.log-view {
+  max-height: calc(100vh - 22rem);
+  min-height: 12rem;
+  overflow: auto;
+  white-space: pre;
+  tab-size: 4;
+  margin: 0;
+}
+
+.log-line {
+  display: block;
+}
+
+.log-time {
+  display: inline-block;
+  width: 9ch;
+  color: var(--t-muted);
+  user-select: none;
+}
+
+.log-line:hover {
+  background: color-mix(in srgb, var(--t-accent) 10%, transparent);
+}
+
+.log-empty {
+  min-height: 12rem;
+}

@@ -4,6 +4,13 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- Job logs: the node that runs a job follows its runner's output into the database while the job runs and swaps in GitHub's final log when it ends; capped per job by the new `log_max_kb` setting (default 2048) and purged with the job.
+- Job page `/jobs/:id` with a live, bounded log view (follow, copy, source and truncated badges); job names in the Jobs and Runners tables link to it.
+- `GET /api/jobs/:id`, `GET /api/jobs/:id/log?after=&limit=` and the SSE stream `GET /api/jobs/:id/log/stream`.
+- MCP tool `get_job_log {job_id, tail?}` returning the log as text.
+
 ## [0.1.0] - 2026-10-19
 
 First scaffold.

@@ -51,6 +51,11 @@ Read-only:
 - `list_slots`: per host and type, how many runners may run, are running and are free.
 - `list_repos`: repos the credentials can see, with the adopted flag.
 - `list_jobs {repo?, status?, limit?}`: queue and history.
+- `get_job_log {job_id, tail?}`: the last `tail` lines (default 200, max 5000) of a job's log as
+  text, oldest first, each with its timestamp. The first line says where the log comes from
+  (`runner` while the job runs or when GitHub never handed out its log, `github` once the final log
+  replaced the live lines, `collecting` while lines are still arriving), whether it was truncated
+  by the `log_max_kb` setting, and whether it is complete.
 - `list_runners {host?, state?, limit?}`: runner containers and what they run.
 - `list_events {limit?}`: the audit log.
 - `get_settings`: runtime settings as key/value strings.
@@ -72,7 +77,7 @@ Destructive (the description says so, and the tool carries `destructiveHint`):
 - `unadopt_repo {repo}`: stop serving a repo and remove its webhook.
 - `apply_runs_on` with `mode: pr` or `mode: commit`: writes to the repository.
 
-Every tool returns its result as JSON text. When the request is wrong (unknown repo, no free slot,
+Every tool returns its result as JSON text, except `get_job_log`, which returns plain text. When the request is wrong (unknown repo, no free slot,
 missing secret) the tool answers with `isError: true` and a message that says why.
 
 ## Examples
@@ -92,6 +97,15 @@ Pin the jobs of one repo to a host and let the orchestrator open a pull request:
 ```
 apply_runs_on { "repo": "acme/widgets", "mode": "pr", "type": "generic", "host": "node-a" }
 → { "ok": true, "prUrl": "https://github.com/acme/widgets/pull/12", "files": [".github/workflows/ci.yml"] }
+```
+
+Read what a job printed (the id comes from `list_jobs`):
+
+```
+get_job_log { "job_id": 42, "tail": 50 }
+→ # job 42: source=github truncated=false complete=true lines=50
+  2026-10-20T10:00:01.1234567Z ##[group]Run tests
+  …
 ```
 
 Find out why a job waits:

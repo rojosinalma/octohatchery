@@ -91,7 +91,11 @@ export const JobsTable = ({ jobs, filter }: Pick<JobsData, 'jobs' | 'filter'>) =
                   {j.repo}
                 </a>
               </td>
-              <td safe>{j.name}</td>
+              <td>
+                <a href={`/jobs/${j.id}`} data-tip="Open the job and its log" safe>
+                  {j.name}
+                </a>
+              </td>
               <td>
                 {j.labels.map((l) => (
                   <span class="t-badge" data-tone="neutral" data-variant="outline" data-size="xs" safe>
