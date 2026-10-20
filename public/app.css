@@ -82,36 +82,30 @@
 }
 
 .slot-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 8rem var(--t-space-5) 1fr;
+  gap: 0;
   align-items: center;
-  gap: var(--t-space-2);
-  min-height: 1.4rem;
 }
 
 .slot-type {
-  white-space: nowrap;
+  font-family: monospace;
+  font-size: var(--t-size-sm);
   text-decoration: none;
+  white-space: nowrap;
 }
 
-.slot-pills {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: var(--t-space-1);
-}
-
-.slot-pills {
+.slot-seats {
   display: flex;
-  gap: var(--t-space-2);
-  padding: var(--t-space-1) var(--t-space-2);
-  background: color-mix(in srgb, var(--t-base) 50%, transparent);
-  border-radius: var(--t-radius-sm);
+  gap: var(--t-space-1);
+  flex-wrap: wrap-reverse;
   align-items: center;
-  width: fit-content;
+  justify-content: flex-end;
 }
 
 .slot-pill {
-  width: 1rem;
-  height: 1rem;
+  width: 0.9rem;
+  height: 0.9rem;
   background: color-mix(in srgb, var(--t-text) 14%, transparent);
   border: var(--t-border-w) solid color-mix(in srgb, var(--t-text) 35%, transparent);
   border-radius: 50%;
