@@ -104,9 +104,15 @@ const SlotRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => {
             {slot.free > 0 && <span class="slot-free-count t-muted t-small">+{slot.free} free</span>}
           </>
         ) : (
-          Array.from({ length: slot.count }, (_, i) => (
-            <RunnerSeat runner={runnersBySlot.get(i)} />
-          ))
+          <>
+            {Array.from({ length: slot.count }, (_, i) => (
+              runnersBySlot.get(i) ? (
+                <RunnerSeat runner={runnersBySlot.get(i)} />
+              ) : (
+                <span class="slot-pill" data-tip="Free slot"></span>
+              )
+            ))}
+          </>
         )}
       </div>
     </div>
