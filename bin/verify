@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verifies the project: dependencies, types, tests, and (optionally) a health probe from a container.
 # Usage: bin/verify            — install, typecheck, test
-#        VERIFY_URL=https://host bin/verify — also probes $VERIFY_URL/health from a curl container (never loopback)
+#        VERIFY_URL=https://host bin/verify — also probes $VERIFY_URL/health from a curl container (never loopback);
+#        VERIFY_NETWORK=<docker network> and VERIFY_HOST=<name:ip> help the probe reach LAN-only names
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -22,7 +23,10 @@ done
 
 if [ -n "${VERIFY_URL:-}" ]; then
   step "probe ${VERIFY_URL%/}/health"
-  docker run --rm curlimages/curl:8.17.0 --fail --silent --show-error --max-time 15 "${VERIFY_URL%/}/health"
+  # VERIFY_NETWORK joins the proxy's docker network, VERIFY_HOST=name:ip pins a LAN-only name; both optional.
+  net=(); [ -n "${VERIFY_NETWORK:-}" ] && net=(--network "$VERIFY_NETWORK")
+  host=(); [ -n "${VERIFY_HOST:-}" ] && host=(--add-host "$VERIFY_HOST")
+  docker run --rm "${net[@]}" "${host[@]}" curlimages/curl:8.17.0 --fail --silent --show-error --insecure --max-time 15 "${VERIFY_URL%/}/health"
   echo
 fi
 

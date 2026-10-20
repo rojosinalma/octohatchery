@@ -2,13 +2,13 @@ import { type PropsWithChildren } from '@kitajs/html'
 import type { GitHubStatus } from '../lib/github/permissions'
 import { BrandMark, Icon } from './parts'
 
-export type NavKey = 'overview' | 'repos' | 'jobs' | 'runner-types' | 'hosts' | 'events' | 'settings'
+export type NavKey = 'overview' | 'repos' | 'jobs' | 'templates' | 'hosts' | 'events' | 'settings'
 
 export const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: 'overview', href: '/', label: 'Overview', icon: 'bi-speedometer2' },
   { key: 'repos', href: '/repos', label: 'Repos', icon: 'bi-github' },
   { key: 'jobs', href: '/jobs', label: 'Jobs', icon: 'bi-briefcase' },
-  { key: 'runner-types', href: '/runner-types', label: 'Runner types', icon: 'bi-cpu' },
+  { key: 'templates', href: '/templates', label: 'Templates', icon: 'bi-cpu' },
   { key: 'hosts', href: '/hosts', label: 'Hosts', icon: 'bi-hdd-rack' },
   { key: 'events', href: '/events', label: 'Events', icon: 'bi-journal-text' },
   { key: 'settings', href: '/settings', label: 'Settings', icon: 'bi-gear' },

@@ -102,7 +102,7 @@ export const JobPage = ({ job, runner, log }: JobData) => {
               <span class="t-muted">{job.status === 'queued' ? 'waiting for a free slot' : '–'}</span>
             )}
           </dd>
-          <dt>Host / type</dt>
+          <dt>Host / template</dt>
           <dd>
             {runner ? (
               <>
@@ -110,7 +110,7 @@ export const JobPage = ({ job, runner, log }: JobData) => {
                   {runner.host}
                 </span>
                 {' / '}
-                <a href="/runner-types" class="t-mono" safe>
+                <a href="/templates" class="t-mono" safe>
                   {runner.type}
                 </a>
               </>

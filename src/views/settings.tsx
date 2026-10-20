@@ -16,6 +16,63 @@ type Group = { id: string; title: string; icon: string; items: Spec[] }
 /** Settings known to the scheduler and stream; keys and defaults follow the project rules. Unknown keys render as text rows under "Other". */
 export const SETTING_GROUPS: Group[] = [
   {
+    id: 'buildkit',
+    title: 'BuildKit',
+    icon: 'bi-box-seam',
+    items: [
+      {
+        key: 'buildkit_host',
+        label: 'BuildKit host',
+        help: 'Injected into every runner as BUILDKIT_HOST so docker buildx builds go to the shared daemon instead of a socket.',
+        tone: 'accent',
+        control: { kind: 'text', placeholder: 'tcp://octohatchery-buildkitd:1234' },
+        default: 'tcp://octohatchery-buildkitd:1234',
+      },
+    ],
+  },
+  {
+    id: 'live',
+    title: 'Live updates',
+    icon: 'bi-lightning-charge',
+    items: [
+      {
+        key: 'sse_max_clients',
+        label: 'Max live connections',
+        help: 'Open dashboards and agents listening on the event stream at the same time. Extra ones get 503.',
+        control: { kind: 'number', min: 1, unit: 'clients' },
+        default: '20',
+      },
+      {
+        key: 'sse_idle_s',
+        label: 'Idle disconnect',
+        help: 'A stream with nothing to send for this long is closed; the dashboard reconnects on its own.',
+        control: { kind: 'duration' },
+        default: '300',
+      },
+    ],
+  },
+  {
+    id: 'retention',
+    title: 'Retention',
+    icon: 'bi-journal-text',
+    items: [
+      {
+        key: 'retention_days',
+        label: 'Keep history for',
+        help: 'Finished jobs, exited runners and events older than this are purged by the leader.',
+        control: { kind: 'number', min: 1, unit: 'days' },
+        default: '30',
+      },
+      {
+        key: 'log_max_kb',
+        label: 'Log size cap',
+        help: 'Most log text kept per job. Beyond it the stored log stops with a notice; the full log stays on GitHub.',
+        control: { kind: 'number', min: 1, unit: 'KB' },
+        default: '2048',
+      },
+    ],
+  },
+  {
     id: 'scheduler',
     title: 'Scheduler',
     icon: 'bi-cpu',
@@ -51,63 +108,6 @@ export const SETTING_GROUPS: Group[] = [
     ],
   },
   {
-    id: 'retention',
-    title: 'Retention',
-    icon: 'bi-journal-text',
-    items: [
-      {
-        key: 'retention_days',
-        label: 'Keep history for',
-        help: 'Finished jobs, exited runners and events older than this are purged by the leader.',
-        control: { kind: 'number', min: 1, unit: 'days' },
-        default: '30',
-      },
-      {
-        key: 'log_max_kb',
-        label: 'Log size cap',
-        help: 'Most log text kept per job. Beyond it the stored log stops with a notice; the full log stays on GitHub.',
-        control: { kind: 'number', min: 1, unit: 'KB' },
-        default: '2048',
-      },
-    ],
-  },
-  {
-    id: 'live',
-    title: 'Live updates',
-    icon: 'bi-lightning-charge',
-    items: [
-      {
-        key: 'sse_max_clients',
-        label: 'Max live connections',
-        help: 'Open dashboards and agents listening on the event stream at the same time. Extra ones get 503.',
-        control: { kind: 'number', min: 1, unit: 'clients' },
-        default: '20',
-      },
-      {
-        key: 'sse_idle_s',
-        label: 'Idle disconnect',
-        help: 'A stream with nothing to send for this long is closed; the dashboard reconnects on its own.',
-        control: { kind: 'duration' },
-        default: '300',
-      },
-    ],
-  },
-  {
-    id: 'runners',
-    title: 'Runners',
-    icon: 'bi-hdd-rack',
-    items: [
-      {
-        key: 'buildkit_host',
-        label: 'BuildKit host',
-        help: 'Injected into every runner as BUILDKIT_HOST so docker buildx builds go to the shared daemon instead of a socket.',
-        tone: 'accent',
-        control: { kind: 'text', placeholder: 'tcp://octohatchery-buildkitd:1234' },
-        default: 'tcp://octohatchery-buildkitd:1234',
-      },
-    ],
-  },
-  {
     id: 'logging',
     title: 'Logging',
     icon: 'bi-info-circle',
@@ -133,6 +133,14 @@ export const SETTING_GROUPS: Group[] = [
 
 /** Keys driven by the theme switcher, not shown as rows. */
 export const THEME_KEYS = ['ui_skin', 'ui_palette', 'ui_mode']
+
+/** Settings stored that no group knows; rendered under "Other" when there are any. */
+export const otherKeys = (settings: Record<string, string>) => {
+  const known = new Set([...SETTING_GROUPS.flatMap((g) => g.items.map((i) => i.key)), ...THEME_KEYS])
+  return Object.keys(settings)
+    .filter((k) => !known.has(k))
+    .sort()
+}
 
 const humanise = (key: string) => key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
@@ -198,27 +206,10 @@ const Row = ({ spec, value }: { spec: Spec; value: string }) => (
   </div>
 )
 
-export const SettingsSide = () => (
+export const SettingsSide = ({ hasOther }: { hasOther: boolean }) => (
   <nav class="t-sidebar" aria-label="Settings sections">
     <ul>
       <li class="t-sidebar-group">Settings</li>
-      {SETTING_GROUPS.map((g) => (
-        <li>
-          <a class="t-sidebar-item" href={`#${g.id}`}>
-            <Icon id={g.icon} />
-            <span class="t-sidebar-item-name" safe>
-              {g.title}
-            </span>
-          </a>
-        </li>
-      ))}
-      <li>
-        <a class="t-sidebar-item" href="#other">
-          <Icon id="bi-gear" />
-          <span class="t-sidebar-item-name">Other</span>
-        </a>
-      </li>
-      <li class="t-sidebar-divider"></li>
       <li>
         <a class="t-sidebar-item" href="#appearance">
           <Icon id="bi-star-fill" />
@@ -229,6 +220,30 @@ export const SettingsSide = () => (
         <a class="t-sidebar-item" href="#github">
           <Icon id="bi-github" />
           <span class="t-sidebar-item-name">GitHub</span>
+        </a>
+      </li>
+      {SETTING_GROUPS.map((g) => (
+        <li>
+          <a class="t-sidebar-item" href={`#${g.id}`}>
+            <Icon id={g.icon} />
+            <span class="t-sidebar-item-name" safe>
+              {g.title}
+            </span>
+          </a>
+        </li>
+      ))}
+      {hasOther ? (
+        <li>
+          <a class="t-sidebar-item" href="#other">
+            <Icon id="bi-gear" />
+            <span class="t-sidebar-item-name">Other</span>
+          </a>
+        </li>
+      ) : null}
+      <li>
+        <a class="t-sidebar-item" href="#about">
+          <Icon id="bi-info-circle" />
+          <span class="t-sidebar-item-name">About</span>
         </a>
       </li>
     </ul>
@@ -397,10 +412,7 @@ export const GitHubSection = ({ github }: { github: GitHubStatus }) => (
 )
 
 export const SettingsPage = ({ settings, version, github }: SettingsData) => {
-  const known = new Set([...SETTING_GROUPS.flatMap((g) => g.items.map((i) => i.key)), ...THEME_KEYS])
-  const other = Object.keys(settings)
-    .filter((k) => !known.has(k))
-    .sort()
+  const other = otherKeys(settings)
   return (
     <>
       <header class="t-page-header">
@@ -411,6 +423,28 @@ export const SettingsPage = ({ settings, version, github }: SettingsData) => {
         <span class="t-page-lead">Changes save as you leave a field and apply within seconds.</span>
       </header>
       <div class="t-settings t-stack" data-gap="4" id="settings">
+        <section class="t-section" id="appearance">
+          <h2 class="t-section-title">Appearance</h2>
+          <div class="t-section-body">
+            <div class="t-setting" data-key="ui_theme">
+              <div class="t-setting-label">
+                <span id="theme-label">Skin and palette</span>
+                <span class="t-help" data-tone="info">
+                  <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About skin and palette">
+                    i
+                  </button>
+                  <div class="t-help-box" hidden>
+                    <p>Stored as settings and shared by every browser that opens this dashboard. The sun/moon toggle in the footer switches between dark and light.</p>
+                  </div>
+                </span>
+              </div>
+              <div class="t-setting-control" aria-labelledby="theme-label">
+                <div data-tailor-pickers="skin palette"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <GitHubSection github={github} />
         {SETTING_GROUPS.map((g) => (
           <section class="t-section" id={g.id}>
             <h2 class="t-section-title" safe>
@@ -423,55 +457,33 @@ export const SettingsPage = ({ settings, version, github }: SettingsData) => {
             </div>
           </section>
         ))}
-        <section class="t-section" id="other">
-          <h2 class="t-section-title">Other</h2>
+        {other.length > 0 ? (
+          <section class="t-section" id="other">
+            <h2 class="t-section-title">Other</h2>
+            <div class="t-section-body">
+              {other.map((k) => (
+                <Row spec={{ key: k, label: humanise(k), help: 'Stored by the API or an agent; not known to this dashboard.', control: { kind: 'text' }, default: '' }} value={settings[k] ?? ''} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        <section class="t-section" id="about">
+          <h2 class="t-section-title">About</h2>
           <div class="t-section-body">
-            {other.length === 0 ? (
-              <p class="t-muted t-small">No other settings are stored.</p>
-            ) : (
-              other.map((k) => <Row spec={{ key: k, label: humanise(k), help: 'Stored by the API or an agent; not known to this dashboard.', control: { kind: 'text' }, default: '' }} value={settings[k] ?? ''} />)
-            )}
+            <dl class="t-facts">
+              <dt>Version</dt>
+              <dd class="t-mono" safe>
+                {version}
+              </dd>
+              <dt>Source</dt>
+              <dd>
+                <a href="https://github.com/rojosinalma/octohatchery" target="_blank" rel="noopener">
+                  github.com/rojosinalma/octohatchery
+                </a>
+              </dd>
+            </dl>
           </div>
         </section>
-      <section class="t-section" id="appearance">
-        <h2 class="t-section-title">Appearance</h2>
-        <div class="t-section-body">
-          <div class="t-setting" data-key="ui_theme">
-            <div class="t-setting-label">
-              <span id="theme-label">Skin and palette</span>
-              <span class="t-help" data-tone="info">
-                <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About skin and palette">
-                  i
-                </button>
-                <div class="t-help-box" hidden>
-                  <p>Stored as settings and shared by every browser that opens this dashboard. The sun/moon toggle in the footer switches between dark and light.</p>
-                </div>
-              </span>
-            </div>
-            <div class="t-setting-control" aria-labelledby="theme-label">
-              <div data-tailor-pickers="skin palette"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <GitHubSection github={github} />
-      <section class="t-section" id="about">
-        <h2 class="t-section-title">About</h2>
-        <div class="t-section-body">
-          <dl class="t-facts">
-            <dt>Version</dt>
-            <dd class="t-mono" safe>
-              {version}
-            </dd>
-            <dt>Source</dt>
-            <dd>
-              <a href="https://github.com/rojosinalma/octohatchery" target="_blank" rel="noopener">
-                github.com/rojosinalma/octohatchery
-              </a>
-            </dd>
-          </dl>
-        </div>
-      </section>
       </div>
     </>
   )

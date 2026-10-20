@@ -13,27 +13,46 @@
   max-height: none;
 }
 
-/* Overview: one Hosts card, one section per host with that host's slots under its header line. */
+/* Overview: one Hosts card, hosts as columns (2-up on desktop, stacked under 992px), a hairline between
+   them, a one-line header per host, then the slot summary and one pill row per template. */
 .host-list {
   padding: 0;
+  gap: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.host-section + .host-section {
+@media (min-width: 992px) {
+  .host-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.host-section {
+  padding: var(--t-space-2) var(--t-space-3) var(--t-space-3);
   border-top: var(--t-border-w) solid var(--t-border);
 }
 
-.host-list > .host-section > .host-head {
-  padding: var(--t-space-2) 0.9rem;
+.host-section:first-child {
+  border-top: 0;
+}
+
+.host-section:only-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 992px) {
+  .host-section:nth-child(2) {
+    border-top: 0;
+  }
+
+  .host-section:nth-child(even) {
+    border-left: var(--t-border-w) solid var(--t-border);
+  }
+}
+
+.host-head {
+  flex-wrap: nowrap;
   margin-bottom: 0;
-}
-
-/* Slot rows sit under the host name; the empty track must stay visible on the table background. */
-.host-slots td:first-child {
-  padding-left: 2rem;
-}
-
-.host-slots .t-progress {
-  background: color-mix(in srgb, var(--t-border) 70%, transparent);
 }
 
 .host-name {
@@ -41,13 +60,64 @@
   text-decoration: none;
 }
 
-.host-slots td:first-child {
-  width: 14rem;
+.host-leader {
+  margin-left: var(--t-space-2);
 }
 
-.host-no-slots {
-  margin: 0;
-  padding: 0 0.9rem var(--t-space-3) 2rem;
+.host-specs {
+  white-space: nowrap;
+}
+
+.host-summary {
+  margin: var(--t-space-1) 0 var(--t-space-2) calc(0.6rem + var(--t-space-2));
+  color: var(--t-muted);
+}
+
+.host-summary[data-tone="warning"] {
+  color: var(--t-warning);
+}
+
+.host-slots {
+  margin-left: calc(0.6rem + var(--t-space-2));
+}
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  min-height: 1.4rem;
+}
+
+.slot-type {
+  flex: 0 0 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.slot-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--t-space-1);
+}
+
+.slot-pill {
+  width: 0.9rem;
+  height: 0.9rem;
+  background: transparent;
+  border: var(--t-border-w) solid var(--t-border);
+  border-radius: var(--t-radius-sm);
+}
+
+.slot-pill[data-busy] {
+  background: var(--t-success);
+  border-color: var(--t-success);
+}
+
+/* The bar fallback (more than 12 slots): the empty track must stay visible on the card background. */
+.host-slots .t-progress {
+  background: color-mix(in srgb, var(--t-border) 70%, transparent);
 }
 
 /* A page-level toolbar (filters, adopt form) sits above a table. */

@@ -12,7 +12,7 @@ import { ReposPage } from '../views/repos'
 import { RunnerTypesPage } from '../views/runner-types'
 import { HostsPage } from '../views/hosts'
 import { EventsPage, EventsTable } from '../views/events'
-import { SettingsPage, SettingsSide } from '../views/settings'
+import { SettingsPage, SettingsSide, otherKeys } from '../views/settings'
 
 const publicDir = resolve(import.meta.dir, '../../public')
 const tailorHeadFile = Bun.file(resolve(publicDir, 'tailor/tailor-head.html'))
@@ -148,10 +148,13 @@ export const ui = new Elysia({ name: 'ui' })
     return page('repos', 'Repos', <ReposPage repos={repos} types={types} githubAuth={service.githubAuthKind()} />)
   })
 
-  .get('/runner-types', async () => {
+  .get('/templates', async () => {
     const [types, hosts, slots] = await Promise.all([service.listRunnerTypes(), service.listHosts(), service.listSlots()])
-    return page('runner-types', 'Runner types', <RunnerTypesPage types={types} hosts={hosts} slots={slots} />)
+    return page('templates', 'Templates', <RunnerTypesPage types={types} hosts={hosts} slots={slots} />)
   })
+
+  // The page was `/runner-types` before the dashboard called them templates; the API path keeps the old name.
+  .get('/runner-types', ({ redirect }) => redirect('/templates', 301))
 
   .get('/hosts', async () => {
     const [hosts, slots] = await Promise.all([service.listHosts(), service.listSlots()])
@@ -170,5 +173,5 @@ export const ui = new Elysia({ name: 'ui' })
 
   .get('/settings', async () => {
     const [settings, v, github] = await Promise.all([service.getSettings(), version(), service.githubStatus()])
-    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} github={github} />, <SettingsSide />)
+    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} github={github} />, <SettingsSide hasOther={otherKeys(settings).length > 0} />)
   })

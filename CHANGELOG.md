@@ -21,7 +21,11 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Changed
 
-- Overview: one Hosts card with a section per host and that host's slots underneath; navbar order is Overview, Repos, Jobs, Runner types, Hosts, Events, Settings.
+- Overview: one Hosts card with hosts as columns; a one-line header per host (status dot, name, `leader` badge, `offline` / `Docker unreachable` only when true, specs and last heartbeat), a `N of M slots busy` line and one pill per slot per template (a bar beyond 12 slots). Navbar order is Overview, Repos, Jobs, Templates, Hosts, Events, Settings.
+- Dashboard: runner types are called templates on the pages (`/templates`, `/runner-types` redirects there); the API and MCP names are unchanged.
+- Repos and Templates: the action columns are icon-only buttons with tooltips (runs-on, Add / Repair webhook, Unadopt; Edit, Delete).
+- Hosts: columns Host, Slots, CPUs, Memory (GB), OS, Docker, Docker version, App version, Last seen; the leader badge is small and spaced from the name.
+- Settings: sections and sidebar in the order Appearance, GitHub, BuildKit (was "Runners"), Live updates, Retention, Scheduler, Logging, Other, About; "Other" appears only when unknown settings exist.
 - Jobs page: columns Runner, Status, Job, Repo, Queued, Duration, Run; a status select, a search box and quick filters (Running now, Failed, Last 24 h, This week).
 - Repos page: Jobs column, labelled action buttons on one row (runs-on, Add/Repair webhook, Unadopt), drawn validation on the adopt form.
 - Runner types: labels edited as chips with the always-added labels shown first; Environment before Mounts in the table and the dialog.

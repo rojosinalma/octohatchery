@@ -76,22 +76,31 @@ export const ReposTable = ({ repos, githubAuth }: Pick<ReposData, 'repos' | 'git
               </td>
               <td class="t-col-actions">
                 <div class="t-cluster row-actions" data-gap="1">
-                  <button class="t-btn" data-size="sm" data-variant="ghost" data-action="runs-on" data-repo={r.fullName}>
-                    <Icon id="bi-code-slash" /> runs-on
+                  <button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" data-tip="runs-on snippet and workflow change" aria-label="runs-on" data-action="runs-on" data-repo={r.fullName}>
+                    <Icon id="bi-code-slash" />
                   </button>
                   {githubAuth === 'app' ? (
-                    <span data-tip="Covered by the GitHub App" class="row-action-disabled">
-                      <button class="t-btn" data-size="sm" data-variant="ghost" disabled>
-                        <Icon id="bi-link-45deg" /> Add webhook
+                    <span data-tip="Webhook covered by the GitHub App" class="row-action-disabled">
+                      <button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" aria-label="Add webhook" disabled>
+                        <Icon id="bi-link-45deg" />
                       </button>
                     </span>
                   ) : (
-                    <button class="t-btn" data-size="sm" data-variant="ghost" data-action="webhook" data-repo={r.fullName} data-tip={r.webhookId ? 'Re-create or fix the workflow_job webhook on GitHub' : 'Create the workflow_job webhook so jobs arrive at once'}>
-                      <Icon id="bi-link-45deg" /> {r.webhookId ? 'Repair webhook' : 'Add webhook'}
+                    <button
+                      class="t-btn"
+                      data-size="sm"
+                      data-variant="ghost"
+                      data-icon="only"
+                      data-action="webhook"
+                      data-repo={r.fullName}
+                      data-tip={r.webhookId ? 'Repair webhook: re-create or fix the workflow_job webhook on GitHub' : 'Add webhook: create the workflow_job webhook so jobs arrive at once'}
+                      aria-label={r.webhookId ? 'Repair webhook' : 'Add webhook'}
+                    >
+                      <Icon id="bi-link-45deg" />
                     </button>
                   )}
-                  <button class="t-btn" data-size="sm" data-variant="ghost" data-tone="danger" data-action="unadopt" data-repo={r.fullName}>
-                    <Icon id="bi-trash" /> Unadopt
+                  <button class="t-btn" data-size="sm" data-variant="ghost" data-tone="danger" data-icon="only" data-tip="Unadopt" aria-label="Unadopt" data-action="unadopt" data-repo={r.fullName}>
+                    <Icon id="bi-trash" />
                   </button>
                 </div>
               </td>
@@ -116,13 +125,13 @@ const RunsOnDialog = ({ types }: { types: RunnerType[] }) => (
     </div>
     <div class="t-dialog-body t-stack" data-gap="3">
       <p class="t-muted t-small">
-        Put one of these lines in a workflow job. Every runner carries <code>self-hosted</code>, its type and its host as labels. Copy the snippet, or let
+        Put one of these lines in a workflow job. Every runner carries <code>self-hosted</code>, its template and its host as labels. Copy the snippet, or let
         OctoHatchery change the workflows for you: a pull request you review, or a direct commit to the default branch.
       </p>
       {types.length === 0 ? (
-        <Empty icon="bi-cpu" title="No runner types" text="Create a runner type first; the snippet names it.">
-          <a class="t-btn" data-variant="primary" href="/runner-types">
-            Runner types
+        <Empty icon="bi-cpu" title="No templates" text="Create a template first; the snippet names it.">
+          <a class="t-btn" data-variant="primary" href="/templates">
+            Templates
           </a>
         </Empty>
       ) : (

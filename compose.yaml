@@ -26,7 +26,7 @@ services:
     # DOCKER_GID = `stat -c %g /var/run/docker.sock` on this host.
     group_add:
       - "${DOCKER_GID:-999}"
-    mem_limit: 512m
+    mem_limit: ${APP_MEM:-1g}
     cpus: 1
     depends_on:
       - buildkitd

@@ -170,7 +170,7 @@
     'type-edit': function (btn) { fillTypeForm(JSON.parse(btn.dataset.type)); $('#type-dlg').showModal() },
     'type-delete': function (btn) {
       var name = btn.dataset.name
-      return T.confirm('Delete runner type ' + name + '?', '<p>Its slots go with it. Running runners of this type finish their job. Jobs asking for the <code>' + esc(name) + '</code> label stay queued on GitHub.</p>', { label: 'Delete', danger: true })
+      return T.confirm('Delete template ' + name + '?', '<p>Its slots go with it. Running runners of this template finish their job. Jobs asking for the <code>' + esc(name) + '</code> label stay queued on GitHub.</p>', { label: 'Delete', danger: true })
         .then(function (ok) { if (!ok) return; busy(btn, true); return api('DELETE', '/api/runner-types/' + encodeURIComponent(name)).then(toast).then(function (res) { if (res.ok) swapMain(); else busy(btn, false) }) })
     },
     spawn: function (btn) {
@@ -199,7 +199,7 @@
   function fillTypeForm(type) {
     var f = $('#type-form'); if (!f) return
     f.reset()
-    $('#type-dlg-title').textContent = type ? 'Edit runner type' : 'New runner type'
+    $('#type-dlg-title').textContent = type ? 'Edit template' : 'New template'
     f.elements.name.readOnly = Boolean(type)
     setChips(f, type ? type.labels || [] : [])
     setRadio(f, 'docker', type && type.docker ? type.docker : 'none')

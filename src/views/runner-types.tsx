@@ -6,9 +6,9 @@ export type RunnerTypesData = { types: RunnerType[]; hosts: Host[]; slots: Slot[
 const TypesTable = ({ types }: { types: RunnerType[] }) => {
   if (types.length === 0) {
     return (
-      <Empty icon="bi-cpu" title="No runner types" text="A runner type is the image, labels and resource caps a runner starts with. Create the first one.">
+      <Empty icon="bi-cpu" title="No templates" text="A template is the image, labels and resource caps a runner starts with. Create the first one.">
         <button class="t-btn" data-variant="primary" data-action="type-new">
-          <Icon id="bi-plus-lg" /> New runner type
+          <Icon id="bi-plus-lg" /> New template
         </button>
       </Empty>
     )
@@ -64,7 +64,7 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
                 {t.image}
               </td>
               <td class="t-col-num">{String(t.cpus)}</td>
-              <td class="t-col-num">{`${t.memoryMb} MB`}</td>
+              <td class="t-col-num t-nowrap">{`${t.memoryMb} MB`}</td>
               <td>
                 <DockerBadge docker={t.docker} />
               </td>
@@ -108,8 +108,8 @@ const SlotsMatrix = ({ types, hosts, slots }: RunnerTypesData) => {
     return (
       <Empty
         icon="bi-hdd-rack"
-        title={hosts.length === 0 ? 'No hosts yet' : 'No runner types yet'}
-        text={hosts.length === 0 ? 'A node registers itself on boot. Slots are set per host once one is online.' : 'Create a runner type to give it slots on a host.'}
+        title={hosts.length === 0 ? 'No hosts yet' : 'No templates yet'}
+        text={hosts.length === 0 ? 'A node registers itself on boot. Slots are set per host once one is online.' : 'Create a template to give it slots on a host.'}
       />
     )
   }
@@ -119,7 +119,7 @@ const SlotsMatrix = ({ types, hosts, slots }: RunnerTypesData) => {
       <table class="t-table" data-variant="data" data-density="compact" id="slots-matrix">
         <thead>
           <tr>
-            <th>Type</th>
+            <th>Template</th>
             {hosts.map((h) => (
               <th>
                 <span class="t-dot" data-status={h.status === 'online' ? 'running' : 'stopped'} data-tip={h.status}></span> <span safe>{h.name}</span>
@@ -226,7 +226,7 @@ const TypeDialog = () => (
     <form id="type-form" data-action="type-save">
       <div class="t-dialog-header">
         <h2 class="t-dialog-title" id="type-dlg-title">
-          Runner type
+          Template
         </h2>
         <button class="t-dialog-close" type="button" aria-label="Close" data-dialog-close>
           ×
@@ -238,13 +238,13 @@ const TypeDialog = () => (
             Name
           </label>
           <input class="t-input" id="tf-name" name="name" required pattern="[a-z0-9][a-z0-9-]*" placeholder="generic" />
-          <p class="t-hint">Also a label on every runner of this type. Lowercase, digits, dashes.</p>
+          <p class="t-hint">Also a label on every runner of this template. Lowercase, digits, dashes.</p>
         </div>
         <div class="t-field" data-span="8">
           <label class="t-label" for="tf-description">
             Description
           </label>
-          <input class="t-input" id="tf-description" name="description" placeholder="What this type is for" />
+          <input class="t-input" id="tf-description" name="description" placeholder="What this template is for" />
         </div>
         <div class="t-field" data-span="12">
           <label class="t-label" for="tf-image">
@@ -344,18 +344,18 @@ const TypeDialog = () => (
 export const RunnerTypesPage = (data: RunnerTypesData) => (
   <>
     <header class="t-page-header">
-      <h1 class="t-page-title">Runner types</h1>
+      <h1 class="t-page-title">Templates</h1>
       <span class="t-page-lead">What a runner is made of, and how many may run per host.</span>
       <div class="t-page-actions">
         <button class="t-btn" data-variant="primary" data-size="sm" data-action="type-new">
-          <Icon id="bi-plus-lg" /> New runner type
+          <Icon id="bi-plus-lg" /> New template
         </button>
       </div>
     </header>
     <div class="t-stack" data-gap="4">
       <section class="t-section">
         <h2 class="t-section-title">
-          Types <span class="t-counter">{String(data.types.length)}</span>
+          Templates <span class="t-counter">{String(data.types.length)}</span>
         </h2>
         <div class="t-section-body">
           <TypesTable types={data.types} />
@@ -369,7 +369,7 @@ export const RunnerTypesPage = (data: RunnerTypesData) => (
               i
             </button>
             <div class="t-help-box" hidden>
-              <p>A slot is one runner of that type allowed on that host at a time. Changes save when you leave the field. The play button starts a runner by hand; it still needs a free slot.</p>
+              <p>A slot is one runner of that template allowed on that host at a time. Changes save when you leave the field. The play button starts a runner by hand; it still needs a free slot.</p>
             </div>
           </span>
         </h2>

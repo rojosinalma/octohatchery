@@ -31,6 +31,12 @@ export const RelTime = ({ at }: { at: string | null }) => {
   )
 }
 
+/** Memory as GB: one decimal under 10, whole numbers above. */
+export const gb = (mb: number) => {
+  const g = mb / 1024
+  return g < 10 ? g.toFixed(1) : String(Math.round(g))
+}
+
 export const Empty = ({ icon, title, text, children }: PropsWithChildren<{ icon: string; title: string; text: string }>) => (
   <div class="t-empty">
     <span class="t-icon t-empty-icon">

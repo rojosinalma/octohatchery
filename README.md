@@ -88,7 +88,7 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 
 ### Concepts
 
-- **Runner type**: a named recipe for a runner. Image, labels, caps, mounts, env and secret names. Managed from the **Runner types** page, the API or MCP.
+- **Runner type**: a named recipe for a runner. Image, labels, caps, mounts, env and secret names. Managed from the **Templates** page of the dashboard, the API or MCP.
 - **Slot**: the number of runners of one type a host may run at the same time. One slot is taken while a runner spawns, runs and exits.
 - **Host**: a node running OctoHatchery with access to a Docker daemon. Hosts register themselves on start.
 - **Mode**: `single` runs one node on SQLite or PostgreSQL. `cluster` needs PostgreSQL and lets several nodes claim jobs for their own hosts, with one elected leader running housekeeping.
@@ -97,7 +97,7 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 
 ### Interfaces
 
-- Dashboard at `/`: Overview, Jobs (with a live log per job), Repos, Runner types, Events, Settings. See [docs/dashboard.md](docs/dashboard.md).
+- Dashboard at `/`: Overview, Repos, Jobs (with a live log per job), Templates, Hosts, Events, Settings. See [docs/dashboard.md](docs/dashboard.md).
 - JSON API under `/api/`: every response is `{ "ok": true|false, "message": "...", ...data }`.
 - MCP at `/mcp` (Streamable HTTP) with the same actions as tools. See [docs/mcp.md](docs/mcp.md).
 - `GET /health` for monitoring, `GET /metrics` for Prometheus, `GET /events/stream` for live updates over SSE, `GET /api/jobs/:id/log/stream` for one job's log.

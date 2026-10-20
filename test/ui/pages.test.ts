@@ -22,7 +22,7 @@ const PAGES: [string, string, string][] = [
   ['/', 'Overview', 'Overview · OctoHatchery'],
   ['/jobs', 'Jobs', 'Jobs · OctoHatchery'],
   ['/repos', 'Repos', 'Repos · OctoHatchery'],
-  ['/runner-types', 'Runner types', 'Runner types · OctoHatchery'],
+  ['/templates', 'Templates', 'Templates · OctoHatchery'],
   ['/hosts', 'Hosts', 'Hosts · OctoHatchery'],
   ['/events', 'Events', 'Events · OctoHatchery'],
   ['/settings', 'Settings', 'Settings · OctoHatchery'],
@@ -39,7 +39,7 @@ describe('layout', () => {
     expect((body.match(/<h1\b/g) ?? []).length).toBe(1)
     // navbar with seven links in the agreed order, the active one marked
     expect((body.match(/class="t-navbar-link"/g) ?? []).length).toBe(7)
-    expect(body.match(/class="t-navbar-link" href="([^"]+)"/g)?.map((m) => m.slice(m.indexOf('href="') + 6, -1))).toEqual(['/', '/repos', '/jobs', '/runner-types', '/hosts', '/events', '/settings'])
+    expect(body.match(/class="t-navbar-link" href="([^"]+)"/g)?.map((m) => m.slice(m.indexOf('href="') + 6, -1))).toEqual(['/', '/repos', '/jobs', '/templates', '/hosts', '/events', '/settings'])
     expect(body).toMatch(new RegExp(`href="${path.replace('/', '\\/')}" aria-current="page"`))
     // tailor head snippet, app assets, favicon, toasts, confirm dialog
     expect(body).toContain('managed by tailor')
@@ -72,19 +72,35 @@ describe('layout', () => {
 })
 
 describe('overview', () => {
-  test('hosts, leader badge, slot bars, runners table with kill buttons', async () => {
+  test('hosts as columns, one-line header, slot pills, runners table with kill buttons', async () => {
     const { body } = await get('/')
-    // one Hosts card, one section per host with its slots underneath
+    // one Hosts card, one column per host with its slots underneath
     expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(1)
     expect(body).toContain('href="/hosts">All hosts')
+    expect(body).toContain('<div class="t-card-body host-list t-grid" data-min="md">')
+    expect(body).not.toContain('slots used / total')
+    expect(body).toContain('aria-label="About slots"')
     const sections = [...body.matchAll(/<section class="host-section" data-name="([^"]+)"/g)].map((m) => m[1])
     expect(sections).toEqual(['node-a', 'node-b'])
-    expect(body).toContain('leader')
-    expect(body).toContain('>Docker unreachable<')
     const nodeA = body.slice(body.indexOf('data-name="node-a"'), body.indexOf('data-name="node-b"'))
-    expect(nodeA).toContain('<table class="t-table host-slots"')
-    expect(nodeA).toContain('style="--t-value: 25%"')
-    expect(nodeA).toContain('1/4')
+    const nodeB = body.slice(body.indexOf('data-name="node-b"'), body.indexOf('id="runners-table"'))
+    // leader badge: xs, accent, spaced from the name; no `online` / `Docker ok` badges
+    expect(nodeA).toContain('<span class="t-badge host-leader" data-tone="accent" data-size="xs"')
+    expect(nodeA).not.toContain('>online<')
+    expect(nodeA).not.toContain('Docker ok')
+    expect(nodeB).not.toContain('host-leader" data-tone="accent"')
+    expect(nodeB).toContain('>offline</span>')
+    expect(nodeB).toContain('>Docker unreachable</span>')
+    // specs line: parts the node has not reported are left out
+    expect(nodeA).toMatch(/host-specs">8 CPU · 32 GB · <span>Docker 27\.3\.1<\/span> · seen <time/)
+    expect(nodeB).toMatch(/host-specs">seen <time/)
+    // summary line and pills: 1 of 4 busy, warning only when full
+    expect(nodeA).toContain('<p class="t-small host-summary">1 of 4 slots busy</p>')
+    expect(nodeA).toContain('data-tip="generic on node-a: 1/4"')
+    expect((nodeA.match(/<span class="slot-pill"/g) ?? []).length).toBe(4)
+    expect((nodeA.match(/<span class="slot-pill" data-busy="true">/g) ?? []).length).toBe(1)
+    expect(nodeA).not.toContain('t-progress')
+    expect(nodeA).toContain('href="/templates" class="t-mono t-small slot-type">generic</a>')
     expect(nodeA).not.toContain('No slots on this host')
     expect(body).toContain('id="runners-table"')
     expect(body).toContain('generic-node-a-3')
@@ -97,13 +113,24 @@ describe('overview', () => {
     expect(body).not.toContain('>build <main><')
   })
 
-  test('a host without slots says so and points at Runner types', async () => {
+  test('a host without slots says so and points at Templates', async () => {
     store.data = { ...full, slots: full.slots.filter((s) => s.host === 'node-a') }
     const { body } = await get('/')
     const nodeB = body.slice(body.indexOf('data-name="node-b"'))
-    expect(nodeB).toContain('No slots on this host.')
-    expect(nodeB).toContain('href="/runner-types">Set some under Runner types</a>')
+    expect(nodeB).toContain('No slots on this host. <a href="/templates">Set some under Templates</a>')
     expect(nodeB).not.toContain('host-slots')
+    expect(nodeB).not.toContain('slot-pill')
+  })
+
+  test('a full host is a warning; more than 12 slots fall back to the bar', async () => {
+    store.data = { ...full, slots: [{ host: 'node-a', type: 'generic', count: 2, used: 2, free: 0 }, { host: 'node-b', type: 'big', count: 16, used: 4, free: 12 }] }
+    const { body } = await get('/')
+    const nodeA = body.slice(body.indexOf('data-name="node-a"'), body.indexOf('data-name="node-b"'))
+    const nodeB = body.slice(body.indexOf('data-name="node-b"'))
+    expect(nodeA).toContain('<p class="t-small host-summary" data-tone="warning">2 of 2 slots busy</p>')
+    expect(nodeB).not.toContain('slot-pill')
+    expect(nodeB).toContain('style="--t-value: 25%"')
+    expect(nodeB).toContain('4/16')
   })
 
   test('empty state explains self-registration', async () => {
@@ -261,13 +288,15 @@ describe('repos', () => {
     // jobs count links to the filtered jobs page; zero is muted text
     expect(body).toContain('<a class="t-mono" href="/jobs?repo=acme%2Fwidgets" data-tip="Jobs of this repo">2</a>')
     expect(body).toMatch(/data-repo="acme\/polled"[^>]*>[\s\S]*?<td class="t-col-num"><span class="t-muted">0<\/span><\/td>/)
-    // three labelled actions in one non-wrapping cluster; the webhook button says what it does
+    // three icon-only actions in one non-wrapping cluster, each with a tooltip and a label
     const widgets = body.slice(body.indexOf('data-repo="acme/widgets"'), body.indexOf('data-repo="acme/polled"'))
     expect(widgets).toContain('<div class="t-cluster row-actions" data-gap="1">')
-    expect(widgets).toContain('data-action="webhook" data-repo="acme/widgets"')
-    expect(widgets).toContain('Repair webhook')
-    expect(widgets).toContain('> Unadopt</button>')
-    expect(body).toContain('Add webhook')
+    expect(widgets).toContain('data-icon="only" data-tip="runs-on snippet and workflow change" aria-label="runs-on" data-action="runs-on"')
+    expect(widgets).toMatch(/data-action="webhook" data-repo="acme\/widgets" data-tip="Repair webhook[^"]*" aria-label="Repair webhook"/)
+    expect(widgets).toContain('data-tone="danger" data-icon="only" data-tip="Unadopt" aria-label="Unadopt" data-action="unadopt"')
+    expect(widgets).not.toContain('> Unadopt</button>')
+    expect(body).toMatch(/aria-label="Add webhook"/)
+    expect((widgets.match(/<svg class="t-icon"/g) ?? []).length).toBeGreaterThanOrEqual(3)
     expect(body).toContain('id="runs-on-dlg"')
     expect(body).toContain('class="t-code-copy"')
     expect(body).toMatch(/runs-on<\/span>: \[<span class="t-tok-str">self-hosted<\/span>, <span class="t-tok-str">generic<\/span>\]/)
@@ -278,7 +307,7 @@ describe('repos', () => {
   test('with a GitHub App the webhook button is disabled and explained', async () => {
     store.data = { ...full, githubAuth: 'app' }
     const { body } = await get('/repos')
-    expect(body).toContain('<span data-tip="Covered by the GitHub App" class="row-action-disabled"><button class="t-btn" data-size="sm" data-variant="ghost" disabled>')
+    expect(body).toContain('<span data-tip="Webhook covered by the GitHub App" class="row-action-disabled"><button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" aria-label="Add webhook" disabled>')
     expect(body).toContain('>GitHub App<')
     expect(body).not.toContain('>polling<')
     expect(body).not.toContain('data-action="webhook"')
@@ -360,14 +389,16 @@ describe('hosts', () => {
     const { body } = await get('/hosts')
     expect(body).toContain('id="hosts-table"')
     const heads = [...body.matchAll(/<th[^>]*>(?:<button>)?([A-Za-z ]+?)\s*(?:<span class="t-sort-icon">)?<\//g)].map((m) => m[1]!.trim())
-    expect(heads).toEqual(['Host', 'Docker', 'CPUs', 'Memory', 'OS', 'Docker version', 'App version', 'Last seen', 'Slots'])
-    expect(body).toContain('leader')
+    expect(heads).toEqual(['Host', 'Slots', 'CPUs', 'Memory', 'OS', 'Docker', 'Docker version', 'App version', 'Last seen'])
+    expect(body).toContain('<span class="t-badge host-leader" data-tone="accent" data-size="xs"')
     expect(body).toContain('<td class="t-col-num">8</td>')
-    expect(body).toContain('32.0 GiB')
+    expect(body).toContain('<td class="t-col-num">32 GB</td>')
+    expect(body).toContain('>ok</span>')
+    expect(body).toContain('>unreachable</span>')
     expect(body).toContain('Ubuntu 24.04.1 LTS')
     expect(body).toContain('27.3.1')
     expect(body).toContain('v0.1.0-test</span>')
-    expect(body).toContain('>1/4</a>')
+    expect(body).toContain('href="/templates" data-tip="Used / total slots on this host; set them under Templates">1/4</a>')
     // node-b has not reported yet
     const nodeB = body.slice(body.indexOf('data-name="node-b"'))
     expect(nodeB).toContain('data-tip="Reported by the node on its next heartbeat"')
@@ -389,10 +420,21 @@ describe('hosts', () => {
   })
 })
 
-describe('runner types', () => {
-  test('types table, edit dialog form, slots matrix with spawn buttons', async () => {
-    const { body } = await get('/runner-types')
+describe('templates', () => {
+  test('/runner-types redirects to /templates for good', async () => {
+    const { res } = await get('/runner-types')
+    expect(res.status).toBe(301)
+    expect(res.headers.get('location')).toBe('/templates')
+  })
+
+  test('templates table, icon-only actions, edit dialog form, slots matrix with spawn buttons', async () => {
+    const { body } = await get('/templates')
     expect(body).toContain('id="types-table"')
+    expect(body).toContain('What a runner is made of, and how many may run per host.')
+    expect(body).toContain('New template')
+    expect(body).not.toMatch(/runner types?/i)
+    expect(body).toContain('data-icon="only" data-tip="Edit" data-action="type-edit"')
+    expect(body).toContain('data-tone="danger" data-icon="only" data-tip="Delete" data-action="type-delete"')
     expect(body).toContain('ghcr.io/example/runner:1')
     expect(body).toContain('General purpose &lt;builds&gt;')
     expect(body).toContain('NPM_TOKEN')
@@ -418,8 +460,8 @@ describe('runner types', () => {
 
   test('empty state', async () => {
     store.data = empty
-    const { body } = await get('/runner-types')
-    expect(body).toContain('No runner types')
+    const { body } = await get('/templates')
+    expect(body).toContain('No templates')
     expect(body).toContain('No hosts yet')
   })
 })
@@ -459,5 +501,23 @@ describe('settings', () => {
     expect(body).toContain('data-tailor-pickers="skin palette"')
     expect(body).toContain('Custom flag')
     expect(body).toContain('class="t-page-back"')
+  })
+
+  test('sections and sidebar in the agreed order; Other only with unknown settings', async () => {
+    const order = (body: string, re: RegExp) => [...body.matchAll(re)].map((m) => m[1])
+    const { body } = await get('/settings')
+    const sideRe = /class="t-sidebar-item" href="#([a-z]+)"/g
+    const sectionRe = /<section class="t-section" id="([a-z]+)"/g
+    expect(order(body.slice(0, body.indexOf('<main')), sideRe)).toEqual(['appearance', 'github', 'buildkit', 'live', 'retention', 'scheduler', 'logging', 'other', 'about'])
+    expect(order(body, sectionRe)).toEqual(['appearance', 'github', 'buildkit', 'live', 'retention', 'scheduler', 'logging', 'other', 'about'])
+    expect(body).toContain('>BuildKit<')
+    expect(body).toContain('#bi-box-seam')
+    expect(body).toContain('data-setting="buildkit_host"')
+    const { custom_flag: _drop, ...known } = full.settings
+    store.data = { ...full, settings: known }
+    const without = (await get('/settings')).body
+    expect(order(without.slice(0, without.indexOf('<main')), sideRe)).toEqual(['appearance', 'github', 'buildkit', 'live', 'retention', 'scheduler', 'logging', 'about'])
+    expect(without).not.toContain('id="other"')
+    expect(without).not.toContain('No other settings are stored')
   })
 })

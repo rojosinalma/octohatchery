@@ -1,8 +1,9 @@
 # Runner types
 
 A runner type is the template a runner container is started from. Types are rows in the database,
-not code: you add and change them from the dashboard (Runner types page), the JSON API
-(`PUT /api/runner-types/:name`) or the MCP tool `upsert_runner_type`.
+not code: you add and change them from the dashboard (Templates page), the JSON API
+(`PUT /api/runner-types/:name`) or the MCP tool `upsert_runner_type`. The dashboard calls them
+templates; the API, the MCP tools and this document keep the name runner type.
 
 ## Fields
 
@@ -104,7 +105,7 @@ arm64:
 ## Slots per host
 
 A slot is one runner that may run at a time for one type on one host. Slots are set per `(host, type)`
-pair: `set_slots {host, type, count}`, the Runner types page, or `PUT /api/slots`.
+pair: `set_slots {host, type, count}`, the Templates page, or `PUT /api/slots`.
 
 - A host with no slot for a type never runs that type.
 - A queued job is claimed by the first host that has a free slot for the job's type. If the job names

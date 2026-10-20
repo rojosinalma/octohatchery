@@ -9,23 +9,33 @@ so what you can click you can also script.
 
 | Path | Screen | Fast task |
 |---|---|---|
-| `/` | Overview | See which hosts are online, how many slots each runner type has left per host, and what every runner is working on right now. Kill a runner. |
+| `/` | Overview | See which hosts are online, how many slots each template has left per host, and what every runner is working on right now. Kill a runner. |
 | `/jobs` | Jobs | Queue and history. Filter by repo (select) and status (button group); both are query parameters, so a filtered view has a URL. Open the run on GitHub, or the job name for its log. |
-| `/jobs/:id` | Job | One job: runner, host, type, labels, timings, and its log — live while the job runs, GitHub's final log afterwards. Follow, copy. |
-| `/repos` | Repos | Adopt a repo by `owner/name`. Per adopted repo: copy the `runs-on` snippet for a runner type, open a pull request or commit that changes the workflows, or unadopt. |
-| `/runner-types` | Runner types | Create and edit runner types (image, labels, CPUs, memory, mounts, environment, secret names). Set slots per host in a matrix; spawn a runner by hand. |
+| `/jobs/:id` | Job | One job: runner, host, template, labels, timings, and its log — live while the job runs, GitHub's final log afterwards. Follow, copy. |
+| `/repos` | Repos | Adopt a repo from the list GitHub lets the node see. Per adopted repo: copy the `runs-on` snippet for a template, open a pull request or commit that changes the workflows, or unadopt. |
+| `/templates` | Templates | Create and edit templates (image, labels, CPUs, memory, mounts, environment, secret names). Set slots per host in a matrix; spawn a runner by hand. |
+| `/hosts` | Hosts | Every node with what it reports about itself: slots, CPUs, memory, OS, Docker, versions, last heartbeat. How a host joins. |
 | `/events` | Events | Audit trail: actor, action, target, detail, time. |
-| `/settings` | Settings | Scheduler, retention (including the per-job log size cap), live-update and logging tunables, plus the skin and palette of the dashboard. |
+| `/settings` | Settings | Appearance, GitHub access, BuildKit, live-update, retention (including the per-job log size cap), scheduler and logging tunables. |
 
-Every page has the same top bar (six sections), a footer with the version and the light/dark
+The dashboard calls a runner type a **template**: same rows, same API (`/api/runner-types`), same MCP
+tools (`list_runner_types`, `upsert_runner_type`); only the page, the navbar and the copy use the word.
+`/runner-types` redirects to `/templates` for old links.
+
+Every page has the same top bar (seven sections), a footer with the version and the light/dark
 toggle, and a status dot in the top-right corner that shows whether the live connection is up.
 
 ### Overview
 
-- One Hosts card with a section per host. The header line shows the status dot, the name (links
-  to the Hosts screen), a `leader` badge on the node that runs the sweep, the status, whether
-  Docker answers and the last heartbeat. Under it, one row per runner type that has slots on that
-  host with a used / total bar. A host without slots says so and links to Runner types.
+- One Hosts card, hosts side by side as columns (two on a desktop, stacked on a narrow screen).
+  Each column has a one-line header: status dot, name (links to the Hosts screen), a `leader`
+  badge on the node that runs the sweep, an `offline` or `Docker unreachable` badge only when
+  that is the case, and on the right the specs the node reported (`8 CPU · 32 GB · Docker 27.3.1
+  · seen just now`; parts not reported yet are left out). Under it a summary line, `1 of 4 slots
+  busy` (orange when every slot is taken), then one row per template that has slots on that host:
+  the template name and one pill per slot, filled when a runner occupies it; the row's tooltip
+  gives used / total. A template with more than 12 slots on a host shows a bar and the count
+  instead. A host without slots says so and links to Templates.
 - Runners: only live runners (`spawning`, `idle`, `busy`). Repo and job link into the jobs
   screen; `Kill` asks for confirmation, then calls `DELETE /api/runners/:id`.
 - Empty state: "No hosts yet". A node registers itself on boot, so the first host appears as
@@ -75,41 +85,45 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Columns: repo, visibility, webhook state (`GitHub App` when a GitHub App delivers the events;
   `active` or `polling` with a token), Jobs (how many job rows the repo has; links to the filtered
   Jobs screen), adopted since, actions.
+- The actions column holds three icon buttons, each with a tooltip: runs-on, Add / Repair webhook
+  (link icon) and Unadopt (bin).
 - Add webhook / Repair webhook: `POST /api/repos/webhook {fullName}` creates the `workflow_job`
   hook on the repo, or updates an existing one, and stores its id. With a GitHub App the button
   is disabled: the App already delivers the events.
-- `runs-on`: opens a dialog with one snippet per runner type
+- `runs-on` (code icon): opens a dialog with one snippet per template
   (`runs-on: [self-hosted, <type>]`), a copy button, and two actions that call
   `POST /api/repos/runs-on {fullName, mode, type}`: **Open a pull request** (`mode: pr`) and
   **Commit to default branch** (`mode: commit`, confirmed as a dangerous action). On success the
   buttons give way to a result line ("Pull request opened" or "Committed <sha>") with a link to
   the pull request or commit. On failure the dialog stays open and shows GitHub's exact message,
   also as a toast; a missing permission names the GitHub page where to grant it.
-- Unadopt: confirmed, then `POST /api/repos/unadopt {fullName}`.
+- Unadopt (bin icon): confirmed, then `POST /api/repos/unadopt {fullName}`.
 - Empty state: "No repos adopted" with the Adopt button.
 
-### Runner types
+### Templates
 
-- The table lists every type with its labels (`self-hosted` and the type name are always
+- The table lists every template with its labels (`self-hosted` and the template name are always
   added), image, caps, Docker access badge (`none`, `host socket`, `dind`), mount and env counts,
   and the names of secret environment variables.
   Secret values are never shown or stored; they are read from the node's own environment when a
   runner starts.
 - The table shows Environment (count) before Mounts (count); hovering either lists the names.
-- Edit and New open the same dialog; saving calls `PUT /api/runner-types/:name` with the full
-  type. Labels are chips: Enter, comma or space adds one, × removes it; `self-hosted`, the type
-  name and the host are shown first as fixed badges because every runner gets them anyway.
+- Edit (pencil) and New open the same dialog; saving calls `PUT /api/runner-types/:name` with the
+  full template. Delete (bin) asks first. Labels are chips: Enter, comma or space adds one, ×
+  removes it; `self-hosted`, the template name and the host are shown first as fixed badges
+  because every runner gets them anyway.
   Environment (one `KEY=value` per line) comes before Mounts (one `src:dst[:ro]` per line);
   secret names are comma-separated. Docker is three cards (None, Host socket, Docker-in-Docker),
   each with its trade-off; see [runner-types.md](runner-types.md#docker-access).
-- Slots matrix: a number field per type × host. Leaving the field saves that one cell with
+- Slots matrix: a number field per template × host. Leaving the field saves that one cell with
   `PUT /api/slots {host, type, count}`; a failed save reverts the field. The play button calls
   `POST /api/runners/spawn {type, host}` and is disabled for offline hosts.
 
 ### Hosts
 
-- One row per node: status dot, name, `leader` badge, Docker reachability, CPUs, memory, OS,
-  Docker version, app version, last heartbeat and the slots used / total on that host. The specs
+- One row per node: status dot, name and `leader` badge, slots used / total on that host (links
+  to Templates), CPUs, memory in GB, OS, Docker reachability, Docker version, app version and the
+  last heartbeat. The specs
   are what the node's heartbeat reports (`GET /api/hosts` carries them too); a dash means the node
   has not reported yet, for example an older version.
 - "Add a host" opens a dialog that explains how a host joins: start a node on it with the same
@@ -129,7 +143,9 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
   saving / saved / failed and a toast reports the outcome. There is no Save button.
 - Durations are entered as a number with a unit (s / min / h). `stale_runner_minutes` is stored
   in minutes; the dashboard converts.
-- Settings the dashboard does not know appear under "Other" as plain text fields.
+- Sections, in sidebar order: Appearance, GitHub, BuildKit, Live updates, Retention, Scheduler,
+  Logging, Other, About. "Other" lists settings the dashboard does not know as plain text fields
+  and exists only while there are any.
 - Appearance: skin and palette selects (alphabetical). The choice is stored as the settings
   `ui_skin`, `ui_palette` and `ui_mode`, so every browser that opens the dashboard gets the same
   look; localStorage only caches it to avoid a flash on load.
@@ -163,7 +179,7 @@ cap on clients and an idle timeout (settings `sse_max_clients`, `sse_idle_s`); t
 reconnects on its own.
 
 Actions never reload the page. After an action that changes a table without a live block (adopt,
-unadopt, runner type save/delete), the page's main column is fetched again and swapped.
+unadopt, template save/delete), the page's main column is fetched again and swapped.
 
 ## Theming
 
