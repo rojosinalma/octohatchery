@@ -4,7 +4,7 @@ import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
 import { SETTING_DEFAULTS } from '../lib/settings'
 import { STATUS_BY_CODE, validationMessage } from '../lib/json'
-import { JOBS_PER_PAGE, ServiceError, type JobStatus } from '../lib/types'
+import { JOBS_PER_MAX, JOBS_PER_PAGE, ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
 import { OverviewLive, OverviewPage, RecentJobs } from '../views/overview'
 import { JOB_STATUSES, JobsLive, JobsPage, type JobsFilter } from '../views/jobs'
@@ -100,7 +100,8 @@ const jobsView = async (query: Record<string, string | undefined>, scope: JobsSc
     failed: get('failed') === '1' || undefined,
     runner: get('runner')?.trim() || undefined,
   }
-  const perRaw = Number(get('per'))
+  const perParam = get('per')
+  const perRaw = perParam === 'all' ? JOBS_PER_MAX : Number(perParam)
   const per = (JOBS_PER_PAGE as readonly number[]).includes(perRaw) ? perRaw : scope.per
   const pageRaw = Number(get('page'))
   const total = await service.countJobs(filter)

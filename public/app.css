@@ -517,3 +517,26 @@
 #tf-image-alert {
   margin-top: var(--t-space-2);
 }
+
+/* A small empty state reads as one compact block: icon beside the title, action on the same row. */
+.t-empty[data-size="sm"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--t-space-2) var(--t-space-3);
+  text-align: left;
+}
+
+.t-empty[data-size="sm"] .t-empty-icon {
+  margin: 0;
+}
+
+.t-empty[data-size="sm"] .t-empty-title,
+.t-empty[data-size="sm"] p {
+  margin: 0;
+}
+
+.t-empty[data-size="sm"] .t-empty-actions {
+  margin: 0;
+}

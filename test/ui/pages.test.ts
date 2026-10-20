@@ -173,8 +173,8 @@ describe('overview', () => {
     expect(body).toContain('data-job-id="8"')
     expect(body).not.toContain('data-job-id="7"')
     expect(body).toContain('href="/?j_repo=acme%2Fwidgets&j_status=completed">acme/widgets</a>')
-    // two jobs fit one page of ten: no pager
-    expect(body).not.toContain('id="recent-pager"')
+    // two jobs fit one page of ten: the pager still shows the picker
+    expect(body).toContain('id="recent-per"')
   })
 
   test('?partial=jobs returns the card alone; a filtered empty card clears back to /', async () => {
@@ -185,7 +185,7 @@ describe('overview', () => {
     expect(body).toContain('<a class="t-btn" href="/">Clear filters</a>')
   })
 
-  test('Recent jobs pager: page numbers with the j_ prefix, Show all switches to 50 per page', async () => {
+  test('Recent jobs pager: page numbers with the j_ prefix, the picker offers 10/20/50/All', async () => {
     store.data = { ...full, jobs: Array.from({ length: 23 }, (_, i) => ({ ...full.jobs[1]!, id: 100 + i, name: `job ${i}` })) }
     const { body } = await get('/?j_page=2')
     expect(body).toContain('<div class="t-cluster jobs-pager" data-gap="3" data-align="center" id="recent-pager">')
@@ -196,15 +196,18 @@ describe('overview', () => {
     expect(body).toContain('<a class="t-page-link" href="/?j_page=3">3</a>')
     expect(body).toContain('<a class="t-page-link" href="/?j_page=3" aria-label="Next page">»</a>')
     expect(body).toContain('11–20 of 23')
-    expect(body).toContain('href="/?j_per=50" data-tip="50 per page, still paged">Show all</a>')
+    expect(body).toContain('id="recent-per"')
+    expect(body).toContain('<option value="10" selected>Last 10</option>')
+    expect(body).toContain('<option value="all">All</option>')
     expect((body.match(/data-job-id="/g) ?? []).length).toBe(10)
-    // page 3: 3 rows, next disabled; show all: 23 rows and no Show all link; a page past the end lands on the last one
+    // page 3: 3 rows, next disabled; All: 23 rows on one page; a page past the end lands on the last one
     const p3 = (await get('/?j_page=3')).body
     expect((p3.match(/data-job-id="/g) ?? []).length).toBe(3)
     expect(p3).toContain('<a class="t-page-link" aria-disabled="true" aria-label="Next page">»</a>')
-    const all = (await get('/?j_per=50')).body
+    const all = (await get('/?j_per=all')).body
     expect((all.match(/data-job-id="/g) ?? []).length).toBe(23)
-    expect(all).not.toContain('>Show all<')
+    expect(all).toContain('<option value="all" selected>All</option>')
+    expect(((await get('/?j_per=20')).body.match(/data-job-id="/g) ?? []).length).toBe(20)
     expect((await get('/?j_page=99')).body).toContain('href="/?j_page=3" aria-current="page">3</a>')
     // a size outside the allowed set falls back to the default
     expect(((await get('/?j_per=7')).body.match(/data-job-id="/g) ?? []).length).toBe(10)

@@ -44,8 +44,8 @@ export const bytes = (n: number) => {
   return `${Math.max(1, Math.round(n / 1024))} KB`
 }
 
-export const Empty = ({ icon, title, text, children }: PropsWithChildren<{ icon: string; title: string; text: string }>) => (
-  <div class="t-empty">
+export const Empty = ({ icon, title, text, size, children }: PropsWithChildren<{ icon: string; title: string; text: string; size?: 'sm' }>) => (
+  <div class="t-empty" data-size={size}>
     <span class="t-icon t-empty-icon">
       <Icon id={icon} size="xl" />
     </span>
