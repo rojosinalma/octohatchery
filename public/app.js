@@ -7,6 +7,7 @@
   var T = window.Tailor
   var $ = function (sel, root) { return (root || document).querySelector(sel) }
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)) }
+  var plainText = function (s) { return String(s).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') }
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] }) }
 
   /* ── API ─────────────────────────────────────────────────────────────────── */

@@ -41,6 +41,9 @@ export const SourceBadge = ({ log }: { log: JobLog }) => {
   )
 }
 
+/** Terminal colour sequences carry nothing for the reader; GitHub strips them in its viewer too. */
+export const plainText = (line: string) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+
 export const LogLines = ({ lines }: { lines: JobLog['lines'] }) => (
   <>
     {lines.map((l) => (
@@ -49,7 +52,7 @@ export const LogLines = ({ lines }: { lines: JobLog['lines'] }) => (
           {clock(l.at)}
         </span>
         <span class="log-text" safe>
-          {l.line}
+          {plainText(l.line)}
         </span>
         {'\n'}
       </span>
