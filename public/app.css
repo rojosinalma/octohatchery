@@ -663,6 +663,77 @@
 /* A small empty state reads as one compact block: icon beside the title, action on the same row. */
 .t-empty[data-size="sm"] {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--t-space-2);
+}
+
+/* Runner seats: visual slots showing busy runners (green tile), idle, spawning, or free (dashed). */
+.runner-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--t-space-1);
+  padding: var(--t-space-1) var(--t-space-1-5);
+  min-width: 5rem;
+  background: color-mix(in srgb, var(--t-success) 12%, transparent);
+  border: var(--t-border-w) solid var(--t-success);
+  border-radius: var(--t-radius-sm);
+  font-size: var(--t-size-xs);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  justify-content: center;
+}
+
+.runner-seat:hover {
+  background: color-mix(in srgb, var(--t-success) 20%, transparent);
+  border-color: var(--t-text);
+}
+
+.runner-seat[data-state=idle] {
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+  border-color: color-mix(in srgb, var(--t-text) 25%, transparent);
+}
+
+.runner-seat[data-state=spawning] {
+  background: color-mix(in srgb, var(--t-warning) 12%, transparent);
+  border-color: var(--t-warning);
+}
+
+.runner-seat-free {
+  background: transparent;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--t-text) 28%, transparent);
+  color: var(--t-muted);
+  cursor: default;
+}
+
+.runner-seat-state {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.runner-seat-info {
+  display: flex;
+  gap: var(--t-space-1);
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.runner-seat-job {
+  font-family: monospace;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runner-seat-state-text {
+  font-size: var(--t-size-xs);
+}
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
