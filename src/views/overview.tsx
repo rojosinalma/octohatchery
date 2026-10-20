@@ -64,7 +64,7 @@ const SlotRow = ({ slot }: { slot: Slot }) => (
 
 /** One host column: a one-line header, the slot summary, then one row per template with slots here. */
 const HostSection = ({ host, slots }: { host: Host; slots: Slot[] }) => {
-  const mine = slots.filter((s) => s.host === host.name).sort((a, b) => a.type.localeCompare(b.type))
+  const mine = slots.filter((s) => s.host === host.name && s.count > 0).sort((a, b) => a.type.localeCompare(b.type))
   const used = mine.reduce((n, s) => n + s.used, 0)
   const total = mine.reduce((n, s) => n + s.count, 0)
   const offline = host.status === 'offline'
