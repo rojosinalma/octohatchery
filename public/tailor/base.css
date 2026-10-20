@@ -1,4 +1,4 @@
-/* managed by tailor v0.7.1 — core — do not edit, run `tailor sync` */
+/* managed by tailor v0.8.0 — core — do not edit, run `tailor sync` */
 /*
  * tailor — core/base.css — the unskinned baseline.
  * Reset + readable typography + the minimum that makes every component FUNCTION (hidden panels, dialog
@@ -84,7 +84,7 @@ button { cursor: pointer; }
 /* sidebar */
 .t-sidebar ul { list-style: none; margin: 0; padding: 0; }
 /* group titles dominate the items they contain (items: --t-text-md, muted); skins keep title ≥ item */
-.t-sidebar-group { font-size: var(--t-text-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--t-text); padding: var(--t-space-4) var(--t-space-3) var(--t-space-1); }
+.t-sidebar-group { font-size: var(--t-text-base); font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--t-text); padding: var(--t-space-4) var(--t-space-3) var(--t-space-1); }
 .t-sidebar-group:first-child { padding-top: var(--t-space-1); }
 .t-sidebar-item {
   display: flex; align-items: center; gap: 0.6rem; width: 100%; margin-bottom: 3px; padding: 0.55rem var(--t-space-3);
@@ -127,7 +127,7 @@ details:not([open]) > .t-sidebar-item .t-sidebar-chevron, details:not([open]) > 
 .t-btn[data-size="sm"] { min-height: var(--t-control-h-sm); font-size: 0.75rem; padding: 0 0.7em; }
 .t-btn[data-size="lg"] { min-height: var(--t-control-h-lg); font-size: 1rem; padding: 0 1.1em; }
 .t-btn[data-icon="only"] { width: var(--t-control-h); padding: 0; }
-.t-btn[data-icon="only"][data-size="xs"] { width: var(--t-control-h-xs); } .t-btn[data-icon="only"][data-size="sm"] { width: var(--t-control-h-sm); } .t-btn[data-icon="only"][data-size="lg"] { width: var(--t-control-h-lg); font-size: 1.1rem; }
+.t-btn[data-icon="only"][data-size="xs"] { width: var(--t-control-h-xs); } .t-btn[data-icon="only"][data-size="xs"] > .t-icon { width: 0.9rem; height: 0.9rem; font-size: 0.9rem; } .t-btn[data-icon="only"][data-size="sm"] { width: var(--t-control-h-sm); } .t-btn[data-icon="only"][data-size="lg"] { width: var(--t-control-h-lg); font-size: 1.1rem; }
 .t-btn:disabled, .t-btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
 .t-btn[aria-pressed="true"] { background: var(--t-selection); color: var(--t-text); border-color: var(--t-disabled); }
 .t-btn[aria-busy="true"]::before { content: ""; width: 0.9em; height: 0.9em; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: t-spin 0.7s linear infinite; }
@@ -316,8 +316,9 @@ button.t-badge { cursor: pointer; }
 
 /* card */
 .t-card { background: var(--t-surface); border: var(--t-border-w) solid var(--t-border); border-radius: var(--t-radius-lg); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
-/* floating panels inside a clipping container: let them escape while open */
-:is(.t-card, .t-list, .t-table-wrap, .t-dialog-body):has(:is(.t-help-box, .t-select-list, .t-picker):not([hidden]), .t-menu[open]) { overflow: visible; }
+/* floating panels inside a clipping container: let them escape while open, and lift the container above its
+   siblings (a skin that isolates the card would otherwise trap the panel under the next card) */
+:is(.t-card, .t-list, .t-table-wrap, .t-dialog-body):has(:is(.t-help-box, .t-select-list, .t-picker):not([hidden]), .t-menu[open]) { overflow: visible; position: relative; z-index: var(--t-z-overlay); }
 .t-card-header { display: flex; align-items: center; gap: var(--t-space-2); padding: 0.6rem 0.9rem; background: var(--t-inset); border-bottom: var(--t-border-w) solid var(--t-border); list-style: none; }
 .t-card-header::-webkit-details-marker { display: none; }
 .t-card-title { display: inline-flex; align-items: center; gap: 0.4em; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-text-base); color: var(--t-info); }

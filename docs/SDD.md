@@ -100,7 +100,7 @@ Nine tables, schema owned by this project, Drizzle migrations, additive only.
 | `runner_types` | name, description, labels, image, CPU and memory caps, mounts, env, secret env names | secrets are names only; values live in the node's environment |
 | `slots` | `(host, type) → count` | how many runners of a type a host may run at once |
 | `repos` | adopted repositories: full name, private flag, webhook id, adopted at | jobs from repositories not in this table are ignored |
-| `jobs` | one row per `workflow_job`: repository, GitHub job id, run id, name, labels, status, conclusion, runner, timestamps, log source / size / truncated flag | status `queued → claimed → in_progress → completed`, or `ignored` |
+| `jobs` | one row per `workflow_job` this instance may run (adopted repository, `self-hosted` label): repository, GitHub job id, run id, name, labels, status, conclusion, runner, timestamps, log source / size / truncated flag | status `queued → claimed → in_progress → completed`, or `ignored` (claimed but no matching type, or retries exhausted); jobs of other repositories or for hosted runners get no row |
 | `job_logs` | log lines of one job: `(job_id, seq)`, the line's own timestamp, text | written by the node that owns the runner; replaced by GitHub's log when the job ends; deleted with the job |
 | `runners` | one row per runner container: name, host, type, container id, state, job, timestamps | state `spawning → idle → busy → exited`, or `failed`, then `removed` |
 | `events` | audit log: actor, action, target, detail, time | actors: `user`, `mcp:<client>`, `webhook`, `scheduler`, `sweep` |

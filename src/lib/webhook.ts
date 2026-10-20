@@ -78,7 +78,13 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
     case 'queued': {
       const repo = await repoByName(repoName)
       const selfHosted = wj.labels.map((l) => l.toLowerCase()).includes(SELF_HOSTED)
-      const status = repo?.adopted && selfHosted ? 'queued' : 'ignored'
+      // Jobs of unadopted repos and jobs for hosted runners are not ours: an audit event, no job row.
+      // The row table holds only work this instance may run, so history and retention stay about that.
+      if (!repo?.adopted || !selfHosted) {
+        const reason = !repo?.adopted ? 'repository not adopted' : 'labels do not include self-hosted'
+        if (repo?.adopted) await recordEvent('webhook', 'job.ignored', target, { reason, labels: wj.labels })
+        return { status: 200, message: `ignored: ${reason}` }
+      }
       const job = await insertJobIfNew({
         repo: repoName,
         githubJobId: wj.id,
@@ -87,14 +93,9 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
         labels: wj.labels,
         htmlUrl: wj.html_url,
         queuedAt: wj.created_at ?? new Date().toISOString(),
-        status,
+        status: 'queued',
       })
       if (!job) return { status: 200, message: 'job already known' }
-      if (status === 'ignored') {
-        const reason = !repo?.adopted ? 'repository not adopted' : 'labels do not include self-hosted'
-        await recordEvent('webhook', 'job.ignored', target, { reason, labels: wj.labels })
-        return { status: 200, message: `ignored: ${reason}` }
-      }
       await recordEvent('webhook', 'job.queued', target, { name: wj.name, labels: wj.labels })
       logger.info(`queued ${target} "${wj.name}" [${wj.labels.join(', ')}]`)
       return { status: 200, message: 'job queued' }

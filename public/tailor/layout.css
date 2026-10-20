@@ -1,4 +1,4 @@
-/* managed by tailor v0.7.1 — core — do not edit, run `tailor sync` */
+/* managed by tailor v0.8.0 — core — do not edit, run `tailor sync` */
 /*
  * tailor — core/layout.css — layout primitives. System-agnostic: CSS grid/flex + --t-* tokens only.
  * Owns geometry (app shell, page, section, toolbar, grid, stack/cluster, split). Skins colour these
@@ -33,8 +33,8 @@
 .t-shell[data-sidebar="collapsed"] { --t-sidebar-w: 3.5rem; }
 
 .t-shell-nav  { grid-area: nav;  min-width: 0; z-index: var(--t-z-sticky); }
-.t-shell-side { grid-area: side; min-height: 0; overflow-y: auto; padding: var(--t-space-3); }
-.t-shell-main { grid-area: main; min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--t-space-4); }
+.t-shell-side { grid-area: side; position: relative; min-height: 0; overflow-y: auto; padding: var(--t-space-3); }
+.t-shell-main { grid-area: main; position: relative; min-width: 0; min-height: 0; overflow-y: auto; scroll-padding-top: var(--t-space-4); }
 .t-shell-foot { grid-area: foot; min-width: 0; z-index: var(--t-z-sticky); }
 /* anchor targets land --t-space-4 below the header: scroll-padding-top on the scroller does it, and Tailor.scrollspy
    reads that value for its activation line (no scroll-margin on :target — the two would add up) */

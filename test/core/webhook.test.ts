@@ -62,11 +62,10 @@ describe('webhook', () => {
     r = await deliver(app, 'workflow_job', payload('queued', 3))
     expect(r.json.message).toBe('job already known')
     const jobs = await service.listJobs()
-    expect(jobs.map((j) => [j.githubJobId, j.status]).sort()).toEqual([
-      [1, 'ignored'],
-      [2, 'ignored'],
-      [3, 'queued'],
-    ])
+    // Only the job this instance may run gets a row; the rest leaves at most an audit event.
+    expect(jobs.map((j) => [j.githubJobId, j.status])).toEqual([[3, 'queued']])
+    const events = await service.listEvents()
+    expect(events.filter((e) => e.action === 'job.ignored').map((e) => e.target)).toEqual(['acme/app#2'])
     expect(getLastWebhookAt()).not.toBeNull()
   })
 
