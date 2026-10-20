@@ -99,6 +99,9 @@ export function createFakeBackend(): FakeBackend {
       })
       return id
     },
+    async exec() {
+      return 0
+    },
     async spawnSidecar(input) {
       const id = `fake-sidecar-${++n}`
       sidecars.set(id, {

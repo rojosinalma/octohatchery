@@ -43,6 +43,18 @@ export function dindName(runner: Pick<Runner, 'name'>): string {
   return `${runner.name}-dind`
 }
 
+const DIND_READY_MS = 45_000
+
+/** The runner must not start before its daemon answers, whatever image the runner uses. */
+async function waitForDaemon(sidecarId: string, runnerName: string): Promise<void> {
+  const until = Date.now() + DIND_READY_MS
+  while (Date.now() < until) {
+    if ((await backend().exec(sidecarId, ['docker', 'info'])) === 0) return
+    await Bun.sleep(500)
+  }
+  throw new Error(`${runnerName}: docker-in-docker daemon not ready after ${DIND_READY_MS / 1000}s`)
+}
+
 /** Env for a runner container: tool cache, buildkit, the type's env, then each secret name resolved from this process. */
 export async function runnerEnv(type: RunnerType, env: Record<string, string | undefined> = Bun.env): Promise<Record<string, string>> {
   const out: Record<string, string> = {
@@ -94,7 +106,8 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     logger.info(`registered ${runner.name} with ${repo} (github runner ${jit.runnerId})`)
     if (type.docker === 'dind') {
       // The daemon starts first so the runner's entrypoint can wait for it by name.
-      await backend().spawnSidecar({ runner, name: dindName(runner), image: DIND_IMAGE, role: DIND_ROLE, env: { DOCKER_TLS_CERTDIR: '' }, network, privileged: true })
+      const sidecarId = await backend().spawnSidecar({ runner, name: dindName(runner), image: DIND_IMAGE, role: DIND_ROLE, env: { DOCKER_TLS_CERTDIR: '' }, network, privileged: true })
+      await waitForDaemon(sidecarId, runner.name)
       env.DOCKER_HOST = `tcp://${dindName(runner)}:${DIND_PORT}`
     }
     const containerId = await backend().spawnRunner({

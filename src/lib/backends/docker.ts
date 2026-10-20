@@ -212,6 +212,17 @@ export const dockerBackend: BackendAdapter = {
         logger.info(`start sidecar ${name} (${container.id.slice(0, 12)}) role=${role} image=${image}${privileged ? ' privileged' : ''}`)
         return container.id
       },
+      async exec(containerId, cmd) {
+        const container = docker.getContainer(containerId)
+        const e = await container.exec({ Cmd: cmd, AttachStdout: false, AttachStderr: false })
+        await e.start({ Detach: true })
+        for (let i = 0; i < 50; i++) {
+          const st = await e.inspect()
+          if (!st.Running) return st.ExitCode ?? 1
+          await Bun.sleep(100)
+        }
+        return 1
+      },
       async inspect(containerId) {
         try {
           return toInfo(await docker.getContainer(containerId).inspect())

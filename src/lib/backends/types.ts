@@ -56,6 +56,8 @@ export type ContainerBackend = {
   spawnRunner(input: SpawnInput): Promise<string>
   /** Creates and starts a sidecar for a runner; returns its id. Removed with the runner by `removeByRunnerId`. */
   spawnSidecar(input: SidecarInput): Promise<string>
+  /** Runs a command inside a running container and resolves with its exit code (used to probe a sidecar's readiness). */
+  exec(containerId: string, cmd: string[]): Promise<number>
   inspect(containerId: string): Promise<ContainerInfo>
   /** Removes the container (force). Missing containers are not an error. */
   remove(containerId: string): Promise<void>
