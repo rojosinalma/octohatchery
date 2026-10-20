@@ -73,8 +73,13 @@ export const postgresDriver: Driver = {
         }
       },
       async close() {
-        leaderConn?.release()
-        await client.end({ timeout: 5 })
+        try {
+          leaderConn?.release()
+        } catch {
+          // the socket is already gone (failover, watcher restart): nothing to release
+        }
+        leaderConn = undefined
+        await client.end({ timeout: 5 }).catch(() => {})
       },
     }
     return wrap(orm, common)

@@ -103,7 +103,7 @@ describe('api', () => {
     expect(r.json).toMatchObject({ ok: true, total: 0, page: 2, per: 10 })
     r = await call(app, 'GET', '/api/jobs?per=11')
     expect(r.status).toBe(400)
-    expect(r.json.message).toContain('expected one of 10, 25, 50, 100')
+    expect(r.json.message).toContain('expected one of 10, 20, 25, 50, 100')
     expect((await call(app, 'GET', '/api/jobs?page=0')).status).toBe(400)
     r = await call(app, 'PUT', '/api/settings/stale_runner_minutes', { value: '10' })
     expect(r.json.ok).toBe(true)

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { db } from '../db'
+import { db, recoverDb } from '../db'
 import { toJob, toRunner } from '../db/rows'
 import { backend } from './backends'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL } from './backends/types'
@@ -119,6 +119,7 @@ export async function tick(): Promise<void> {
     await startImagePull()
   } catch (err) {
     logger.error('tick failed', err instanceof Error ? err : String(err))
+    await recoverDb()
   } finally {
     running = false
   }
