@@ -42,3 +42,13 @@ jobs:
           docker buildx inspect --bootstrap | head -8
           printf 'FROM scratch\nCOPY . /src\n' > Dockerfile.smoke
           docker buildx build -f Dockerfile.smoke --output type=cacheonly .
+
+      - name: Reach the deploy target
+        if: inputs.runner_type == 'deploy'
+        run: |
+          : "${DEPLOYER_URL:?deploy runners need DEPLOYER_URL}"
+          : "${DEPLOYER_TOKEN:?deploy runners need DEPLOYER_TOKEN}"
+          ca=(); [ -n "${DEPLOYER_CA:-}" ] && ca=(--cacert "$DEPLOYER_CA")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "${ca[@]}" -H "Authorization: Bearer $DEPLOYER_TOKEN" "$DEPLOYER_URL/api/services")
+          echo "deployer answered $code"
+          [ "$code" != 401 ] && [ "$code" != 000 ]
