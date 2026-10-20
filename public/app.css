@@ -346,6 +346,82 @@
   background: color-mix(in srgb, var(--t-accent) 10%, transparent);
 }
 
+/* ##[error] / ##[warning] lines carry their tone; the marker text stays as stored. */
+.log-line[data-tone="danger"] {
+  color: var(--t-danger);
+}
+
+.log-line[data-tone="warning"] {
+  color: var(--t-warning);
+}
+
+/* A ##[group] … ##[endgroup] block folds into <details>; the summary reads as one log line with a chevron. */
+.log-group {
+  display: block;
+}
+
+.log-summary {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  color: var(--t-info);
+}
+
+.log-summary::-webkit-details-marker {
+  display: none;
+}
+
+.log-summary:hover {
+  background: color-mix(in srgb, var(--t-accent) 10%, transparent);
+}
+
+.log-summary .log-time {
+  width: 9ch;
+}
+
+.log-chevron {
+  display: inline-block;
+  flex: none;
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.12s ease;
+}
+
+.log-group[open] > .log-summary .log-chevron {
+  transform: translateY(-0.15em) rotate(45deg);
+}
+
+.log-group-title {
+  font-weight: 600;
+  white-space: pre;
+}
+
+.log-group-meta {
+  font-size: var(--t-text-sm);
+}
+
+.log-group[data-tone="danger"] > .log-summary {
+  color: var(--t-danger);
+}
+
+.log-group[data-tone="warning"] > .log-summary {
+  color: var(--t-warning);
+}
+
+.log-group > .log-line {
+  padding-left: 1.5ch;
+}
+
+.log-toolbar .t-btn-group {
+  display: inline-flex;
+}
+
 .log-empty {
   min-height: 12rem;
 }

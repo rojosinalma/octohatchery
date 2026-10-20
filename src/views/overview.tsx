@@ -1,7 +1,9 @@
-import type { Host, Runner, Slot } from '../lib/types'
+import type { Host, Repo, Runner, Slot } from '../lib/types'
+import { JobsPager, JobsTable, JobsToolbar, RECENT_SCOPE, jobsQuery, JOBS_SCOPE, type JobsView } from './jobs-table'
 import { Empty, Icon, RelTime, RunnerBadge, gb } from './parts'
 
 export type OverviewData = { hosts: Host[]; slots: Slot[]; runners: Runner[] }
+export type RecentJobsData = JobsView & { repos: Repo[] }
 
 const LIVE_STATES = new Set(['spawning', 'idle', 'busy'])
 
@@ -288,13 +290,40 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
   )
 }
 
-export const OverviewPage = (data: OverviewData) => (
+/**
+ * The "Recent jobs" card: the Jobs toolbar and table under the `j_` param prefix so its filters and paging never
+ * collide with the rest of the page. Its own live block (`job` / `runner` events, `GET /?…&partial=jobs`).
+ */
+export const RecentJobs = ({ repos, ...view }: RecentJobsData) => (
+  <section class="t-card" id="recent-jobs" data-live="job runner" data-partial="jobs" aria-labelledby="recent-jobs-title">
+    <div class="t-card-header">
+      <h2 class="t-card-title" id="recent-jobs-title">
+        <Icon id="bi-briefcase" /> Recent jobs <span class="t-counter" data-tip="Jobs matching the filter">{String(view.total)}</span>
+      </h2>
+      <div class="t-card-tools">
+        <a class="t-btn" data-size="xs" data-variant="ghost" href={`/jobs${jobsQuery(JOBS_SCOPE, view.filter)}`} data-tip="The Jobs page with the same filters">
+          All jobs <Icon id="bi-arrow-right" size="xs" />
+        </a>
+      </div>
+    </div>
+    <div class="t-card-body t-stack" data-gap="3">
+      <JobsToolbar scope={RECENT_SCOPE} filter={view.filter} repos={repos} per={view.per} />
+      <JobsTable scope={RECENT_SCOPE} jobs={view.jobs} filter={view.filter} runnerNames={view.runnerNames} />
+      <JobsPager scope={RECENT_SCOPE} view={view} showAll />
+    </div>
+  </section>
+)
+
+export const OverviewPage = ({ recent, ...data }: OverviewData & { recent: RecentJobsData }) => (
   <>
     <header class="t-page-header">
       <h1 class="t-page-title">Overview</h1>
-      <span class="t-page-lead">Hosts, slots and the runners working right now.</span>
+      <span class="t-page-lead">Hosts, slots, the runners working right now and the latest jobs.</span>
     </header>
-    <OverviewLive {...data} />
+    <div class="t-stack" data-gap="4">
+      <OverviewLive {...data} />
+      <RecentJobs {...recent} />
+    </div>
   </>
 )
 

@@ -74,8 +74,8 @@ describe('layout', () => {
 describe('overview', () => {
   test('hosts as columns, one-line header, slot pills, runners table with kill buttons', async () => {
     const { body } = await get('/')
-    // one Hosts card, one column per host with its slots underneath
-    expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(1)
+    // one Hosts card (plus the Recent jobs card), one column per host with its slots underneath
+    expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(2)
     expect(body).toContain('href="/hosts">All hosts')
     expect(body).toContain('<div class="t-card-body host-list t-grid" data-min="md">')
     expect(body).not.toContain('slots used / total')
@@ -105,8 +105,8 @@ describe('overview', () => {
     expect(nodeA).not.toContain('No slots on this host')
     expect(body).toContain('id="runners-table"')
     expect(body).toContain('generic-node-a-3')
-    // only live runners are listed
-    expect(body).not.toContain('generic-node-a-2')
+    // only live runners are listed (the exited one appears in Recent jobs, not in the Runners table)
+    expect(body).not.toMatch(/id="runners-table"[\s\S]*generic-node-a-2[\s\S]*id="recent-jobs"/)
     expect(body).toContain('data-action="kill"')
     expect(body).toContain('href="/jobs/7"')
     // runner, host and template link to the filtered jobs list, the host row and the template row
@@ -155,6 +155,59 @@ describe('overview', () => {
     expect(body).not.toContain('<html')
     expect(body).not.toContain('<h1')
     expect(body).toContain('id="runners-table"')
+    expect(body).not.toContain('id="recent-jobs"')
+  })
+
+  test('Recent jobs card: own live block, prefixed filters, total counter, All jobs link with the same filters', async () => {
+    const { body } = await get('/?j_status=completed&j_repo=acme%2Fwidgets')
+    expect(body).toContain('<section class="t-card" id="recent-jobs" data-live="job runner" data-partial="jobs"')
+    expect(body).toContain('Recent jobs <span class="t-counter" data-tip="Jobs matching the filter">1</span>')
+    expect(body).toContain('href="/jobs?repo=acme%2Fwidgets&status=completed" data-tip="The Jobs page with the same filters">')
+    // toolbar controls navigate under the j_ prefix and reset the page
+    expect(body).toMatch(/<select class="t-select"[^>]*data-nav="j_status" data-nav-reset="j_page" id="recent-status">/)
+    expect(body).toMatch(/<option value="completed" selected>Completed<\/option>/)
+    expect(body).toMatch(/<input class="t-input"[^>]*name="j_q" data-nav="j_q" data-nav-on="enter" data-nav-reset="j_page"/)
+    expect(body).toMatch(/href="\/\?j_repo=acme%2Fwidgets&j_status=completed&j_running=1" aria-pressed="false">Running now/)
+    // the table carries the filtered row only; the repo link stays on the Overview
+    expect(body).toContain('id="recent-table"')
+    expect(body).toContain('data-job-id="8"')
+    expect(body).not.toContain('data-job-id="7"')
+    expect(body).toContain('href="/?j_repo=acme%2Fwidgets&j_status=completed">acme/widgets</a>')
+    // two jobs fit one page of ten: no pager
+    expect(body).not.toContain('id="recent-pager"')
+  })
+
+  test('?partial=jobs returns the card alone; a filtered empty card clears back to /', async () => {
+    const { body } = await get('/?partial=jobs&j_q=zzz')
+    expect(body.trim().startsWith('<section class="t-card" id="recent-jobs"')).toBe(true)
+    expect(body).not.toContain('id="overview-live"')
+    expect(body).toContain('No jobs match this filter')
+    expect(body).toContain('<a class="t-btn" href="/">Clear filters</a>')
+  })
+
+  test('Recent jobs pager: page numbers with the j_ prefix, Show all switches to 50 per page', async () => {
+    store.data = { ...full, jobs: Array.from({ length: 23 }, (_, i) => ({ ...full.jobs[1]!, id: 100 + i, name: `job ${i}` })) }
+    const { body } = await get('/?j_page=2')
+    expect(body).toContain('<div class="t-cluster jobs-pager" data-gap="3" data-align="center" id="recent-pager">')
+    expect(body).toContain('<nav class="t-pagination" aria-label="Pages" data-size="sm">')
+    expect(body).toContain('<a class="t-page-link" href="/" aria-label="Previous page">«</a>')
+    expect(body).toContain('<a class="t-page-link" href="/">1</a>')
+    expect(body).toContain('<a class="t-page-link" href="/?j_page=2" aria-current="page">2</a>')
+    expect(body).toContain('<a class="t-page-link" href="/?j_page=3">3</a>')
+    expect(body).toContain('<a class="t-page-link" href="/?j_page=3" aria-label="Next page">»</a>')
+    expect(body).toContain('11–20 of 23')
+    expect(body).toContain('href="/?j_per=50" data-tip="50 per page, still paged">Show all</a>')
+    expect((body.match(/data-job-id="/g) ?? []).length).toBe(10)
+    // page 3: 3 rows, next disabled; show all: 23 rows and no Show all link; a page past the end lands on the last one
+    const p3 = (await get('/?j_page=3')).body
+    expect((p3.match(/data-job-id="/g) ?? []).length).toBe(3)
+    expect(p3).toContain('<a class="t-page-link" aria-disabled="true" aria-label="Next page">»</a>')
+    const all = (await get('/?j_per=50')).body
+    expect((all.match(/data-job-id="/g) ?? []).length).toBe(23)
+    expect(all).not.toContain('>Show all<')
+    expect((await get('/?j_page=99')).body).toContain('href="/?j_page=3" aria-current="page">3</a>')
+    // a size outside the allowed set falls back to the default
+    expect(((await get('/?j_per=7')).body.match(/data-job-id="/g) ?? []).length).toBe(10)
   })
 })
 
@@ -219,6 +272,28 @@ describe('jobs', () => {
     expect(body).toContain('data-job-id="7"')
     expect(body).not.toContain('data-job-id="8"')
     expect(body).toContain('generic-node-a-3')
+    // the pager with its per-page select is part of the live block
+    expect(body).toContain('id="jobs-pager"')
+    expect(body).toMatch(/<select class="t-select"[^>]*data-nav="per" data-nav-reset="page" id="jobs-per">/)
+    expect(body).toContain('<option value="25" selected>25 per page</option>')
+  })
+
+  test('/jobs pages 25 at a time; page and per stay in filter links; a filter change resets the page', async () => {
+    store.data = { ...full, jobs: Array.from({ length: 60 }, (_, i) => ({ ...full.jobs[1]!, id: 100 + i, name: `job ${i}` })) }
+    const { body } = await get('/jobs?page=2&failed=1')
+    expect((body.match(/data-job-id="/g) ?? []).length).toBe(25)
+    expect(body).toContain('26–50 of 60')
+    expect(body).toContain('<a class="t-page-link" href="/jobs?failed=1&page=2" aria-current="page">2</a>')
+    expect(body).toContain('<a class="t-page-link" href="/jobs?failed=1&page=3" aria-label="Next page">»</a>')
+    // the quick filter links drop the page; Running now adds its flag, Failed clears itself
+    expect(body).toMatch(/href="\/jobs\?running=1&failed=1" aria-pressed="false">Running now/)
+    expect(body).toMatch(/href="\/jobs" aria-pressed="true">Failed/)
+    const per10 = (await get('/jobs?per=10&page=6')).body
+    expect((per10.match(/data-job-id="/g) ?? []).length).toBe(10)
+    expect(per10).toContain('51–60 of 60')
+    expect(per10).toContain('<a class="t-page-link" aria-disabled="true">…</a>')
+    expect(per10).toContain('<a class="t-page-link" href="/jobs?per=10&page=5" aria-label="Previous page">«</a>')
+    expect(per10).toContain('<option value="10" selected>10 per page</option>')
   })
 
   test('job names link to the job page', async () => {
@@ -257,9 +332,42 @@ describe('job page', () => {
     expect(body).toContain('class="log-text">##[group]Run &lt;script&gt;alert(1)&lt;/script&gt;<')
     expect(body).toContain('class="log-time">10:00:32<')
     expect(body).toContain('id="log-truncated" hidden')
-    expect(body).toContain('<pre class="t-code-pre log-view" id="log-view"')
+    expect(body).toContain('<div class="t-code-pre log-view" id="log-view"')
+    // the unterminated group is open (still receiving lines), its marker line hidden, its title escaped
+    expect(body).toContain('<details class="log-group" open data-first="2026-10-19T10:00:32.000000000Z" data-count="0"><summary class="log-summary">')
+    expect(body).toContain('<span class="log-group-title">Run &lt;script&gt;alert(1)&lt;/script&gt;</span><span class="log-group-meta t-muted">0 lines · 0 s</span>')
+    expect(body).toMatch(/<span class="log-line" data-seq="2"[^>]*data-marker="" hidden>/)
+    expect(body).toContain('data-action="log-expand"')
+    expect(body).toContain('data-action="log-collapse"')
+    expect(body).toContain('href="/jobs/7?raw=1"')
     expect(body).not.toMatch(/\stitle="/)
     expect(body).not.toMatch(/style="(?!--t-)/)
+  })
+
+  test('grouped log: closed groups fold, an error group opens and is toned, lines outside stay flat', async () => {
+    const at = (s: string) => `2026-10-19T08:00:${s}Z`
+    const text = ['Set up job', '##[group]Run build', 'ok', '##[endgroup]', '##[group]Run tests', '##[error]boom', '##[endgroup]', '##[warning]slow', 'done']
+    store.data = { ...full, logs: { 8: { ...full.logs[8]!, lines: text.map((line, i) => ({ seq: i + 1, at: at(String(10 + i)), line })) } } }
+    const { body } = await get('/jobs/8')
+    expect(body).toMatch(/<details class="log-group" data-closed="" data-first="[^"]+" data-count="1"><summary class="log-summary"><span class="log-time">08:00:11<\/span><span class="log-chevron" aria-hidden="true"><\/span><span class="log-group-title">Run build<\/span><span class="log-group-meta t-muted">1 lines · 2 s<\/span><\/summary>/)
+    expect(body).toMatch(/<details class="log-group" open data-tone="danger" data-closed=""[^>]*><summary class="log-summary">/)
+    expect(body).toMatch(/<span class="log-line" data-seq="6"[^>]*data-tone="danger">/)
+    expect(body).toMatch(/<span class="log-line" data-seq="8"[^>]*data-tone="warning">/)
+    expect(body).toMatch(/<span class="log-line" data-seq="9" data-at="[^"]+"><span class="log-time">08:00:18<\/span><span class="log-text">done<\/span>/)
+    expect((body.match(/<details class="log-group"/g) ?? []).length).toBe(2)
+    // every stored line is in the DOM (markers hidden), so Copy keeps the markers
+    expect((body.match(/<span class="log-line"/g) ?? []).length).toBe(9)
+    expect((body.match(/data-marker="" hidden/g) ?? []).length).toBe(4)
+  })
+
+  test('?raw=1 renders the flat view with a Grouped link and no group buttons', async () => {
+    const { body } = await get('/jobs/7?raw=1')
+    expect(body).toContain('id="log" data-job-id="7" data-last-seq="2" data-live="log" data-complete="false" data-raw="true"')
+    expect(body).not.toContain('<details')
+    expect(body).toMatch(/<span class="log-line" data-seq="2" data-at="[^"]+"><span class="log-time">10:00:32<\/span><span class="log-text">##\[group\]Run/)
+    expect(body).not.toContain('data-action="log-expand"')
+    expect(body).toContain('href="/jobs/7" data-tip="Fold the groups again">')
+    expect((await get('/jobs/7?raw=yes')).res.status).toBe(400)
   })
 
   test('finished job with GitHub log: complete, follow disabled, truncated badge shown', async () => {

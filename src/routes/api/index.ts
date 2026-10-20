@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia'
-import { jsonErr, STATUS_BY_CODE } from '../../lib/json'
+import { jsonErr, STATUS_BY_CODE, validationMessage } from '../../lib/json'
 import { log } from '../../lib/log'
 import { ServiceError } from '../../lib/types'
 import { events } from './events'
@@ -25,7 +25,7 @@ export const apiErrors = new Elysia({ name: 'api-errors' }).onError({ as: 'scope
     return body
   }
   if (code === 'VALIDATION') {
-    const { body, status } = jsonErr(error.message.split('\n')[0] ?? 'invalid request', 'invalid', 400)
+    const { body, status } = jsonErr(validationMessage(error), 'invalid', 400)
     set.status = status
     return body
   }

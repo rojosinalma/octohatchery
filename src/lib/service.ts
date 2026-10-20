@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import pkg from '../../package.json'
 import { db } from '../db'
 import { toEvent, toJob, toRepo, toRunner, toRunnerType } from '../db/rows'
@@ -31,6 +31,7 @@ import {
   type ImagePull,
   type Job,
   type JobLog,
+  JOBS_PER_MAX,
   type JobStatus,
   type Repo,
   type RepoListItem,
@@ -45,7 +46,7 @@ import {
 
 const logger = log('service')
 
-export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string; limit?: number }
+export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string; limit?: number; page?: number; per?: number }
 /** Same shape `runner_image_default` is validated with: `registry/name[:tag][@sha256:…]`. */
 const IMAGE_RE = /^[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/
@@ -92,6 +93,26 @@ async function checkGitHub(): Promise<GitHubStatus> {
     logger.warn('github permission check failed', githubMessage(err))
     return unknownStatus(gh.kind, githubMessage(err), webhookUrl())
   }
+}
+
+/** The `where` clause `listJobs` and `countJobs` share; the alias `j` is the job, `r` its runner (left join). */
+function jobsWhere(filter: JobsFilter): SQL {
+  const where = [sql`1 = 1`]
+  if (filter.repo) where.push(sql`j.repo = ${filter.repo}`)
+  if (filter.status) where.push(sql`j.status = ${filter.status}`)
+  if (filter.since) {
+    const t = Date.parse(filter.since)
+    if (Number.isNaN(t)) throw new ServiceError('since must be an ISO-8601 timestamp')
+    where.push(sql`j.queued_at >= ${new Date(t).toISOString()}`)
+  }
+  if (filter.running) where.push(sql`j.status in ('claimed', 'in_progress')`)
+  if (filter.failed) where.push(sql`j.conclusion in ('failure', 'timed_out', 'cancelled')`)
+  if (filter.runner) where.push(sql`r.name = ${filter.runner}`)
+  if (filter.q) {
+    const needle = `%${filter.q.trim().toLowerCase().replace(/[%_\\]/g, '\\$&')}%`
+    where.push(sql`(lower(j.name) like ${needle} escape '\\' or lower(j.repo) like ${needle} escape '\\' or lower(coalesce(r.name, '')) like ${needle} escape '\\')`)
+  }
+  return sql.join(where, sql` and `)
 }
 
 function limitOf(n: number | undefined): number {
@@ -397,28 +418,24 @@ export const service = {
   /**
    * Jobs newest first. `q` is a case-insensitive substring over job name, repo and runner name; `since` keeps jobs
    * queued at or after that ISO time; `running` = claimed or in progress; `failed` = failure, timed out or cancelled;
-   * `runner` keeps the jobs of one runner by its exact name.
+   * `runner` keeps the jobs of one runner by its exact name. `page`/`per` page the list (offset paging, `per` capped
+   * at `JOBS_PER_MAX`); without `per` the list is the first `limit` rows.
    */
   async listJobs(filter: JobsFilter = {}): Promise<Job[]> {
-    const where = [sql`1 = 1`]
-    if (filter.repo) where.push(sql`j.repo = ${filter.repo}`)
-    if (filter.status) where.push(sql`j.status = ${filter.status}`)
-    if (filter.since) {
-      const t = Date.parse(filter.since)
-      if (Number.isNaN(t)) throw new ServiceError('since must be an ISO-8601 timestamp')
-      where.push(sql`j.queued_at >= ${new Date(t).toISOString()}`)
-    }
-    if (filter.running) where.push(sql`j.status in ('claimed', 'in_progress')`)
-    if (filter.failed) where.push(sql`j.conclusion in ('failure', 'timed_out', 'cancelled')`)
-    if (filter.runner) where.push(sql`r.name = ${filter.runner}`)
-    if (filter.q) {
-      const needle = `%${filter.q.trim().toLowerCase().replace(/[%_\\]/g, '\\$&')}%`
-      where.push(sql`(lower(j.name) like ${needle} escape '\\' or lower(j.repo) like ${needle} escape '\\' or lower(coalesce(r.name, '')) like ${needle} escape '\\')`)
-    }
+    const where = jobsWhere(filter)
+    const per = filter.per === undefined ? limitOf(filter.limit) : Math.min(Math.max(1, Math.floor(filter.per)), JOBS_PER_MAX)
+    const page = Math.max(1, Math.floor(filter.page ?? 1))
+    const offset = filter.per === undefined ? 0 : (page - 1) * per
     const rows = await db().all(sql`
       select j.* from jobs j left join runners r on r.id = j.runner_id
-      where ${sql.join(where, sql` and `)} order by j.queued_at desc, j.id desc limit ${limitOf(filter.limit)}`)
+      where ${where} order by j.queued_at desc, j.id desc limit ${per} offset ${offset}`)
     return rows.map(toJob).map(({ retries: _retries, ...job }) => job)
+  },
+
+  /** How many jobs match the same filter `listJobs` takes (paging ignored). */
+  async countJobs(filter: JobsFilter = {}): Promise<number> {
+    const [row] = await db().all<{ n: number | string }>(sql`select count(*) as n from jobs j left join runners r on r.id = j.runner_id where ${jobsWhere(filter)}`)
+    return Number(row?.n ?? 0)
   },
 
   async getJob(id: number): Promise<Job> {

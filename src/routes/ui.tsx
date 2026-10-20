@@ -3,11 +3,12 @@ import { html } from '@elysiajs/html'
 import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
 import { SETTING_DEFAULTS } from '../lib/settings'
-import { STATUS_BY_CODE } from '../lib/json'
-import { ServiceError, type JobStatus } from '../lib/types'
+import { STATUS_BY_CODE, validationMessage } from '../lib/json'
+import { JOBS_PER_PAGE, ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
-import { OverviewLive, OverviewPage } from '../views/overview'
-import { JOB_STATUSES, JobsPage, JobsTable, type JobsFilter } from '../views/jobs'
+import { OverviewLive, OverviewPage, RecentJobs } from '../views/overview'
+import { JOB_STATUSES, JobsLive, JobsPage, type JobsFilter } from '../views/jobs'
+import { JOBS_SCOPE, RECENT_SCOPE, type JobsScope, type JobsView } from '../views/jobs-table'
 import { JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
 import { RunnerTypesPage, SlotsMatrix } from '../views/runner-types'
@@ -68,6 +69,48 @@ const serveStatic = async (rel: string): Promise<Response> => {
 
 const partialQuery = t.Object({ partial: t.Optional(t.String()) })
 
+/** Query schema of a jobs list under `prefix` (`''` on `/jobs`, `j_` on the Overview). Unknown values are ignored by `jobsView`. */
+const jobsQuerySchema = (prefix: string) =>
+  Object.fromEntries(
+    Object.entries({
+      repo: t.Optional(t.String({ maxLength: 200 })),
+      status: t.Optional(t.String({ maxLength: 20 })),
+      q: t.Optional(t.String({ maxLength: 200 })),
+      since: t.Optional(t.String({ maxLength: 40 })),
+      running: t.Optional(t.String({ maxLength: 1 })),
+      failed: t.Optional(t.String({ maxLength: 1 })),
+      runner: t.Optional(t.String({ maxLength: 200 })),
+      page: t.Optional(t.String({ maxLength: 6 })),
+      per: t.Optional(t.String({ maxLength: 3 })),
+    }).map(([k, v]) => [prefix + k, v]),
+  )
+
+/** Reads the filter and paging of one list from the query and fetches its page and total. */
+const jobsView = async (query: Record<string, string | undefined>, scope: JobsScope): Promise<JobsView> => {
+  const get = (k: string) => query[scope.prefix + k]
+  const status = JOB_STATUSES.includes(get('status') as JobStatus) ? (get('status') as JobStatus) : undefined
+  const sinceRaw = get('since')
+  const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(Date.parse(sinceRaw)).toISOString() : undefined
+  const filter: JobsFilter = {
+    repo: get('repo') || undefined,
+    status,
+    q: get('q')?.trim() || undefined,
+    since,
+    running: get('running') === '1' || undefined,
+    failed: get('failed') === '1' || undefined,
+    runner: get('runner')?.trim() || undefined,
+  }
+  const perRaw = Number(get('per'))
+  const per = (JOBS_PER_PAGE as readonly number[]).includes(perRaw) ? perRaw : scope.per
+  const pageRaw = Number(get('page'))
+  const total = await service.countJobs(filter)
+  // A page past the end lands on the last one, so a stale link still shows jobs.
+  const page = Math.min(Math.max(1, Number.isInteger(pageRaw) ? pageRaw : 1), Math.max(1, Math.ceil(total / per)))
+  const [jobs, runners] = await Promise.all([service.listJobs({ ...filter, page, per }), service.listRunners({ limit: 1000 })])
+  const runnerNames = Object.fromEntries(runners.map((r) => [r.id, r.name]))
+  return { jobs, filter, page, per, total, runnerNames }
+}
+
 export const ui = new Elysia({ name: 'ui' })
   .use(html())
   // A facade error on a page (unknown job id) becomes a plain status with the reason instead of a 500.
@@ -78,7 +121,7 @@ export const ui = new Elysia({ name: 'ui' })
     }
     if (code === 'VALIDATION') {
       set.status = 400
-      return error.message.split('\n')[0] ?? 'invalid request'
+      return validationMessage(error)
     }
   })
   .get('/public/*', ({ params }) => serveStatic(params['*']))
@@ -88,63 +131,41 @@ export const ui = new Elysia({ name: 'ui' })
   .get(
     '/',
     async ({ query }) => {
+      if (query.partial === 'jobs') {
+        const [view, repos] = await Promise.all([jobsView(query, RECENT_SCOPE), service.listRepos()])
+        return <RecentJobs {...view} repos={repos} />
+      }
       const [hosts, slots, runners] = await Promise.all([service.listHosts(), service.listSlots(), service.listRunners({ limit: 200 })])
       const data = { hosts, slots, runners }
       if (query.partial) return <OverviewLive {...data} />
-      return page('overview', 'Overview', <OverviewPage {...data} />)
+      const [view, repos] = await Promise.all([jobsView(query, RECENT_SCOPE), service.listRepos()])
+      return page('overview', 'Overview', <OverviewPage {...data} recent={{ ...view, repos }} />)
     },
-    { query: partialQuery },
+    { query: t.Object({ partial: t.Optional(t.String()), ...jobsQuerySchema(RECENT_SCOPE.prefix) }) },
   )
 
   .get(
     '/jobs',
     async ({ query }) => {
-      const status = JOB_STATUSES.includes(query.status as JobStatus) ? (query.status as JobStatus) : undefined
-      const since = query.since && !Number.isNaN(Date.parse(query.since)) ? new Date(Date.parse(query.since)).toISOString() : undefined
-      const filter: JobsFilter = {
-        repo: query.repo || undefined,
-        status,
-        q: query.q?.trim() || undefined,
-        since,
-        running: query.running === '1' || undefined,
-        failed: query.failed === '1' || undefined,
-        runner: query.runner?.trim() || undefined,
-      }
-      const [jobs, runners, repos] = await Promise.all([
-        service.listJobs({ ...filter, limit: 200 }),
-        service.listRunners({ limit: 1000 }),
-        query.partial ? Promise.resolve([]) : service.listRepos(),
-      ])
-      const runnerNames = Object.fromEntries(runners.map((r) => [r.id, r.name]))
-      if (query.partial) return <JobsTable jobs={jobs} filter={filter} runnerNames={runnerNames} />
-      return page('jobs', 'Jobs', <JobsPage jobs={jobs} repos={repos} filter={filter} runnerNames={runnerNames} />)
+      const view = await jobsView(query, JOBS_SCOPE)
+      if (query.partial) return <JobsLive {...view} />
+      const repos = await service.listRepos()
+      return page('jobs', 'Jobs', <JobsPage {...view} repos={repos} />)
     },
-    {
-      query: t.Object({
-        partial: t.Optional(t.String()),
-        repo: t.Optional(t.String({ maxLength: 200 })),
-        status: t.Optional(t.String({ maxLength: 20 })),
-        q: t.Optional(t.String({ maxLength: 200 })),
-        since: t.Optional(t.String({ maxLength: 40 })),
-        running: t.Optional(t.String({ maxLength: 1 })),
-        failed: t.Optional(t.String({ maxLength: 1 })),
-        runner: t.Optional(t.String({ maxLength: 200 })),
-        job: t.Optional(t.String()),
-      }),
-    },
+    { query: t.Object({ partial: t.Optional(t.String()), job: t.Optional(t.String()), ...jobsQuerySchema(JOBS_SCOPE.prefix) }) },
   )
 
   .get(
     '/jobs/:id',
-    async ({ params }) => {
+    async ({ params, query }) => {
       const job = await service.getJob(params.id)
       const [runner, log] = await Promise.all([
         job.runnerId === null ? Promise.resolve(null) : service.getRunner(job.runnerId).catch(() => null),
         service.getJobLog(params.id, { tail: LOG_DOM_LINES }),
       ])
-      return page('jobs', job.name, <JobPage job={job} runner={runner} log={log} />)
+      return page('jobs', job.name, <JobPage job={job} runner={runner} log={log} raw={query.raw === '1'} />)
     },
-    { params: t.Object({ id: t.Integer({ minimum: 1 }) }) },
+    { params: t.Object({ id: t.Integer({ minimum: 1 }) }), query: t.Object({ raw: t.Optional(t.String({ maxLength: 1 })) }) },
   )
 
   .get('/repos', async () => {

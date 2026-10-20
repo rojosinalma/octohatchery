@@ -43,6 +43,13 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   asks for confirmation, then calls `DELETE /api/runners/:id`.
 - Empty state: "No hosts yet". A node registers itself on boot, so the first host appears as
   soon as one instance starts with access to a Docker socket.
+- Recent jobs: the Jobs table in a card, newest first, ten rows per page, with the same toolbar
+  (status, repo, search, quick filters) and a pager. Its query params carry a `j_` prefix
+  (`?j_status=…&j_repo=…&j_q=…&j_page=2`) so they never collide with the rest of the page. The
+  header shows how many jobs match the filter and links to the Jobs page with the same filters
+  ("All jobs →"). "Show all" switches to 50 rows per page and keeps paging: the dashboard never
+  renders one unbounded list. The card refreshes on `job` and `runner` events, but not while you
+  are typing in its search box.
 
 ### Jobs
 
@@ -56,6 +63,10 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   A pressed quick filter clears itself on the next click. Unknown values are ignored. A runner
   filter (`?runner=<name>`, reached from the Overview or a job page) has no select of its own: it
   shows as a chip in the toolbar with a × that clears it and keeps the other filters.
+- Paging: 25 rows per page by default; `?page=` and `?per=` (10, 25, 50 or 100) sit in the URL
+  with the filters. Under the table a pager (`« 1 2 … 9 »`, the range in view, a per-page select).
+  A changed filter starts over at page 1; a page past the end shows the last one. The JSON API
+  takes the same `page` and `per` and answers with `total`, `page` and `per`.
 - Finished jobs show their conclusion (`success`, `failure`, …) instead of `completed`; a
   failed row is tinted.
 - Duration is computed from `startedAt` to `completedAt` (or now).
@@ -66,11 +77,20 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Header: job name, repo (links to the filtered Jobs list), status or conclusion badge, "Run on
   GitHub". Facts: runner name and state, host and type, labels, queued / started / finished with
   the duration.
-- Log: a `<pre>` with one line per row and the time of day in the gutter (the full timestamp is on
-  the element). While the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>`
-  and appends each `line` batch; at most 5000 lines stay in the page, older ones drop off the top.
+- Log: one line per row and the time of day in the gutter (the full timestamp is on the element).
+  While the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>` and appends
+  each `line` batch; at most 5000 lines stay in the page, older ones drop off the top.
   **Follow** keeps the newest lines in view and switches itself off when you scroll up (and on
-  again at the bottom). **Copy** puts every line in view on the clipboard and reports the count.
+  again at the bottom). **Copy** puts every line in view on the clipboard, group markers included,
+  and reports the count.
+- Groups: `##[group]<title>` … `##[endgroup]` blocks (and `##[section]Starting:` /
+  `##[section]Finishing:` step markers when a log has them) fold into collapsible sections whose
+  header shows the title, the number of lines and the time the block took. Marker lines are hidden
+  in the grouped view; lines outside a group stay flat. Groups are one level deep: a new group
+  closes the one before it. `##[error]` lines are red and open their group by default,
+  `##[warning]` lines are orange. While the job runs, the group receiving lines stays open and
+  earlier groups fold as they close. **Expand all** / **Collapse all** act on every group;
+  **Raw** (`?raw=1`) shows every line as stored, **Grouped** folds them again.
 - Source badge: `runner (live)` while the runner prints, `GitHub` once the job finished and GitHub's
   log replaced the live lines (the page reloads the view and says so in a toast), `runner` when
   GitHub did not hand out the log within two minutes, `none` when nothing was collected. A
@@ -204,12 +224,14 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
 `app.js` opens an `EventSource` on `/events/stream`. The server sends `runner`, `job`, `slot`,
 `event` and `image` events whenever a row changes. A page that has a live block (`[data-live]`) listens
 to the events named in that attribute and, 300 ms after the last one, fetches the current URL with
-`?partial=1`. In partial mode a page returns only its live block:
+`?partial=1`. A page with more than one live block names each with `data-partial` and fetches
+`?partial=<name>` for the block the event concerns. In partial mode a page returns only that block:
 
 | Page | `?partial=1` returns | Refreshed on |
 |---|---|---|
 | `/` | `#overview-live` (hosts, slots, runners) | `runner`, `slot` |
-| `/jobs` | `#jobs-live` (the filtered table) | `job` |
+| `/` (`?partial=jobs`) | `#recent-jobs` (the Recent jobs card) | `job`, `runner` |
+| `/jobs` | `#jobs-live` (the filtered table and its pager) | `job` |
 | `/templates` (`?partial=slots`) | `#slots-live` (the slots matrix) | `runner`, `slot` |
 | `/templates/images` | `#images-live` (the image matrix) | `image` |
 | `/events` | `#events-live` | `event` |

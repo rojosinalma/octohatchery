@@ -1,7 +1,9 @@
 import type { Job, JobLog, Runner } from '../lib/types'
+import { formatDuration, groupCount, groupDurationMs, groupLines, groupOpen, plainText, type GroupedLine, type LogGroup } from './log-groups'
 import { Icon, JobBadge, RelTime, RunnerBadge, e } from './parts'
 
-export type JobData = { job: Job; runner: Runner | null; log: JobLog }
+export type JobData = { job: Job; runner: Runner | null; log: JobLog; raw?: boolean }
+export { plainText }
 
 /** Lines the page renders and the browser keeps; older ones scroll out of the DOM while live. */
 export const LOG_DOM_LINES = 5000
@@ -41,26 +43,57 @@ export const SourceBadge = ({ log }: { log: JobLog }) => {
   )
 }
 
-/** Terminal colour sequences carry nothing for the reader; GitHub strips them in its viewer too. */
-export const plainText = (line: string) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+const LogLine = ({ line, tone, marker }: GroupedLine) => (
+  <span class="log-line" data-seq={String(line.seq)} data-at={line.at} data-tone={tone} data-marker={marker ? '' : undefined} hidden={marker}>
+    <span class="log-time" safe>
+      {clock(line.at)}
+    </span>
+    <span class="log-text" safe>
+      {plainText(line.line)}
+    </span>
+    {'\n'}
+  </span>
+)
 
+/** One collapsible group: the summary carries title, line count and span; the marker lines stay in the DOM, hidden, so Copy keeps them. */
+const LogGroupBlock = ({ group }: { group: LogGroup }) => {
+  const first = group.lines[0]!
+  return (
+    <details class="log-group" open={groupOpen(group)} data-tone={group.tone} data-closed={group.closed ? '' : undefined} data-first={first.line.at} data-count={String(groupCount(group))}>
+      <summary class="log-summary">
+        <span class="log-time" safe>
+          {clock(first.line.at)}
+        </span>
+        <span class="log-chevron" aria-hidden="true"></span>
+        <span class="log-group-title" safe>
+          {group.title}
+        </span>
+        <span class="log-group-meta t-muted">{e(`${groupCount(group)} lines · ${formatDuration(groupDurationMs(group))}`)}</span>
+      </summary>
+      {group.lines.map((l) => (
+        <LogLine {...l} />
+      ))}
+    </details>
+  )
+}
+
+/** Flat view (`?raw=1`): every line as stored, markers included, tones kept. */
 export const LogLines = ({ lines }: { lines: JobLog['lines'] }) => (
   <>
     {lines.map((l) => (
-      <span class="log-line" data-seq={String(l.seq)} data-at={l.at}>
-        <span class="log-time" safe>
-          {clock(l.at)}
-        </span>
-        <span class="log-text" safe>
-          {plainText(l.line)}
-        </span>
-        {'\n'}
-      </span>
+      <LogLine line={l} />
     ))}
   </>
 )
 
-export const JobPage = ({ job, runner, log }: JobData) => {
+/** Grouped view: `##[group]` … `##[endgroup]` blocks fold into `<details>`, everything else stays flat. */
+export const LogBlocks = ({ lines }: { lines: JobLog['lines'] }) => (
+  <>
+    {groupLines(lines).map((b) => (b.kind === 'group' ? <LogGroupBlock group={b} /> : <LogLine line={b.line} tone={b.tone} marker={b.marker} />))}
+  </>
+)
+
+export const JobPage = ({ job, runner, log, raw = false }: JobData) => {
   const shown = log.lines.slice(-LOG_DOM_LINES)
   const lastSeq = shown.length ? shown[shown.length - 1]!.seq : 0
   const live = !log.complete
@@ -142,7 +175,7 @@ export const JobPage = ({ job, runner, log }: JobData) => {
         </dl>
       </section>
 
-      <section class="t-section" id="log" data-job-id={String(job.id)} data-last-seq={String(lastSeq)} data-live={live ? 'log' : undefined} data-complete={log.complete ? 'true' : 'false'}>
+      <section class="t-section" id="log" data-job-id={String(job.id)} data-last-seq={String(lastSeq)} data-live={live ? 'log' : undefined} data-complete={log.complete ? 'true' : 'false'} data-raw={raw ? 'true' : undefined}>
         <div class="t-toolbar log-toolbar" role="toolbar" aria-label="Log tools">
           <h2 class="t-section-title">Log</h2>
           <SourceBadge log={log} />
@@ -156,9 +189,28 @@ export const JobPage = ({ job, runner, log }: JobData) => {
           <button class="t-btn" data-size="sm" data-action="log-follow" aria-pressed={live ? 'true' : 'false'} disabled={!live} data-tip={live ? 'Keep the newest lines in view' : 'The log is complete'}>
             <Icon id="bi-arrow-down-circle" /> Follow
           </button>
-          <button class="t-btn" data-size="sm" data-action="log-copy" data-tip="Copy every line in view to the clipboard">
+          <button class="t-btn" data-size="sm" data-action="log-copy" data-tip="Copy every line in view to the clipboard, group markers included">
             <Icon id="bi-copy" /> Copy
           </button>
+          {raw ? null : (
+            <div class="t-btn-group" role="group" aria-label="Groups">
+              <button class="t-btn" data-size="sm" data-action="log-expand" data-tip="Open every group">
+                <Icon id="bi-arrows-expand" /> Expand all
+              </button>
+              <button class="t-btn" data-size="sm" data-action="log-collapse" data-tip="Close every group">
+                <Icon id="bi-arrows-collapse" /> Collapse all
+              </button>
+            </div>
+          )}
+          {raw ? (
+            <a class="t-btn" data-size="sm" data-variant="ghost" href={`/jobs/${job.id}`} data-tip="Fold the groups again">
+              <Icon id="bi-list-nested" /> Grouped
+            </a>
+          ) : (
+            <a class="t-btn" data-size="sm" data-variant="ghost" href={`/jobs/${job.id}?raw=1`} data-tip="Every line as stored, no groups">
+              <Icon id="bi-text-left" /> Raw
+            </a>
+          )}
         </div>
         <div class="t-empty log-empty" id="log-empty" hidden={shown.length > 0}>
           <span class="t-icon t-empty-icon">
@@ -167,9 +219,9 @@ export const JobPage = ({ job, runner, log }: JobData) => {
           <h3 class="t-empty-title">{log.complete ? 'No log stored for this job' : 'Waiting for the runner to start…'}</h3>
           <p>{log.complete ? 'The job finished without a runner on this cluster, or its log was purged.' : 'Lines appear here as soon as the runner prints its first step.'}</p>
         </div>
-        <pre class="t-code-pre log-view" id="log-view" tabindex="0" aria-label="Job log" aria-live="off" hidden={shown.length === 0}>
-          <LogLines lines={shown} />
-        </pre>
+        <div class="t-code-pre log-view" id="log-view" tabindex="0" aria-label="Job log" aria-live="off" hidden={shown.length === 0}>
+          {raw ? <LogLines lines={shown} /> : <LogBlocks lines={shown} />}
+        </div>
       </section>
     </>
   )
