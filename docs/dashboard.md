@@ -47,8 +47,8 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   (status, repo, search, quick filters) and a pager. Its query params carry a `j_` prefix
   (`?j_status=…&j_repo=…&j_q=…&j_page=2`) so they never collide with the rest of the page. The
   header shows how many jobs match the filter and links to the Jobs page with the same filters
-  ("All jobs →"). "Show all" switches to 50 rows per page and keeps paging: the dashboard never
-  renders one unbounded list. The card refreshes on `job` and `runner` events, but not while you
+  ("All jobs →"). A picker chooses how many to show: last 10 (default), 20, 50 or all; "all" still
+  pages in blocks of 100, so the dashboard never renders one unbounded list. The card refreshes on `job` and `runner` events, but not while you
   are typing in its search box.
 
 ### Jobs

@@ -1,4 +1,4 @@
-import { JOBS_PER_PAGE, type Job, type JobStatus, type Repo } from '../lib/types'
+import { JOBS_PER_MAX, JOBS_PER_PAGE, type Job, type JobStatus, type Repo } from '../lib/types'
 import type { JobsFilter } from '../lib/service'
 import { Empty, Icon, JobBadge, RelTime } from './parts'
 
@@ -14,8 +14,8 @@ export type RunnerNames = Record<number, string>
 export type JobsScope = { base: string; prefix: string; id: string; per: number }
 export const JOBS_SCOPE: JobsScope = { base: '/jobs', prefix: '', id: 'jobs', per: 25 }
 export const RECENT_SCOPE: JobsScope = { base: '/', prefix: 'j_', id: 'recent', per: 10 }
-/** "Show all" on the Overview switches to this page size and keeps paging: never one unbounded list. */
-export const SHOW_ALL_PER = 50
+/** Overview picker sizes; `all` pages through everything at `JOBS_PER_MAX` rows, never one unbounded list. */
+export const RECENT_PER_OPTIONS = [10, 20, 50] as const
 
 /** One rendered list: the rows of this page, the filter, the position and the total the filter matches. */
 export type JobsView = { jobs: Job[]; filter: JobsFilter; page: number; per: number; total: number; runnerNames: RunnerNames }
@@ -256,14 +256,14 @@ export const pageWindow = (page: number, pages: number): (number | null)[] => {
 }
 
 /**
- * `« 1 2 … 9 »` plus the range in view. `showAll` (Overview) offers "Show all", which switches to `SHOW_ALL_PER`
+ * `« 1 2 … 9 »` plus the range in view. `showAll` (Overview) offers a picker (Last 10/20/50, All = `JOBS_PER_MAX`
  * rows per page and keeps paging; `perSelect` (`/jobs`) offers the page sizes as a select. Nothing renders when
  * every job fits on one page of the default size.
  */
 export const JobsPager = ({ scope, view, showAll, perSelect }: { scope: JobsScope; view: JobsView; showAll?: boolean; perSelect?: boolean }) => {
   const { filter, page, per, total } = view
   const pages = Math.max(1, Math.ceil(total / per))
-  if (total <= scope.per && per === scope.per && !perSelect) return null
+  if (total <= scope.per && per === scope.per && !perSelect && !showAll) return null
   const link = (n: number) => href(scope, filter, { page: n, per })
   const first = total === 0 ? 0 : (page - 1) * per + 1
   const last = Math.min(total, page * per)
@@ -311,10 +311,17 @@ export const JobsPager = ({ scope, view, showAll, perSelect }: { scope: JobsScop
         </ul>
       </nav>
       <span class="t-muted t-small jobs-pager-range">{total === 0 ? 'no jobs' : `${first}–${last} of ${total}`}</span>
-      {showAll && per < SHOW_ALL_PER && total > per ? (
-        <a class="t-btn" data-size="xs" data-variant="ghost" href={href(scope, filter, { page: 1, per: SHOW_ALL_PER })} data-tip={`${SHOW_ALL_PER} per page, still paged`}>
-          Show all
-        </a>
+      {showAll ? (
+        <select class="t-select" data-size="xs" data-width="auto" aria-label="Jobs shown" data-nav={`${scope.prefix}per`} data-nav-reset={`${scope.prefix}page`} id={`${scope.id}-per`}>
+          {RECENT_PER_OPTIONS.map((n) => (
+            <option value={String(n)} selected={per === n}>
+              {`Last ${n}`}
+            </option>
+          ))}
+          <option value="all" selected={per === JOBS_PER_MAX}>
+            All
+          </option>
+        </select>
       ) : null}
       {perSelect ? (
         <select class="t-select" data-size="xs" data-width="auto" aria-label="Jobs per page" data-nav={`${scope.prefix}per`} data-nav-reset={`${scope.prefix}page`} id={`${scope.id}-per`}>

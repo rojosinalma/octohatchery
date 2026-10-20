@@ -134,9 +134,9 @@ export const RunnersTable = ({ runners }: { runners: Runner[] }) => {
   const live = runners.filter((r) => LIVE_STATES.has(r.state))
   if (live.length === 0) {
     return (
-      <Empty icon="bi-inbox" title="No runners right now" text="A runner starts when a queued job matches a template with a free slot. Spawn one by hand from Templates.">
-        <a class="t-btn" data-variant="primary" href="/templates">
-          Templates
+      <Empty icon="bi-inbox" title="No runners right now" text="A runner starts when a queued job matches a template with a free slot." size="sm">
+        <a class="t-btn" data-size="sm" data-variant="ghost" href="/templates">
+          Spawn one from Templates
         </a>
       </Empty>
     )

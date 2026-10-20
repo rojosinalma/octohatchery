@@ -16,7 +16,7 @@ export type HostSpecs = Pick<Host, 'cpus' | 'memoryMb' | 'os' | 'dockerVersion' 
 /** Docker access a runner gets: none, the host's daemon over its socket, or a private daemon sidecar per runner. */
 export type RunnerDocker = 'none' | 'socket' | 'dind'
 /** Page sizes `listJobs` and `GET /api/jobs` accept for `per`; anything else is rejected at the boundary. */
-export const JOBS_PER_PAGE = [10, 25, 50, 100] as const
+export const JOBS_PER_PAGE = [10, 20, 25, 50, 100] as const
 export const JOBS_PER_MAX = 100
 
 export const RUNNER_DOCKER_OPTIONS: readonly RunnerDocker[] = ['none', 'socket', 'dind']
