@@ -64,22 +64,50 @@
   display: inline-flex;
 }
 
-/* Adopt form: one line is reserved under the input for the drawn feedback, so nothing shifts when it appears. */
-.adopt-form {
-  align-items: flex-start;
-  padding-bottom: 1.25rem;
+/* Adopt dialog: the filter takes the row, the list scrolls inside the dialog and the badges stay on one line. */
+.adopt-search-field {
+  flex: 1 1 12rem;
+  margin: 0;
 }
 
-.adopt-form .t-field {
-  position: relative;
+.adopt-list {
+  max-height: 50vh;
+  overflow-y: auto;
 }
 
-.adopt-form .t-field .t-feedback {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: var(--t-space-1);
-  white-space: nowrap;
+.adopt-list:empty {
+  display: none;
+}
+
+.adopt-list .t-list-trail {
+  flex-wrap: nowrap;
+}
+
+/* The GitHub banner sits under the navbar, above the page header. */
+.page-banner {
+  margin-bottom: var(--t-space-3);
+}
+
+/* Settings → GitHub: the permission table needs more room than the settings column gives; the setting rows keep theirs. */
+.t-settings {
+  max-width: none;
+}
+
+.t-settings > .t-section:not(#github) {
+  max-width: 560px;
+}
+
+.t-settings > #github {
+  max-width: 1100px;
+}
+
+/* Settings → GitHub: a missing permission row reads as an error. */
+#github-permissions tr[data-tone="danger"] > td {
+  color: var(--t-danger);
+}
+
+#github-permissions tr[data-tone="danger"] > td:first-child {
+  font-weight: 600;
 }
 
 .brand-mark {
@@ -117,6 +145,11 @@
 /* The runs-on dialog shows one snippet per type; keep the code line readable. */
 #runs-on-dlg .t-code-pre {
   white-space: pre-wrap;
+}
+
+/* GitHub's error for a runs-on write, with its long URLs, stays inside the dialog. */
+.runs-on-error .t-alert-body {
+  overflow-wrap: anywhere;
 }
 
 /* Runner types: label chips in an input-like box; fixed badges first, the entry grows to fill the rest. */
@@ -245,4 +278,38 @@
 
 .log-empty {
   min-height: 12rem;
+}
+
+/* Runner type dialog: the three Docker options read as cards; the whole card is the click target. */
+.docker-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.docker-options > legend {
+  margin-bottom: var(--t-space-2);
+}
+
+.docker-option {
+  align-items: flex-start;
+  height: auto;
+  padding: var(--t-space-2) var(--t-space-3);
+  border: var(--t-border-w) solid var(--t-border);
+  border-radius: var(--t-radius-md);
+  cursor: pointer;
+}
+
+.docker-option:has(.t-check-input:checked) {
+  border-color: var(--t-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 30%, transparent);
+}
+
+.docker-option .t-check-desc {
+  display: block;
+  margin-top: var(--t-space-1);
+}
+
+.docker-options .t-hint {
+  margin-top: var(--t-space-2);
 }

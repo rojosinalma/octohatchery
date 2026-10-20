@@ -9,7 +9,11 @@ export const ReposTable = ({ repos, githubAuth }: Pick<ReposData, 'repos' | 'git
   if (adopted.length === 0) {
     return (
       <div id="repos-live">
-        <Empty icon="bi-github" title="No repos adopted" text="Adopt a repo above. OctoHatchery installs a webhook on it and takes its queued jobs from then on." />
+        <Empty icon="bi-github" title="No repos adopted" text="Pick a repo from the ones GitHub lets this node see. OctoHatchery takes its queued jobs from then on.">
+          <button class="t-btn" data-variant="primary" data-action="adopt-open">
+            <Icon id="bi-plus-lg" /> Adopt a repo
+          </button>
+        </Empty>
       </div>
     )
   }
@@ -50,7 +54,7 @@ export const ReposTable = ({ repos, githubAuth }: Pick<ReposData, 'repos' | 'git
               <td>
                 {githubAuth === 'app' ? (
                   <span class="t-badge" data-tone="success" data-tip="The GitHub App delivers workflow_job events for every repo it is installed on">
-                    via App
+                    GitHub App
                   </span>
                 ) : (
                   <span class="t-badge" data-tone={r.webhookId ? 'success' : 'warning'} data-tip={r.webhookId ? `Webhook #${r.webhookId}` : 'No webhook: jobs are found by polling only'}>
@@ -155,32 +159,65 @@ const RunsOnDialog = ({ types }: { types: RunnerType[] }) => (
   </dialog>
 )
 
+const AdoptDialog = () => (
+  <dialog class="t-dialog" id="adopt-dlg" data-size="lg" aria-labelledby="adopt-title">
+    <div class="t-dialog-header">
+      <h2 class="t-dialog-title" id="adopt-title">
+        <Icon id="bi-github" /> <span>Adopt a repo</span>
+      </h2>
+      <button class="t-dialog-close" aria-label="Close" data-dialog-close>
+        ×
+      </button>
+    </div>
+    <div class="t-dialog-body t-stack" data-gap="3">
+      <p class="t-muted t-small">
+        These are the repositories the GitHub App installation or the token can reach. One click adopts: OctoHatchery takes the repo's queued <code>self-hosted</code> jobs from then on
+        (and, with a token, installs a <code>workflow_job</code> webhook). Unadopting reverses it.
+      </p>
+      <div class="t-cluster adopt-filter" data-gap="2" data-align="center">
+        <div class="t-field adopt-search-field">
+          <label class="t-label t-visually-hidden" for="adopt-search">
+            Filter repositories
+          </label>
+          <input class="t-input" type="search" id="adopt-search" placeholder="Filter by name…" autocomplete="off" disabled />
+        </div>
+        <span class="t-small t-muted" id="adopt-count" aria-live="polite"></span>
+      </div>
+      <div id="adopt-state"></div>
+      <div class="t-list adopt-list" role="listbox" aria-label="Repositories" id="adopt-list"></div>
+      <p class="t-muted t-small" id="adopt-none" hidden>
+        No repository matches the filter.
+      </p>
+    </div>
+    <div class="t-dialog-footer">
+      <button class="t-btn" data-dialog-close>
+        Close
+      </button>
+    </div>
+  </dialog>
+)
+
 export const ReposPage = ({ repos, types, githubAuth }: ReposData) => (
   <>
     <header class="t-page-header">
       <h1 class="t-page-title">Repos</h1>
       <span class="t-page-lead">Adopted repos send their queued jobs here.</span>
-    </header>
-    <form class="t-toolbar page-toolbar adopt-form" id="adopt-form" data-action="adopt" aria-label="Adopt a repo" novalidate>
-      <div class="t-field">
-        <label class="t-label t-visually-hidden" for="adopt-name">
-          Repo (owner/name)
-        </label>
-        <input class="t-input" data-size="sm" data-width="auto" id="adopt-name" name="fullName" placeholder="owner/name" required pattern="[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+" autocomplete="off" />
-      </div>
-      <button class="t-btn" data-variant="primary" data-size="sm" type="submit">
-        <Icon id="bi-plus-lg" /> Adopt
-      </button>
-      <span class="t-help" data-tone="accent">
-        <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About adopting">
-          ?
+      <div class="t-page-actions">
+        <button class="t-btn" data-variant="primary" data-size="sm" data-action="adopt-open">
+          <Icon id="bi-plus-lg" /> Adopt a repo
         </button>
-        <div class="t-help-box" hidden>
-          <p>The GitHub App or token must have access to the repo. Adopting installs a webhook; unadopting removes it and ignores the repo's jobs.</p>
-        </div>
-      </span>
-    </form>
+        <span class="t-help" data-tone="accent">
+          <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About adopting">
+            ?
+          </button>
+          <div class="t-help-box" hidden>
+            <p>The list shows what the GitHub App or token can reach; a repo missing from it must be added to the App installation or the token first. Adopting installs a webhook (token mode); unadopting removes it and ignores the repo's jobs.</p>
+          </div>
+        </span>
+      </div>
+    </header>
     <ReposTable repos={repos} githubAuth={githubAuth} />
     <RunsOnDialog types={types} />
+    <AdoptDialog />
   </>
 )

@@ -6,12 +6,14 @@ import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
 import { github } from './github/auth'
+import { buildStatus, RUNS_ON_PERMISSIONS, unknownStatus, type GitHubStatus } from './github/permissions'
+import { githubMessage } from './github/rest'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { rewriteRunsOn, runsOnSnippet } from './runs-on'
 import { FINALISE_GRACE_MS } from './joblog'
 import { SETTING_DEFAULTS, settings } from './settings'
-import { materialise } from './spawn'
+import { materialise, removeRunnerContainers } from './spawn'
 import * as store from './store'
 import { isLeader } from './sweep'
 import { getLastWebhookAt } from './webhook'
@@ -20,6 +22,7 @@ import {
   type Actor,
   type ApplyRunsOnResult,
   type Event,
+  type GitHubRepoItem,
   type HealthSnapshot,
   type Host,
   type Job,
@@ -27,6 +30,7 @@ import {
   type JobStatus,
   type Repo,
   type RepoListItem,
+  RUNNER_DOCKER_OPTIONS,
   type Runner,
   type RunnerState,
   type RunnerType,
@@ -46,6 +50,43 @@ const MAX_LIMIT = 1000
 const LOG_PAGE_LIMIT = 5000
 const LOG_PAGE_MAX = 20_000
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
+/** GitHub answers (permissions, repository list) are reused this long; `recheckGitHub` drops them. */
+const GITHUB_CACHE_MS = 60_000
+/** `/health` must answer even when GitHub hangs: a check past this falls back to the last known status. */
+const GITHUB_CHECK_TIMEOUT_MS = 5_000
+
+type Cached<T> = { at: number; value: T }
+let statusCache: Cached<GitHubStatus> | undefined
+let statusInFlight: Promise<GitHubStatus> | undefined
+let repoListCache: Cached<GitHubRepoItem[]> | undefined
+
+/** Tests only: forget cached GitHub answers between worlds. */
+export function resetGitHubCaches(): void {
+  statusCache = undefined
+  statusInFlight = undefined
+  repoListCache = undefined
+}
+
+function webhookUrl(): string | undefined {
+  const cfg = config()
+  return cfg.publicUrl ? `${cfg.publicUrl}/webhooks/github` : undefined
+}
+
+/** Asks GitHub once; never throws: an unreachable GitHub becomes a status with `error` and every row unknown. */
+async function checkGitHub(): Promise<GitHubStatus> {
+  const gh = github()
+  if (gh.kind === 'none') return unknownStatus('none', undefined, webhookUrl())
+  try {
+    const probeRepo = (await store.adoptedRepos())[0]?.fullName
+    const report = await gh.permissions(probeRepo)
+    const status = buildStatus({ ...report, source: gh.kind }, webhookUrl())
+    if (status.missing.length) logger.warn(`github permissions missing: ${status.missing.join(', ')}`)
+    return status
+  } catch (err) {
+    logger.warn('github permission check failed', githubMessage(err))
+    return unknownStatus(gh.kind, githubMessage(err), webhookUrl())
+  }
+}
 
 function limitOf(n: number | undefined): number {
   return Math.min(Math.max(1, n ?? DEFAULT_LIMIT), MAX_LIMIT)
@@ -61,6 +102,7 @@ function validateRunnerType(input: Omit<RunnerType, 'id' | 'createdAt' | 'update
   for (const m of input.mounts) if (!MOUNT_RE.test(m)) throw new ServiceError(`mount "${m}" must be "src:/dst[:ro]"`)
   for (const k of Object.keys(input.env)) if (!ENV_NAME_RE.test(k)) throw new ServiceError(`env name "${k}" is not valid`)
   for (const k of input.secretEnv) if (!ENV_NAME_RE.test(k)) throw new ServiceError(`secret env name "${k}" is not valid`)
+  if (!RUNNER_DOCKER_OPTIONS.includes(input.docker)) throw new ServiceError(`docker must be one of ${RUNNER_DOCKER_OPTIONS.join(', ')}`)
 }
 
 async function requireHost(name: string): Promise<Host> {
@@ -79,6 +121,16 @@ async function requireJob(id: number): Promise<store.JobRow> {
   const job = await store.jobById(id)
   if (!job) throw new ServiceError(`job ${id} is unknown`, 'not_found')
   return job
+}
+
+/** Refuses a write to GitHub when the credentials definitely lack what the mode needs; unknown grants pass. */
+async function requireGitHubPermissions(mode: 'pr' | 'commit'): Promise<void> {
+  const status = await service.githubStatus()
+  const needed = RUNS_ON_PERMISSIONS[mode]
+  const missing = status.permissions.filter((p) => needed.includes(p.key) && p.ok === false)
+  if (!missing.length) return
+  const where = status.permissionsUrl ? ` Grant them at ${status.permissionsUrl}${status.installUrl ? ` and accept the change at ${status.installUrl}` : ''}.` : ''
+  throw new ServiceError(`GitHub access lacks ${missing.map((p) => `${p.key}:${p.level}`).join(', ')}, needed for ${mode === 'pr' ? 'a pull request' : 'a commit'}.${where}`, 'invalid')
 }
 
 /** No more lines can arrive: the final log is stored, or the job finished and its runner is gone past the finalise window. */
@@ -111,15 +163,15 @@ export const service = {
     if (await store.hostByName(input.name)) throw new ServiceError(`"${input.name}" is a host name`, 'conflict')
     const now = store.now()
     const [row] = await db().all(sql`
-      insert into runner_types (name, description, labels, image, cpus, memory_mb, mounts, env, secret_env, created_at, updated_at)
+      insert into runner_types (name, description, labels, image, cpus, memory_mb, mounts, env, secret_env, docker, created_at, updated_at)
       values (${input.name}, ${input.description}, ${JSON.stringify(input.labels)}, ${input.image}, ${input.cpus}, ${input.memoryMb},
-        ${JSON.stringify(input.mounts)}, ${JSON.stringify(input.env)}, ${JSON.stringify(input.secretEnv)}, ${now}, ${now})
+        ${JSON.stringify(input.mounts)}, ${JSON.stringify(input.env)}, ${JSON.stringify(input.secretEnv)}, ${input.docker}, ${now}, ${now})
       on conflict (name) do update set description = excluded.description, labels = excluded.labels, image = excluded.image,
         cpus = excluded.cpus, memory_mb = excluded.memory_mb, mounts = excluded.mounts, env = excluded.env,
-        secret_env = excluded.secret_env, updated_at = excluded.updated_at
+        secret_env = excluded.secret_env, docker = excluded.docker, updated_at = excluded.updated_at
       returning *`)
     const type = toRunnerType(row!)
-    await recordEvent(actor, 'runner_type.upsert', type.name, { image: type.image, cpus: type.cpus, memoryMb: type.memoryMb })
+    await recordEvent(actor, 'runner_type.upsert', type.name, { image: type.image, cpus: type.cpus, memoryMb: type.memoryMb, docker: type.docker })
     return type
   },
 
@@ -155,6 +207,54 @@ export const service = {
   /** Which GitHub authentication this node runs with; the dashboard uses it to explain who delivers webhooks. */
   githubAuthKind(): 'app' | 'pat' | 'none' {
     return github().kind
+  },
+
+  /**
+   * Granted versus required GitHub permissions, cached for 60 s and shared by the Settings tab, the banner and
+   * `/health`. One check runs at a time; a check slower than the timeout yields the last known status (or unknown).
+   */
+  async githubStatus(): Promise<GitHubStatus> {
+    if (statusCache && Date.now() - statusCache.at < GITHUB_CACHE_MS) return statusCache.value
+    statusInFlight ??= checkGitHub().then((value) => {
+      statusCache = { at: Date.now(), value }
+      statusInFlight = undefined
+      return value
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<GitHubStatus>((resolve) => {
+      timer = setTimeout(() => resolve(statusCache?.value ?? unknownStatus(github().kind, 'GitHub did not answer in time', webhookUrl())), GITHUB_CHECK_TIMEOUT_MS)
+    })
+    return Promise.race([statusInFlight, timeout]).finally(() => clearTimeout(timer))
+  },
+
+  /** Drops the cached GitHub status and repository list and checks again now. */
+  async recheckGitHub(actor: Actor): Promise<GitHubStatus> {
+    statusCache = undefined
+    repoListCache = undefined
+    const status = await service.githubStatus()
+    await recordEvent(actor, 'github.recheck', status.source, { ok: status.ok, missing: status.missing })
+    return status
+  },
+
+  /**
+   * Repositories the App installation or the token can reach (first 500), each flagged when already adopted here.
+   * Cached for 60 s; errors surface as `ServiceError` so the dialog can show GitHub's reason and the fix.
+   */
+  async listGitHubRepos(): Promise<GitHubRepoItem[]> {
+    const gh = github()
+    if (gh.kind === 'none') throw new ServiceError('GITHUB_AUTH=none: configure a GitHub App or token first', 'unavailable')
+    const adopted = new Set((await store.adoptedRepos()).map((r) => r.fullName))
+    if (repoListCache && Date.now() - repoListCache.at < GITHUB_CACHE_MS) return repoListCache.value.map((r) => ({ ...r, adopted: adopted.has(r.fullName) }))
+    let repos
+    try {
+      repos = await gh.listInstallationRepos()
+    } catch (err) {
+      const status = (err as { status?: number }).status
+      throw new ServiceError(`GitHub did not list the repositories: ${githubMessage(err)}`, status === 401 || status === 403 ? 'invalid' : 'unavailable')
+    }
+    const items = repos.map((r) => ({ ...r, adopted: adopted.has(r.fullName) })).sort((a, b) => a.fullName.localeCompare(b.fullName))
+    repoListCache = { at: Date.now(), value: items }
+    return items
   },
 
   /**
@@ -230,37 +330,62 @@ export const service = {
 
     const repo = await store.repoByName(input.fullName)
     if (!repo?.adopted) throw new ServiceError(`repository "${input.fullName}" is not adopted`, 'invalid')
+    await requireGitHubPermissions(input.mode)
     const gh = github()
     const info = await gh.getRepo(input.fullName)
     const files = input.workflows?.length ? input.workflows : await gh.listWorkflowFiles(input.fullName, info.defaultBranch)
     if (!files.length) return { ok: false, message: 'no workflow files found under .github/workflows', snippet, files: [] }
 
+    // Everything that writes to GitHub runs on a branch; any failure after the branch exists removes it again.
     const branch = input.mode === 'pr' ? `octohatchery/runs-on-${type.name}-${Date.now().toString(36)}` : info.defaultBranch
-    if (input.mode === 'pr') await gh.createBranch(input.fullName, branch, info.defaultBranch)
-    const changedFiles: string[] = []
-    let commitSha = ''
-    for (const path of files) {
-      const file = await gh.getFileContents(input.fullName, path, info.defaultBranch)
-      if (!file) continue
-      const { content, changed } = rewriteRunsOn(file.content, type.name, input.host)
-      if (!changed) continue
-      const res = await gh.putFile(input.fullName, { path, content, message: `ci: run on self-hosted ${type.name} runners`, sha: file.sha, branch })
-      commitSha = res.commitSha
-      changedFiles.push(path)
+    let branchCreated = false
+    const rollback = async (reason: string) => {
+      if (!branchCreated) return
+      logger.warn(`apply_runs_on ${input.fullName}: ${reason}; deleting branch ${branch}`)
+      await gh.deleteBranch(input.fullName, branch).catch((err) => logger.warn(`delete branch ${branch} failed`, githubMessage(err)))
+      branchCreated = false
     }
-    if (!changedFiles.length) return { ok: false, message: 'no runs-on values to change (only ubuntu-* and bare self-hosted are rewritten)', snippet, files: [] }
-    if (input.mode === 'commit') {
-      await recordEvent(actor, 'repo.runs_on.commit', input.fullName, { files: changedFiles, commitSha })
-      return { ok: true, message: `updated ${changedFiles.length} workflow(s) on ${branch}`, snippet, commitSha, files: changedFiles }
+    try {
+      if (input.mode === 'pr') {
+        await gh.createBranch(input.fullName, branch, info.defaultBranch)
+        branchCreated = true
+      }
+      const changedFiles: string[] = []
+      let commitSha = ''
+      let htmlUrl = ''
+      for (const path of files) {
+        const file = await gh.getFileContents(input.fullName, path, info.defaultBranch)
+        if (!file) continue
+        const { content, changed } = rewriteRunsOn(file.content, type.name, input.host)
+        if (!changed) continue
+        const res = await gh.putFile(input.fullName, { path, content, message: `ci: run on self-hosted ${type.name} runners`, sha: file.sha, branch })
+        commitSha = res.commitSha
+        htmlUrl = res.htmlUrl
+        changedFiles.push(path)
+      }
+      if (!changedFiles.length) {
+        await rollback('nothing to change')
+        return { ok: false, message: 'no runs-on values to change (only ubuntu-* and bare self-hosted are rewritten)', snippet, files: [] }
+      }
+      if (input.mode === 'commit') {
+        await recordEvent(actor, 'repo.runs_on.commit', input.fullName, { files: changedFiles, commitSha })
+        return { ok: true, message: `Committed ${commitSha.slice(0, 7)} to ${branch}: ${changedFiles.length} workflow(s) updated`, snippet, commitSha, htmlUrl, files: changedFiles }
+      }
+      const pr = await gh.openPullRequest(input.fullName, {
+        title: `Run workflows on self-hosted ${type.name} runners`,
+        body: `Switches \`runs-on\` to \`${snippet.replace('runs-on: ', '')}\` in: ${changedFiles.map((f) => `\`${f}\``).join(', ')}.`,
+        head: branch,
+        base: info.defaultBranch,
+      })
+      const seen = await gh.getPullRequest(input.fullName, pr.number)
+      if (!seen) throw new Error(`GitHub reported pull request #${pr.number} but does not return it`)
+      await recordEvent(actor, 'repo.runs_on.pr', input.fullName, { files: changedFiles, prUrl: seen.url })
+      return { ok: true, message: `Pull request #${pr.number} opened: ${changedFiles.length} workflow(s) updated`, snippet, prUrl: seen.url, files: changedFiles }
+    } catch (err) {
+      if (err instanceof ServiceError) throw err
+      await rollback(githubMessage(err))
+      throw new ServiceError(`GitHub refused the change on ${input.fullName}: ${githubMessage(err)}`, 'unavailable')
     }
-    const pr = await gh.openPullRequest(input.fullName, {
-      title: `Run workflows on self-hosted ${type.name} runners`,
-      body: `Switches \`runs-on\` to \`${snippet.replace('runs-on: ', '')}\` in: ${changedFiles.map((f) => `\`${f}\``).join(', ')}.`,
-      head: branch,
-      base: info.defaultBranch,
-    })
-    await recordEvent(actor, 'repo.runs_on.pr', input.fullName, { files: changedFiles, prUrl: pr.url })
-    return { ok: true, message: `opened a pull request touching ${changedFiles.length} workflow(s)`, snippet, prUrl: pr.url, files: changedFiles }
   },
 
   /**
@@ -340,7 +465,7 @@ export const service = {
     const runner = await store.runnerById(runnerId)
     if (!runner) throw new ServiceError(`runner ${runnerId} is unknown`, 'not_found')
     if (!store.ACTIVE_RUNNER_STATES.includes(runner.state)) throw new ServiceError(`runner ${runner.name} is already ${runner.state}`, 'conflict')
-    if (runner.containerId && runner.host === config().hostName) await backend().remove(runner.containerId)
+    if (runner.host === config().hostName) await removeRunnerContainers(runner)
     if (runner.githubRunnerId !== null && runner.repo) {
       await github()
         .deleteRunner(runner.repo, runner.githubRunnerId)
@@ -387,6 +512,7 @@ export const service = {
       .ping()
       .catch(() => false)
     const slots = dbOk ? await store.slotsView().catch(() => []) : []
+    const gh = await service.githubStatus()
     return {
       ok: dbOk && dockerOk,
       mode: cfg.mode,
@@ -399,6 +525,7 @@ export const service = {
       runnersBusy: dbOk ? await store.countRunners('busy').catch(() => 0) : 0,
       lastWebhookAt: getLastWebhookAt(),
       version: pkg.version,
+      github: { ok: gh.ok, source: gh.source, missing: gh.missing },
     }
   },
 }

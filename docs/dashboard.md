@@ -65,9 +65,14 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Repos
 
-- Adopt: `POST /api/repos/adopt {fullName}`. The GitHub App or token must have access to the repo.
-  An empty or malformed name is reported under the field; the browser's own bubble never shows.
-- Columns: repo, visibility, webhook state (`via App` when a GitHub App delivers the events;
+- Adopt a repo: a button that opens a dialog listing the repositories the GitHub App installation
+  or the token can reach (`GET /api/github/repos`, first 500, cached 60 s), with a filter box,
+  a private/public badge and an `adopted` badge on rows already served (disabled). One click calls
+  `POST /api/repos/adopt {fullName}`; nothing is typed by hand. When the list cannot be fetched the
+  dialog says why and what fixes it: no GitHub access configured → link to Settings → GitHub; GitHub
+  refused (401/403) → "Check GitHub permissions"; an App installed on no repositories → link to the
+  installation page to add some.
+- Columns: repo, visibility, webhook state (`GitHub App` when a GitHub App delivers the events;
   `active` or `polling` with a token), Jobs (how many job rows the repo has; links to the filtered
   Jobs screen), adopted since, actions.
 - Add webhook / Repair webhook: `POST /api/repos/webhook {fullName}` creates the `workflow_job`
@@ -76,14 +81,18 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - `runs-on`: opens a dialog with one snippet per runner type
   (`runs-on: [self-hosted, <type>]`), a copy button, and two actions that call
   `POST /api/repos/runs-on {fullName, mode, type}`: **Open a pull request** (`mode: pr`) and
-  **Commit to default branch** (`mode: commit`, confirmed as a dangerous action).
+  **Commit to default branch** (`mode: commit`, confirmed as a dangerous action). On success the
+  buttons give way to a result line ("Pull request opened" or "Committed <sha>") with a link to
+  the pull request or commit. On failure the dialog stays open and shows GitHub's exact message,
+  also as a toast; a missing permission names the GitHub page where to grant it.
 - Unadopt: confirmed, then `POST /api/repos/unadopt {fullName}`.
-- Empty state: "No repos adopted".
+- Empty state: "No repos adopted" with the Adopt button.
 
 ### Runner types
 
 - The table lists every type with its labels (`self-hosted` and the type name are always
-  added), image, caps, mount and env counts, and the names of secret environment variables.
+  added), image, caps, Docker access badge (`none`, `host socket`, `dind`), mount and env counts,
+  and the names of secret environment variables.
   Secret values are never shown or stored; they are read from the node's own environment when a
   runner starts.
 - The table shows Environment (count) before Mounts (count); hovering either lists the names.
@@ -91,7 +100,8 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   type. Labels are chips: Enter, comma or space adds one, × removes it; `self-hosted`, the type
   name and the host are shown first as fixed badges because every runner gets them anyway.
   Environment (one `KEY=value` per line) comes before Mounts (one `src:dst[:ro]` per line);
-  secret names are comma-separated.
+  secret names are comma-separated. Docker is three cards (None, Host socket, Docker-in-Docker),
+  each with its trade-off; see [runner-types.md](runner-types.md#docker-access).
 - Slots matrix: a number field per type × host. Leaving the field saves that one cell with
   `PUT /api/slots {host, type, count}`; a failed save reverts the field. The play button calls
   `POST /api/runners/spawn {type, host}` and is disabled for offline hosts.
@@ -123,6 +133,16 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
 - Appearance: skin and palette selects (alphabetical). The choice is stored as the settings
   `ui_skin`, `ui_palette` and `ui_mode`, so every browser that opens the dashboard gets the same
   look; localStorage only caches it to avoid a flash on load.
+- GitHub: the auth mode, the App (linked) with its installation, account and repository count,
+  the webhook URL, and a table of the permissions OctoHatchery needs — required level, granted
+  level, why, and what breaks without it; a missing one is a red row. Buttons: **Re-check**
+  (`POST /api/github/recheck`, drops the 60 s cache), **Edit permissions on GitHub** and
+  **Accept on the installation**. With `GITHUB_AUTH=none` the tab shows the `.env` lines for both
+  modes and links to [github-app.md](github-app.md). The same status is `GET /api/github/status`
+  and `github: {ok, source, missing}` in `GET /health`.
+- Banner: while a permission is missing or no GitHub source is configured, every page shows a
+  warning under the navbar naming the gap and linking to this tab. It is rendered from the cached
+  status, so an unreachable GitHub never blocks a page (and shows no banner).
 
 ## Live updates
 

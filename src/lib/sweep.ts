@@ -9,6 +9,7 @@ import { github } from './github/auth'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
+import { removeRunnerContainers } from './spawn'
 import { activeRunners, adoptedRepos, insertJobIfNew, updateRunner, upsertHost } from './store'
 import type { HostSpecs } from './types'
 
@@ -113,7 +114,7 @@ export async function removeStaleRunners(nowMs = Date.now()): Promise<number> {
   let removed = 0
   for (const r of await activeRunners()) {
     if (r.state !== 'idle' || r.createdAt >= cutoff) continue
-    if (r.containerId) await backend().remove(r.containerId).catch((err) => logger.warn(`remove ${r.containerId} failed`, err))
+    await removeRunnerContainers(r).catch((err) => logger.warn(`remove ${r.name} containers failed`, err))
     if (r.githubRunnerId !== null && r.repo) await github().deleteRunner(r.repo, r.githubRunnerId).catch((err) => logger.warn(`deregister ${r.name} failed`, err))
     await updateRunner(r.id, { state: 'removed', exitedAt: new Date(nowMs).toISOString() })
     await recordEvent('sweep', 'runner.stale', r.name, { idleMinutes: minutes })

@@ -1,0 +1,1 @@
+ALTER TABLE "runner_types" ADD COLUMN "docker" text DEFAULT 'none' NOT NULL;

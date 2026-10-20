@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { PassThrough } from 'node:stream'
 import { config } from '../config'
 import { log } from '../log'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine } from './types'
+import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine } from './types'
 
 const logger = log('docker')
 const PIDS_LIMIT = 1024
@@ -162,7 +162,7 @@ export const dockerBackend: BackendAdapter = {
           return null
         }
       },
-      async spawnRunner({ runner, type, jitconfig, env, mounts, network }) {
+      async spawnRunner({ runner, type, jitconfig, env, mounts, network, groupAdd }) {
         await pullIfMissing(docker, type.image)
         const container = await docker.createContainer({
           Image: type.image,
@@ -182,10 +182,34 @@ export const dockerBackend: BackendAdapter = {
             NanoCpus: Math.round(type.cpus * 1e9),
             PidsLimit: PIDS_LIMIT,
             RestartPolicy: { Name: 'no' },
+            GroupAdd: groupAdd?.length ? groupAdd : undefined,
           },
         })
         await container.start()
-        logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}`)
+        logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}${type.docker !== 'none' ? ` docker=${type.docker}` : ''}`)
+        return container.id
+      },
+      async spawnSidecar({ runner, name, image, role, env, network, privileged }) {
+        await pullIfMissing(docker, image)
+        const container = await docker.createContainer({
+          Image: image,
+          name,
+          Env: Object.entries(env).map(([k, v]) => `${k}=${v}`),
+          Labels: {
+            [RUNNER_ID_LABEL]: String(runner.id),
+            [RUNNER_TYPE_LABEL]: runner.type,
+            [RUNNER_HOST_LABEL]: runner.host,
+            [RUNNER_ROLE_LABEL]: role,
+          },
+          HostConfig: {
+            NetworkMode: network,
+            Privileged: privileged,
+            PidsLimit: PIDS_LIMIT,
+            RestartPolicy: { Name: 'no' },
+          },
+        })
+        await container.start()
+        logger.info(`start sidecar ${name} (${container.id.slice(0, 12)}) role=${role} image=${image}${privileged ? ' privileged' : ''}`)
         return container.id
       },
       async inspect(containerId) {
@@ -202,6 +226,17 @@ export const dockerBackend: BackendAdapter = {
           logger.info(`remove ${containerId.slice(0, 12)}`)
         } catch (err) {
           if (!isNotFound(err)) throw err
+        }
+      },
+      async removeByRunnerId(runnerId) {
+        const list = await docker.listContainers({ all: true, filters: { label: [`${RUNNER_ID_LABEL}=${runnerId}`] } })
+        for (const c of list) {
+          try {
+            await docker.getContainer(c.Id).remove({ force: true, v: true })
+            logger.info(`remove ${c.Id.slice(0, 12)} (runner ${runnerId}${c.Labels?.[RUNNER_ROLE_LABEL] ? `, ${c.Labels[RUNNER_ROLE_LABEL]}` : ''})`)
+          } catch (err) {
+            if (!isNotFound(err)) throw err
+          }
         }
       },
       logs(containerId, opts = {}) {

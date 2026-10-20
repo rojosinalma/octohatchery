@@ -1,4 +1,4 @@
-import type { Host, RunnerType, Slot } from '../lib/types'
+import type { Host, RunnerDocker, RunnerType, Slot } from '../lib/types'
 import { Empty, Icon } from './parts'
 
 export type RunnerTypesData = { types: RunnerType[]; hosts: Host[]; slots: Slot[] }
@@ -27,6 +27,7 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
             <th>Image</th>
             <th class="t-col-num">CPUs</th>
             <th class="t-col-num">Memory</th>
+            <th>Docker</th>
             <th class="t-col-num">Environment</th>
             <th class="t-col-num">Mounts</th>
             <th>Secrets</th>
@@ -64,6 +65,9 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
               </td>
               <td class="t-col-num">{String(t.cpus)}</td>
               <td class="t-col-num">{`${t.memoryMb} MB`}</td>
+              <td>
+                <DockerBadge docker={t.docker} />
+              </td>
               <td class="t-col-num">
                 {Object.keys(t.env).length ? (
                   <span data-tip={Object.keys(t.env).join(', ')}>{String(Object.keys(t.env).length)}</span>
@@ -175,6 +179,48 @@ const SlotsMatrix = ({ types, hosts, slots }: RunnerTypesData) => {
   )
 }
 
+/** The three Docker options with their trade-off, in the order they appear in the dialog. */
+export const DOCKER_OPTIONS: { value: RunnerDocker; label: string; badge: string; tone: string; desc: JSX.Element }[] = [
+  {
+    value: 'none',
+    label: 'None',
+    badge: 'none',
+    tone: 'neutral',
+    desc: (
+      <>
+        No daemon. Image builds go through the shared BuildKit; <code>services:</code> and <code>docker run</code> steps fail.
+      </>
+    ),
+  },
+  {
+    value: 'socket',
+    label: 'Host socket',
+    badge: 'host socket',
+    tone: 'warning',
+    desc: (
+      <>
+        The runner uses this host's Docker. <code>services:</code>, <code>docker run</code> and Compose work; every job on this type sees and can control every container on the host.
+      </>
+    ),
+  },
+  {
+    value: 'dind',
+    label: 'Docker-in-Docker',
+    badge: 'dind',
+    tone: 'info',
+    desc: <>A private Docker daemon starts next to each runner (privileged sidecar) and dies with it. Isolated, about 5 s slower to start, no shared image cache.</>,
+  },
+]
+
+export const DockerBadge = ({ docker }: { docker: RunnerDocker }) => {
+  const o = DOCKER_OPTIONS.find((x) => x.value === docker) ?? DOCKER_OPTIONS[0]!
+  return (
+    <span class="t-badge" data-tone={o.tone} data-tip={o.label} safe>
+      {o.badge}
+    </span>
+  )
+}
+
 const TypeDialog = () => (
   <dialog class="t-dialog" id="type-dlg" data-size="lg" aria-labelledby="type-dlg-title">
     <form id="type-form" data-action="type-save">
@@ -265,6 +311,23 @@ const TypeDialog = () => (
           <input class="t-input" id="tf-secrets" name="secretEnv" placeholder="DEPLOY_TOKEN, NPM_TOKEN" />
           <p class="t-hint">Comma-separated variable names. Values are read from the node's own environment at spawn time and never stored.</p>
         </div>
+        <fieldset class="t-check-group docker-options" data-span="12">
+          <legend class="t-label">Docker</legend>
+          <div class="t-grid" data-cols="3" data-min="sm">
+            {DOCKER_OPTIONS.map((o) => (
+              <label class="t-check docker-option" data-docker={o.value}>
+                <input class="t-check-input" type="radio" name="docker" value={o.value} checked={o.value === 'none'} />
+                <span class="t-check-label">
+                  {o.label}
+                  <span class="t-check-desc">{o.desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p class="t-hint">
+            What a job can do with <code>docker</code>. GitHub's <code>services:</code> containers need a daemon the runner can reach: host socket or Docker-in-Docker.
+          </p>
+        </fieldset>
       </div>
       <div class="t-dialog-footer">
         <button class="t-btn" type="button" data-dialog-close>

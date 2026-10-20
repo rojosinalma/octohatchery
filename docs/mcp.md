@@ -59,15 +59,15 @@ Read-only:
 - `list_runners {host?, state?, limit?}`: runner containers and what they run.
 - `list_events {limit?}`: the audit log.
 - `get_settings`: runtime settings as key/value strings.
-- `health`: snapshot of the answering node.
+- `health`: snapshot of the answering node, including `github: {ok, source, missing[]}` — missing permissions are a warning, not a failure.
 
 Changes:
 
-- `upsert_runner_type {name, image, cpus, memoryMb, labels?, mounts?, env?, secretEnv?, description?}`: create or replace a type.
+- `upsert_runner_type {name, image, cpus, memoryMb, labels?, mounts?, env?, secretEnv?, description?, docker?}`: create or replace a type. `docker` is `none` (default), `socket` (the host's Docker socket is mounted; `services:` and `docker run` work, every job on the type controls the host's containers) or `dind` (a privileged `docker:dind` sidecar per runner; isolated, slower to start, no shared image cache).
 - `set_slots {host, type, count}`: capacity for one type on one host; `0` removes it.
 - `adopt_repo {repo}`: start serving a repo (`owner/name`); creates the webhook when needed.
 - `ensure_webhook {repo}`: create or repair the `workflow_job` webhook of an adopted repo and store its id. With a GitHub App nothing is created and the result says `covered: "app"`.
-- `apply_runs_on {repo, mode, type, host?, workflows?}`: `snippet` returns YAML only; `pr` opens a pull request; `commit` pushes to the default branch.
+- `apply_runs_on {repo, mode, type, host?, workflows?}`: `snippet` returns YAML only; `pr` opens a pull request; `commit` pushes to the default branch. Before writing it checks the GitHub permissions the mode needs (`pr`: contents, workflows, pull_requests; `commit`: contents, workflows) and fails naming the missing ones and the GitHub page to fix them. `pr` works on a branch, verifies the pull request exists and deletes the branch again on any failure; failures carry GitHub's own message. Returns `prUrl` or `commitSha` + `htmlUrl`.
 - `spawn {type, host}`: start one runner by hand.
 - `set_setting {key, value}`: change one runtime setting.
 

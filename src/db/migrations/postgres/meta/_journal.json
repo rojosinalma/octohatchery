@@ -22,6 +22,13 @@
       "when": 1792490933558,
       "tag": "0002_host_specs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792493717124,
+      "tag": "0003_runner_type_docker",
+      "breakpoints": true
     }
   ]
 }

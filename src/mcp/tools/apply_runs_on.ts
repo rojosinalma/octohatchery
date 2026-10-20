@@ -11,7 +11,9 @@ export const applyRunsOn = defineTool({
     'mode "pr" WRITES to GitHub: it edits the workflow files on a branch and opens a pull request. ' +
     'mode "commit" WRITES to GitHub: it commits the edit straight to the default branch; use it only when asked explicitly. ' +
     'host pins the jobs to one host; workflows limits the edit to the given paths under .github/workflows (default: all). ' +
-    'Returns {ok, message, snippet?, prUrl?, commitSha?, files?}.',
+    'Before writing it checks the GitHub permissions the mode needs (pr: contents, workflows, pull_requests; commit: contents, workflows) and fails naming the missing ones and the GitHub page to fix them. ' +
+    'pr mode works on a branch, verifies the pull request exists and removes the branch again on any failure. ' +
+    'Returns {ok, message, snippet?, prUrl?, commitSha?, htmlUrl?, files?}; failures carry GitHub\'s own message.',
   inputSchema: {
     repo: repoName,
     mode: z.enum(['snippet', 'pr', 'commit']),

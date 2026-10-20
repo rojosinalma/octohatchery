@@ -3,6 +3,7 @@ import { jsonErr, STATUS_BY_CODE } from '../../lib/json'
 import { log } from '../../lib/log'
 import { ServiceError } from '../../lib/types'
 import { events } from './events'
+import { githubRoutes } from './github'
 import { hosts } from './hosts'
 import { jobs } from './jobs'
 import { repos } from './repos'
@@ -43,3 +44,4 @@ export const api = new Elysia({ prefix: '/api' })
   .use(runners)
   .use(events)
   .use(settingsRoutes)
+  .use(githubRoutes)

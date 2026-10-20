@@ -1,10 +1,12 @@
 import { Octokit } from '@octokit/rest'
 import { config } from '../../config'
 import { log } from '../../log'
-import { restClient } from '../rest'
+import type { PermissionReport } from '../permissions'
+import { paginateUpTo, probeTokenPermissions, restClient } from '../rest'
 import { splitRepo, type GitHubAuthAdapter, type RepoInfo } from '../types'
 
 const logger = log('github')
+const DEFAULT_REPO_CAP = 500
 
 /** Personal access token: one client for everything; repo webhooks are created per adopted repo. */
 export const patAuth: GitHubAuthAdapter = {
@@ -36,9 +38,13 @@ export const patAuth: GitHubAuthAdapter = {
           if ((err as { status?: number }).status !== 404) throw err
         }
       },
-      async listInstallationRepos(): Promise<RepoInfo[]> {
-        const repos = await octokit.paginate(octokit.rest.repos.listForAuthenticatedUser, { per_page: 100, affiliation: 'owner,collaborator,organization_member' })
+      async listInstallationRepos(max = DEFAULT_REPO_CAP): Promise<RepoInfo[]> {
+        const repos = await paginateUpTo(octokit.paginate.iterator(octokit.rest.repos.listForAuthenticatedUser, { per_page: 100, affiliation: 'owner,collaborator,organization_member' }), max)
+        logger.info(`GET /user/repos: ${repos.length} repo(s)`)
         return repos.map((r) => ({ fullName: r.full_name, isPrivate: r.private, defaultBranch: r.default_branch }))
+      },
+      async permissions(probeRepo): Promise<PermissionReport> {
+        return { source: 'pat', ...(await probeTokenPermissions(octokit, probeRepo)) }
       },
     })
   },

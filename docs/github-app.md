@@ -19,15 +19,18 @@ be reachable from the internet without login.
 
 ### Permissions
 
-Repository permissions:
+Repository permissions. The list mirrors `REQUIRED_PERMISSIONS` in `src/lib/github/permissions.ts`; the
+dashboard's **Settings → GitHub** tab compares it with what the installation granted and names what
+is missing and what breaks without it.
 
-| Permission | Level | Used for |
-|---|---|---|
-| Actions | Read and write | list queued jobs and workflow runs, download job logs; write lets a later version cancel runs |
-| Administration | Read and write | create the just-in-time runner registration for each job |
-| Contents | Read and write | read workflows; write them when you ask for `apply_runs_on` with `commit` or `pr` |
-| Pull requests | Read and write | open the pull request for `apply_runs_on` with `pr` |
-| Metadata | Read | required by GitHub for every App |
+| Permission | Level | Used for | Without it |
+|---|---|---|---|
+| Metadata | Read | required by GitHub for every App; repository names and visibility | nothing works |
+| Administration | Read and write | create and delete the just-in-time runner registration for each job | nothing runs |
+| Actions | Read and write | list queued jobs and workflow runs, download job logs | the polling fallback is blind; final job logs cannot be fetched |
+| Contents | Read and write | read workflows; write them when you ask for `apply_runs_on` with `commit` or `pr` | `apply_runs_on` cannot read or change workflows (`snippet` still works) |
+| Workflows | Read and write | GitHub requires it to change any file under `.github/workflows` | `apply_runs_on` in `pr` or `commit` mode fails when it writes a workflow file |
+| Pull requests | Read and write | open the pull request for `apply_runs_on` with `pr` | `apply_runs_on` in `pr` mode fails after the branch is pushed |
 
 Subscribe to events: `workflow_job`. Webhook URL: `<PUBLIC_URL>/webhooks/github`.
 
@@ -46,6 +49,7 @@ that. Replace `<PUBLIC_URL>` with the address GitHub can reach, for example `htt
     "actions": "write",
     "administration": "write",
     "contents": "write",
+    "workflows": "write",
     "pull_requests": "write",
     "metadata": "read"
   },
@@ -91,7 +95,7 @@ webhook secret steps are already done.
    **Organisation settings → Developer settings → GitHub Apps**).
 2. Name: `OctoHatchery` (or anything; names are global). Homepage URL: your `<PUBLIC_URL>`.
 3. Webhook: active, URL `<PUBLIC_URL>/webhooks/github`, secret = your `GITHUB_WEBHOOK_SECRET`.
-4. Repository permissions: Actions, Administration, Contents, Pull requests → Read and write; Metadata → Read.
+4. Repository permissions: Actions, Administration, Contents, Workflows, Pull requests → Read and write; Metadata → Read.
 5. Subscribe to events: **Workflow job**.
 6. Where can this App be installed: **Only on this account**.
 7. Create the App.
@@ -121,9 +125,18 @@ GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA P
 GITHUB_WEBHOOK_SECRET=<openssl rand -hex 32>
 ```
 
-Restart the node. `GET /health` reports GitHub access, and the Repos page lists what the installation
-can see. Adopting a repo in App mode only flips a switch in the database: the App's webhook already
-covers it.
+Restart the node. **Settings → GitHub** shows the App, the installation, how many repositories it
+covers and the granted-versus-required permission table; `GET /health` carries the same verdict as
+`github: {ok, source, missing}`; a banner on every page names any missing permission. **Repos → Adopt a
+repo** lists what the installation can see. Adopting a repo in App mode only flips a switch in the
+database: the App's webhook already covers it.
+
+### Changing permissions later
+
+Edit them under the App's **Permissions & events** (the "Edit permissions on GitHub" button on the
+GitHub tab takes you there). GitHub then asks the installation to accept the change: open the
+installation page ("Accept on the installation") and approve. Press **Re-check** on the GitHub tab;
+the status is cached for 60 seconds otherwise.
 
 ### User account vs organisation
 
@@ -151,9 +164,16 @@ Use a **fine-grained** token, not a classic one.
 | Actions | Read and write |
 | Administration | Read and write |
 | Contents | Read and write |
+| Workflows | Read and write |
 | Pull requests | Read and write |
 | Webhooks | Read and write |
 | Metadata | Read (set automatically) |
+
+A fine-grained token does not tell the API what it may do, so the GitHub tab cannot show its grants
+in full. It probes one adopted repository with cheap reads (runners, workflow runs, webhooks,
+contents) and reports a permission as `none` when GitHub refuses, `unknown` when the read works
+(write access cannot be proven without writing). Classic tokens announce their scopes and are mapped
+directly; `repo` and `workflow` cover everything above.
 
 5. Expiry: fine-grained tokens expire after at most one year. Put a reminder in your calendar.
    When the token expires, runners stop registering and `/health` turns red; nothing else breaks.

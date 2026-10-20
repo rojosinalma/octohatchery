@@ -97,6 +97,8 @@
       var dlg = $('#runs-on-dlg'); if (!dlg) return
       dlg.dataset.repo = btn.dataset.repo
       $('#runs-on-repo', dlg).textContent = btn.dataset.repo
+      // A result line from an earlier run belongs to that repo: restore the buttons.
+      $$('.runs-on-result', dlg).forEach(function (r) { var tb = r.previousElementSibling; if (tb) tb.hidden = false; r.remove() })
       dlg.showModal()
     },
     'runs-on-apply': function (btn) {
@@ -111,12 +113,58 @@
           busy(btn, true)
           return api('POST', '/api/repos/runs-on', { fullName: repo, mode: mode, type: type }).then(function (res) {
             busy(btn, false)
-            if (res.ok && res.prUrl) res.message = (res.message || 'Pull request opened') + ' — ' + res.prUrl
-            if (res.ok && res.commitSha) res.message = (res.message || 'Committed') + ' — ' + String(res.commitSha).slice(0, 7)
-            toast(res)
-            if (res.ok) dlg.close('')
+            // Failure: GitHub's exact message, dialog stays open. Success: the buttons give way to the result and its link.
+            var toolbar = btn.closest('.t-toolbar')
+            $$('.runs-on-error', toolbar.parentNode).forEach(function (n) { n.remove() })
+            if (!res.ok) {
+              // The modal dims everything outside it, so the exact message also lands inside the dialog, URLs clickable.
+              T.toast('danger', res.message)
+              var alert = document.createElement('div')
+              alert.className = 't-alert runs-on-error'
+              alert.dataset.tone = 'danger'
+              alert.setAttribute('role', 'alert')
+              alert.innerHTML = '<svg class="t-icon" aria-hidden="true"><use href="/tailor/icons.svg#bi-exclamation-triangle"/></svg><div class="t-alert-body">' + esc(res.message).replace(/https?:\/\/[^\s.,;)]+(?:\.[^\s.,;)]+)*/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>' }) + '</div>'
+              toolbar.insertAdjacentElement('afterend', alert)
+              return
+            }
+            var url = res.prUrl || res.htmlUrl
+            var label = res.prUrl ? 'Pull request opened' : 'Committed ' + String(res.commitSha || '').slice(0, 7)
+            var line = document.createElement('div')
+            line.className = 't-cluster runs-on-result'
+            line.dataset.gap = '2'
+            line.dataset.align = 'center'
+            line.innerHTML = '<span class="t-badge" data-tone="success">' + esc(label) + '</span>'
+              + (res.files && res.files.length ? '<span class="t-small t-muted">' + esc(res.files.length + ' workflow' + (res.files.length === 1 ? '' : 's')) + '</span>' : '')
+              + (url ? '<a class="t-btn" data-size="sm" data-variant="primary" href="' + esc(url) + '" target="_blank" rel="noopener"><svg class="t-icon" aria-hidden="true"><use href="/tailor/icons.svg#bi-box-arrow-up-right"/></svg> ' + esc(res.prUrl ? 'Open the pull request' : 'Open the commit') + '</a>' : '')
+            toolbar.hidden = true
+            toolbar.insertAdjacentElement('afterend', line)
+            T.toast('success', res.message)
           })
         })
+    },
+    'github-recheck': function (btn) {
+      busy(btn, true)
+      return api('POST', '/api/github/recheck').then(function (res) {
+        busy(btn, false)
+        T.toast(res.ok && res.status && res.status.ok ? 'success' : res.ok ? 'warning' : 'danger', res.message)
+        if (res.ok) swapMain().then(function () { var s = $('#github'); if (s) s.scrollIntoView() })
+      })
+    },
+    'adopt-open': function () {
+      var dlg = $('#adopt-dlg'); if (!dlg) return
+      dlg.showModal()
+      loadAdoptList(dlg)
+    },
+    'adopt-pick': function (btn) {
+      var dlg = btn.closest('dialog'), name = btn.dataset.repo
+      $$('[data-action="adopt-pick"]', dlg).forEach(function (b) { b.disabled = true })
+      busy(btn, true)
+      return api('POST', '/api/repos/adopt', { fullName: name }).then(function (res) {
+        toast(res)
+        if (res.ok) { dlg.close(''); swapMain(); return }
+        busy(btn, false)
+        $$('[data-action="adopt-pick"]', dlg).forEach(function (b) { if (b.dataset.adopted === undefined) b.disabled = false })
+      })
     },
     'type-new': function () { fillTypeForm(null); $('#type-dlg').showModal() },
     'type-edit': function (btn) { fillTypeForm(JSON.parse(btn.dataset.type)); $('#type-dlg').showModal() },
@@ -144,12 +192,17 @@
   var lines = function (s) { return s.split(/\r?\n/).map(function (l) { return l.trim() }).filter(Boolean) }
   var list = function (s) { return s.split(',').map(function (l) { return l.trim() }).filter(Boolean) }
 
+  function setRadio(form, name, value) {
+    $$('input[type=radio][name="' + name + '"]', form).forEach(function (r) { r.checked = r.value === value })
+  }
+
   function fillTypeForm(type) {
     var f = $('#type-form'); if (!f) return
     f.reset()
     $('#type-dlg-title').textContent = type ? 'Edit runner type' : 'New runner type'
     f.elements.name.readOnly = Boolean(type)
     setChips(f, type ? type.labels || [] : [])
+    setRadio(f, 'docker', type && type.docker ? type.docker : 'none')
     if (!type) { syncTypeBadge(f); return }
     f.elements.name.value = type.name
     syncTypeBadge(f)
@@ -163,12 +216,62 @@
     $$('input, select, textarea', f).forEach(function (el) { T.sync(el) })
   }
 
+  /* ── Adopt dialog: the repos GitHub lets us see, filtered as you type, one click adopts ── */
+  function adoptAlert(tone, html) {
+    return '<div class="t-alert" data-tone="' + tone + '" role="alert"><svg class="t-icon" aria-hidden="true"><use href="/tailor/icons.svg#bi-' + (tone === 'danger' ? 'exclamation-triangle' : 'info-circle') + '"/></svg><div class="t-alert-body">' + html + '</div></div>'
+  }
+  function loadAdoptList(dlg) {
+    var list = $('#adopt-list', dlg), state = $('#adopt-state', dlg), search = $('#adopt-search', dlg), count = $('#adopt-count', dlg)
+    list.innerHTML = ''
+    state.innerHTML = '<div class="t-cluster" data-gap="2" data-align="center"><span class="t-spinner" aria-hidden="true"></span><span class="t-muted">Asking GitHub for the repositories it can see…</span></div>'
+    search.value = ''
+    search.disabled = true
+    count.textContent = ''
+    api('GET', '/api/github/repos').then(function (res) {
+      if (!res.ok) {
+        var fix = res.code === 'invalid'
+          ? '<p>GitHub refused the list: a permission is missing or the credentials are wrong.</p>'
+          : /GITHUB_AUTH=none/.test(res.message) ? '<p>No GitHub access is configured on this node.</p>' : ''
+        state.innerHTML = adoptAlert('danger', '<b>' + esc(res.message) + '</b>' + fix + '<p><a class="t-btn" data-size="sm" href="/settings#github">' + (/GITHUB_AUTH=none/.test(res.message) ? 'Configure GitHub access' : 'Check GitHub permissions') + '</a></p>')
+        return
+      }
+      var repos = res.repos || []
+      if (!repos.length) {
+        state.innerHTML = res.source === 'app'
+          ? adoptAlert('info', '<b>The App is installed on no repositories.</b><p>Add repositories to the installation on GitHub, then open this dialog again.</p>' + (res.installUrl ? '<p><a class="t-btn" data-size="sm" href="' + esc(res.installUrl) + '" target="_blank" rel="noopener">Open the installation</a></p>' : ''))
+          : adoptAlert('info', '<b>The token can see no repositories.</b><p>Grant it access to the repositories you want to adopt, then open this dialog again.</p><p><a class="t-btn" data-size="sm" href="/settings#github">Check GitHub permissions</a></p>')
+        return
+      }
+      state.innerHTML = ''
+      search.disabled = false
+      list.innerHTML = repos.map(function (r) {
+        return '<button class="t-list-item" role="option" aria-selected="false" data-action="adopt-pick" data-repo="' + esc(r.fullName) + '" data-name="' + esc(r.fullName.toLowerCase()) + '"' + (r.adopted ? ' disabled data-adopted' : '') + '>'
+          + '<svg class="t-icon t-list-lead" aria-hidden="true"><use href="/tailor/icons.svg#bi-github"/></svg>'
+          + '<span class="t-list-body"><span class="t-list-name">' + esc(r.fullName) + '</span><span class="t-list-desc">default branch ' + esc(r.defaultBranch) + '</span></span>'
+          + '<span class="t-list-trail t-cluster" data-gap="1">' + (r.adopted ? '<span class="t-badge" data-tone="success">adopted</span>' : '') + '<span class="t-badge" data-tone="' + (r.isPrivate ? 'neutral' : 'info') + '">' + (r.isPrivate ? 'private' : 'public') + '</span></span>'
+          + '</button>'
+      }).join('')
+      filterAdoptList(dlg)
+      search.focus()
+    })
+  }
+  function filterAdoptList(dlg) {
+    var q = $('#adopt-search', dlg).value.trim().toLowerCase(), shown = 0, total = 0
+    $$('#adopt-list [data-action="adopt-pick"]', dlg).forEach(function (b) {
+      total++
+      var hit = !q || b.dataset.name.indexOf(q) >= 0
+      b.hidden = !hit
+      if (hit) shown++
+    })
+    var count = $('#adopt-count', dlg)
+    count.textContent = q ? shown + ' of ' + total : total + ' repositor' + (total === 1 ? 'y' : 'ies')
+    $('#adopt-none', dlg).hidden = shown > 0
+  }
+  document.addEventListener('input', function (e) {
+    if (e.target.id === 'adopt-search') filterAdoptList(e.target.closest('dialog'))
+  })
+
   var forms = {
-    adopt: function (f, submit) {
-      var name = f.elements.fullName.value.trim()
-      busy(submit, true)
-      return api('POST', '/api/repos/adopt', { fullName: name }).then(toast).then(function (res) { busy(submit, false); if (res.ok) { f.reset(); swapMain() } })
-    },
     'type-save': function (f, submit) {
       var env = {}
       lines(f.elements.env.value).forEach(function (l) { var i = l.indexOf('='); if (i > 0) env[l.slice(0, i).trim()] = l.slice(i + 1) })
@@ -182,6 +285,7 @@
         mounts: lines(f.elements.mounts.value),
         env: env,
         secretEnv: list(f.elements.secretEnv.value),
+        docker: f.elements.docker.value || 'none',
       }
       busy(submit, true)
       return api('PUT', '/api/runner-types/' + encodeURIComponent(name), payload).then(toast).then(function (res) {

@@ -1,4 +1,4 @@
-import type { Event, Host, Job, JobStatus, LogLine, Repo, Runner, RunnerState, RunnerType } from '../lib/types'
+import { RUNNER_DOCKER_OPTIONS, type Event, type Host, type Job, type JobStatus, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerState, type RunnerType } from '../lib/types'
 import type { Row } from './driver'
 
 // Row → domain mappers. SQLite returns booleans as 0/1 and JSON as text; Postgres returns booleans natively.
@@ -60,6 +60,7 @@ export function toRunnerType(r: Row): RunnerType {
     mounts: json<string[]>(r.mounts, []),
     env: json<Record<string, string>>(r.env, {}),
     secretEnv: json<string[]>(r.secret_env, []),
+    docker: (RUNNER_DOCKER_OPTIONS as readonly string[]).includes(str(r.docker)) ? (str(r.docker) as RunnerDocker) : 'none',
     createdAt: str(r.created_at),
     updatedAt: str(r.updated_at),
   }

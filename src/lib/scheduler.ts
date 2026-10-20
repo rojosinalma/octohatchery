@@ -10,7 +10,7 @@ import { matchesLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
 import { settings } from './settings'
-import { materialise } from './spawn'
+import { materialise, removeRunnerContainers } from './spawn'
 import { activeRunners, insertRunner, listHosts, listRunnerTypes, slotsView, updateJob, updateRunner, type JobRow, type RunnerRow } from './store'
 import type { RunnerType } from './types'
 
@@ -33,6 +33,7 @@ export async function reap(host = config().hostName): Promise<number> {
     if (c.labels[RUNNER_HOST_LABEL] !== host || activeIds.has(runnerId)) continue
     logger.info(`removing orphan container ${c.id.slice(0, 12)} (runner ${runnerId || '?'})`)
     await be.remove(c.id)
+    if (runnerId) await be.removeByRunnerId(Number(runnerId))
   }
   for (const runner of active) {
     if (runner.state === 'spawning' && !runner.containerId) continue // not started yet
@@ -51,7 +52,7 @@ export async function reap(host = config().hostName): Promise<number> {
         await updateJob(job.id, { status: 'completed', conclusion: info?.exitCode === 0 ? 'unknown' : 'failure', completedAt: exitedAt })
       }
     }
-    if (runner.containerId) await be.remove(runner.containerId)
+    await removeRunnerContainers(runner)
     metrics.runnerExits.inc()
     await recordEvent('scheduler', 'runner.exit', runner.name, { exitCode: info?.exitCode ?? null, status: info?.status ?? 'missing' })
     reaped++

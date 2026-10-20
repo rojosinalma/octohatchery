@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
@@ -8,12 +9,39 @@ import { log } from './log'
 import { metrics } from './metrics'
 import { settings } from './settings'
 import { adoptedRepos, jobById, runnerTypeByName, updateJob, updateRunner, type RunnerRow } from './store'
-import type { RunnerType } from './types'
+import type { Runner, RunnerType } from './types'
 
 const logger = log('scheduler')
 export const TOOL_CACHE_VOLUME = 'octohatchery-tool-cache'
 export const TOOL_CACHE_PATH = '/opt/hostedtoolcache'
 export const MAX_CLAIM_RETRIES = 3
+/** Where the runner image expects the daemon socket (the Docker CLI default). */
+export const RUNNER_SOCKET_PATH = '/var/run/docker.sock'
+/** Docker-in-Docker sidecar: pinned major of the official image, plain TCP on the runner network (no TLS, private network). */
+export const DIND_IMAGE = 'docker:28-dind'
+export const DIND_PORT = 2375
+export const DIND_ROLE = 'dind'
+
+/** The host daemon's socket as seen from this process: `DOCKER_HOST` when it names a unix socket, else the default path. */
+export function hostSocketPath(dockerHost = config().dockerHost): string {
+  if (!dockerHost) return RUNNER_SOCKET_PATH
+  if (dockerHost.startsWith('unix://')) return dockerHost.slice('unix://'.length)
+  if (dockerHost.startsWith('/')) return dockerHost
+  return RUNNER_SOCKET_PATH
+}
+
+/** Group id owning the socket, so the runner's user can be added to it; undefined when the socket cannot be inspected. */
+export function socketGid(path: string, stat: (p: string) => { gid: number } = statSync): string | undefined {
+  try {
+    return String(stat(path).gid)
+  } catch {
+    return undefined
+  }
+}
+
+export function dindName(runner: Pick<Runner, 'name'>): string {
+  return `${runner.name}-dind`
+}
 
 /** Env for a runner container: tool cache, buildkit, the type's env, then each secret name resolved from this process. */
 export async function runnerEnv(type: RunnerType, env: Record<string, string | undefined> = Bun.env): Promise<Record<string, string>> {
@@ -30,8 +58,17 @@ export async function runnerEnv(type: RunnerType, env: Record<string, string | u
   return out
 }
 
-export function runnerMounts(type: RunnerType): string[] {
-  return [`${TOOL_CACHE_VOLUME}:${TOOL_CACHE_PATH}`, ...type.mounts]
+export function runnerMounts(type: RunnerType, socketPath = hostSocketPath()): string[] {
+  const mounts = [`${TOOL_CACHE_VOLUME}:${TOOL_CACHE_PATH}`, ...type.mounts]
+  if (type.docker === 'socket') mounts.push(`${socketPath}:${RUNNER_SOCKET_PATH}`)
+  return mounts
+}
+
+/** Removes the runner's container and every sidecar labelled with its id on this host's engine. */
+export async function removeRunnerContainers(runner: Pick<Runner, 'id' | 'containerId'>): Promise<void> {
+  const be = backend()
+  if (runner.containerId) await be.remove(runner.containerId)
+  await be.removeByRunnerId(runner.id)
 }
 
 /**
@@ -46,15 +83,28 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     if (!repo) throw new Error('no adopted repository to register the runner with')
     const env = await runnerEnv(type)
     const labels = runnerLabels(type.name, runner.host, type.labels)
+    const network = config().runnerNetwork
+    let groupAdd: string[] | undefined
+    if (type.docker === 'socket') {
+      const gid = socketGid(hostSocketPath())
+      if (gid) groupAdd = [gid]
+      else logger.warn(`${runner.name}: cannot stat ${hostSocketPath()}; the runner gets the socket without its group, so it must be readable by the runner user`)
+    }
     const jit = await github().createJitConfig({ repo, name: runner.name, labels })
     logger.info(`registered ${runner.name} with ${repo} (github runner ${jit.runnerId})`)
+    if (type.docker === 'dind') {
+      // The daemon starts first so the runner's entrypoint can wait for it by name.
+      await backend().spawnSidecar({ runner, name: dindName(runner), image: DIND_IMAGE, role: DIND_ROLE, env: { DOCKER_TLS_CERTDIR: '' }, network, privileged: true })
+      env.DOCKER_HOST = `tcp://${dindName(runner)}:${DIND_PORT}`
+    }
     const containerId = await backend().spawnRunner({
       runner,
       type,
       jitconfig: jit.encodedJitConfig,
       env,
       mounts: runnerMounts(type),
-      network: config().runnerNetwork,
+      network,
+      groupAdd,
     })
     const updated = await updateRunner(runner.id, { state: 'idle', containerId, githubRunnerId: jit.runnerId, repo })
     if (updated) ensureFollower(updated)
@@ -63,6 +113,10 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     return updated
   } catch (err) {
     logger.error(`spawn ${runner.name} failed`, err instanceof Error ? err : String(err))
+    // A sidecar that started before the failure must not outlive the runner it was meant for.
+    await backend()
+      .removeByRunnerId(runner.id)
+      .catch((e) => logger.warn(`cleanup for ${runner.name} failed`, e instanceof Error ? e.message : String(e)))
     await updateRunner(runner.id, { state: 'failed', exitedAt: new Date().toISOString() })
     await recordEvent(actor, 'runner.failed', runner.name, { reason: err instanceof Error ? err.message : String(err) })
     if (runner.jobId !== null) await requeue(runner.jobId, err instanceof Error ? err.message : String(err), actor)

@@ -71,6 +71,16 @@ describe('each tool validates its input and resolves', () => {
 describe('actor and argument mapping', () => {
   beforeEach(resetService)
 
+  test('upsert_runner_type defaults docker to none and rejects unknown values; the description explains the options', () => {
+    const tool = findTool('upsert_runner_type')!
+    const schema = z.object(tool.inputSchema)
+    expect((schema.parse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512 }) as { docker: string }).docker).toBe('none')
+    expect((schema.parse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512, docker: 'dind' }) as { docker: string }).docker).toBe('dind')
+    expect(schema.safeParse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512, docker: 'host' }).success).toBe(false)
+    for (const word of ['"none"', '"socket"', '"dind"', 'privileged']) expect(tool.description).toContain(word)
+    expect(findTool('apply_runs_on')!.description).toContain('removes the branch')
+  })
+
   test('adopt_repo passes the repo and the actor to the facade', async () => {
     await findTool('adopt_repo')!.handler({ repo: 'owner/name' } as never, ctx)
     expect(service.adoptRepo).toHaveBeenCalledWith('owner/name', 'mcp:test')

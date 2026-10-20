@@ -14,6 +14,8 @@ export const RunnerTypeBody = t.Object({
   mounts: t.Optional(t.Array(t.String(), { maxItems: 20 })),
   env: t.Optional(t.Record(t.String(), t.String())),
   secretEnv: t.Optional(t.Array(t.String(), { maxItems: 50 })),
+  /** Docker access: none (default), socket (host daemon) or dind (private daemon sidecar). */
+  docker: t.Optional(t.Union([t.Literal('none'), t.Literal('socket'), t.Literal('dind')])),
 })
 
 export const runnerTypes = new Elysia({ prefix: '/runner-types' })
@@ -33,6 +35,7 @@ export const runnerTypes = new Elysia({ prefix: '/runner-types' })
           mounts: body.mounts ?? [],
           env: body.env ?? {},
           secretEnv: body.secretEnv ?? [],
+          docker: body.docker ?? 'none',
         },
         actorOf(headers),
       )

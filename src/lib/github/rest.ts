@@ -11,7 +11,7 @@ const logger = log('github')
 export function restClient(
   kind: GitHubClient['kind'],
   getOctokit: (repoFullName: string) => Promise<Octokit>,
-  extra: Pick<GitHubClient, 'ensureWebhook' | 'deleteWebhook' | 'listInstallationRepos'>,
+  extra: Pick<GitHubClient, 'ensureWebhook' | 'deleteWebhook' | 'listInstallationRepos' | 'permissions'>,
 ): GitHubClient {
   const call = async <T>(what: string, fn: () => Promise<T>): Promise<T> => {
     try {
@@ -118,7 +118,7 @@ export function restClient(
           branch,
         }),
       )
-      return { commitSha: res.data.commit.sha ?? '' }
+      return { commitSha: res.data.commit.sha ?? '', htmlUrl: res.data.commit.html_url ?? '' }
     },
 
     async createBranch(fullName, name, fromBranch) {
@@ -130,11 +130,36 @@ export function restClient(
       )
     },
 
+    async deleteBranch(fullName, name) {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      await call(`DELETE ${fullName} branch ${name}`, async () => {
+        try {
+          await o.rest.git.deleteRef({ owner, repo, ref: `heads/${name}` })
+        } catch (err) {
+          if ((err as { status?: number }).status === 404 || (err as { status?: number }).status === 422) return // already gone
+          throw err
+        }
+      })
+    },
+
     async openPullRequest(fullName, { title, body, head, base }) {
       const o = await getOctokit(fullName)
       const { owner, repo } = splitRepo(fullName)
       const res = await call(`POST ${fullName} pull ${head}→${base}`, () => o.rest.pulls.create({ owner, repo, title, body, head, base }))
-      return { url: res.data.html_url }
+      return { url: res.data.html_url, number: res.data.number }
+    },
+
+    async getPullRequest(fullName, number) {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      try {
+        const res = await call(`GET ${fullName} pull ${number}`, () => o.rest.pulls.get({ owner, repo, pull_number: number }))
+        return { url: res.data.html_url, state: res.data.state }
+      } catch (err) {
+        if ((err as { status?: number }).status === 404) return null
+        throw err
+      }
     },
 
     async getJobLog(fullName, githubJobId) {
@@ -160,5 +185,77 @@ export function restClient(
         throw err
       }
     },
+  }
+}
+
+/** HTTP status of a failed Octokit call, or undefined for anything that is not a request error. */
+export function statusOf(err: unknown): number | undefined {
+  const s = (err as { status?: unknown }).status
+  return typeof s === 'number' ? s : undefined
+}
+
+/** GitHub's own message for a failed call (`Resource not accessible by integration`, …), with the status. */
+export function githubMessage(err: unknown): string {
+  const status = statusOf(err)
+  const msg = err instanceof Error ? err.message : String(err)
+  return status ? `${msg.replace(/ - https:\/\/docs\.github\.com\S*/, '')} (HTTP ${status})` : msg
+}
+
+/** Lists at most `max` items from a paginated endpoint: stops after the page that crosses the cap. */
+export async function paginateUpTo<T>(iterator: AsyncIterable<{ data: T[] }>, max: number): Promise<T[]> {
+  const out: T[] = []
+  for await (const page of iterator) {
+    out.push(...page.data)
+    if (out.length >= max) break
+  }
+  return out.slice(0, max)
+}
+
+/**
+ * Token mode: fine-grained tokens expose no grant list, so cheap reads on one adopted repository prove what is
+ * definitely missing (403/404 → `none`); a successful read proves read access only and is reported as `unknown`.
+ * Classic tokens announce their scopes in `x-oauth-scopes`, which maps to the permissions directly.
+ */
+export async function probeTokenPermissions(o: Octokit, probeRepo: string | undefined): Promise<{ granted: Record<string, string>; account?: string; note: string }> {
+  const user = await o.request('GET /user')
+  const scopes = (user.headers['x-oauth-scopes'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  logger.info(`GET /user: ${user.data.login}${scopes.length ? ` scopes=${scopes.join(',')}` : ' (fine-grained token)'}`)
+  if (scopes.length) {
+    const repoScope = scopes.includes('repo')
+    const granted: Record<string, string> = {
+      metadata: 'read',
+      administration: repoScope ? 'write' : 'none',
+      actions: repoScope ? 'write' : 'none',
+      contents: repoScope ? 'write' : 'none',
+      pull_requests: repoScope ? 'write' : 'none',
+      workflows: scopes.includes('workflow') ? 'write' : 'none',
+      webhooks: repoScope || scopes.includes('admin:repo_hook') || scopes.includes('write:repo_hook') ? 'write' : 'none',
+    }
+    return { granted, account: user.data.login, note: 'Classic token: permissions derived from its scopes.' }
+  }
+  const granted: Record<string, string> = { metadata: 'read', contents: 'unknown', workflows: 'unknown', pull_requests: 'unknown', actions: 'unknown', administration: 'unknown', webhooks: 'unknown' }
+  if (!probeRepo) return { granted, account: user.data.login, note: 'Fine-grained token: GitHub does not list its grants. Adopt a repository to let the probe check runner and webhook access.' }
+  const { owner, repo } = splitRepo(probeRepo)
+  const probe = async (key: string, what: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn()
+      logger.debug(`probe ${what}: ok`)
+    } catch (err) {
+      const status = statusOf(err)
+      logger.warn(`probe ${what}: failed`, githubMessage(err))
+      if (status === 403 || status === 404) granted[key] = 'none'
+    }
+  }
+  await probe('administration', `GET ${probeRepo} runners`, () => o.rest.actions.listSelfHostedRunnersForRepo({ owner, repo, per_page: 1 }))
+  await probe('actions', `GET ${probeRepo} runs`, () => o.rest.actions.listWorkflowRunsForRepo({ owner, repo, per_page: 1 }))
+  await probe('webhooks', `GET ${probeRepo} hooks`, () => o.rest.repos.listWebhooks({ owner, repo, per_page: 1 }))
+  await probe('contents', `GET ${probeRepo} contents`, () => o.rest.repos.getContent({ owner, repo, path: '' }))
+  return {
+    granted,
+    account: user.data.login,
+    note: `Fine-grained token: GitHub does not list its grants. Reads on ${probeRepo} proved access where marked; write levels cannot be verified without writing.`,
   }
 }

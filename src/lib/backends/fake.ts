@@ -1,5 +1,5 @@
-import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, SpawnInput } from './types'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_TYPE_LABEL } from './types'
+import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, SidecarInput, SpawnInput } from './types'
+import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL } from './types'
 
 /** A hand-driven log feed: `push` lines, `end` when the container exits. */
 export type FakeLogFeed = AsyncIterable<ContainerLogLine> & { push(line: string, at?: string): void; end(): void }
@@ -38,6 +38,8 @@ export function createLogFeed(): FakeLogFeed {
 export type FakeBackend = ContainerBackend & {
   containers: Map<string, ContainerInfo & { input: SpawnInput }>
   spawns: SpawnInput[]
+  /** Sidecars by id; removed together with their runner by `removeByRunnerId`. */
+  sidecars: Map<string, ContainerInfo & { input: SidecarInput }>
   up: boolean
   exit(containerId: string, code?: number): void
   /** Log feed per container; `logs()` drains it. Created on demand so tests can push before or after following. */
@@ -49,12 +51,14 @@ export type FakeBackend = ContainerBackend & {
 export function createFakeBackend(): FakeBackend {
   const containers = new Map<string, ContainerInfo & { input: SpawnInput }>()
   const spawns: SpawnInput[] = []
+  const sidecars = new Map<string, ContainerInfo & { input: SidecarInput }>()
   const feeds = new Map<string, FakeLogFeed>()
   let n = 0
   const fake: FakeBackend = {
     kind: 'fake',
     containers,
     spawns,
+    sidecars,
     up: true,
     exit(id, code = 0) {
       const c = containers.get(id)
@@ -95,11 +99,33 @@ export function createFakeBackend(): FakeBackend {
       })
       return id
     },
+    async spawnSidecar(input) {
+      const id = `fake-sidecar-${++n}`
+      sidecars.set(id, {
+        id,
+        status: 'running',
+        running: true,
+        exitCode: null,
+        labels: {
+          [RUNNER_ID_LABEL]: String(input.runner.id),
+          [RUNNER_TYPE_LABEL]: input.runner.type,
+          [RUNNER_HOST_LABEL]: input.runner.host,
+          [RUNNER_ROLE_LABEL]: input.role,
+        },
+        input,
+      })
+      return id
+    },
     async inspect(id) {
-      return containers.get(id) ?? { id, status: 'missing', running: false, exitCode: null, labels: {} }
+      return containers.get(id) ?? sidecars.get(id) ?? { id, status: 'missing', running: false, exitCode: null, labels: {} }
     },
     async remove(id) {
       containers.delete(id)
+      sidecars.delete(id)
+    },
+    async removeByRunnerId(runnerId) {
+      for (const [id, c] of containers) if (c.labels[RUNNER_ID_LABEL] === String(runnerId)) containers.delete(id)
+      for (const [id, c] of sidecars) if (c.labels[RUNNER_ID_LABEL] === String(runnerId)) sidecars.delete(id)
     },
     async listOwned() {
       return [...containers.values()]

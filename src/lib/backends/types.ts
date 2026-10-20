@@ -17,6 +17,20 @@ export type SpawnInput = {
   /** `src:dst[:ro]` entries, already resolved. */
   mounts: string[]
   network: string
+  /** Extra groups for the container's user (the host's docker socket group when the type mounts the socket). */
+  groupAdd?: string[]
+}
+
+/** A helper container that lives and dies with one runner (today: the Docker-in-Docker daemon). */
+export type SidecarInput = {
+  runner: Pick<Runner, 'id' | 'name' | 'host' | 'type'>
+  /** Container name; the runner reaches it under this name on the network. */
+  name: string
+  image: string
+  role: string
+  env: Record<string, string>
+  network: string
+  privileged: boolean
 }
 
 /** Labels every runner container carries; `listOwned` filters on the first one. */
@@ -24,6 +38,8 @@ export const RUNNER_LABEL = 'octohatchery.runner'
 export const RUNNER_ID_LABEL = 'octohatchery.runner-id'
 export const RUNNER_TYPE_LABEL = 'octohatchery.type'
 export const RUNNER_HOST_LABEL = 'octohatchery.host'
+/** Sidecars carry the runner id and host labels plus this role; they never carry `octohatchery.runner`. */
+export const RUNNER_ROLE_LABEL = 'octohatchery.role'
 
 /** What the engine reports about the machine it runs on; fields it does not know are null. */
 export type EngineInfo = { version: string | null; os: string | null; cpus: number | null; memoryMb: number | null }
@@ -38,10 +54,14 @@ export type ContainerBackend = {
   info(): Promise<EngineInfo | null>
   /** Creates and starts the container; returns its id. */
   spawnRunner(input: SpawnInput): Promise<string>
+  /** Creates and starts a sidecar for a runner; returns its id. Removed with the runner by `removeByRunnerId`. */
+  spawnSidecar(input: SidecarInput): Promise<string>
   inspect(containerId: string): Promise<ContainerInfo>
   /** Removes the container (force). Missing containers are not an error. */
   remove(containerId: string): Promise<void>
-  /** Every container labelled `octohatchery.runner=true`, running or exited. */
+  /** Removes every container labelled with this runner id (the runner and its sidecars), force; nothing found is fine. */
+  removeByRunnerId(runnerId: number): Promise<void>
+  /** Every container labelled `octohatchery.runner=true`, running or exited (sidecars excluded). */
   listOwned(): Promise<ContainerInfo[]>
   /**
    * Follows stdout and stderr of a running container until it exits; `since` (ISO-8601) skips older output.

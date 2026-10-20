@@ -57,14 +57,16 @@ For a cluster (several hosts sharing one PostgreSQL database), repeat on each ho
 
 - **There is no login.** The dashboard, API and MCP endpoint trust whoever reaches them. Put OctoHatchery behind a reverse proxy with SSO (Authentik, Authelia, Cloudflare Access, OAuth2 Proxy or similar) and expose only `POST /webhooks/github` without authentication.
 - **Webhooks are signed.** Every webhook is checked against `GITHUB_WEBHOOK_SECRET` with HMAC SHA-256 before anything is read from it.
-- **The app talks to Docker.** Each node mounts its host's Docker socket (or whatever `DOCKER_HOST` points at). Anyone who controls the app controls that Docker daemon, so treat the app host as trusted. Runners never get the socket unless you mount it into a runner type yourself.
+- **The app talks to Docker.** Each node mounts its host's Docker socket (or whatever `DOCKER_HOST` points at). Anyone who controls the app controls that Docker daemon, so treat the app host as trusted.
+- **Runners get no Docker by default.** A runner type's **Docker** option decides: `none` (default; builds still go through the shared BuildKit, `services:` and `docker run` fail), `socket` (the host's socket is mounted: every job on that type can control every container on the host, including OctoHatchery) or `dind` (a privileged Docker-in-Docker sidecar per runner, isolated but slower). Use `socket` only for repositories you fully trust; details in [docs/runner-types.md](docs/runner-types.md#docker-access).
+- **Permissions are checked, not assumed.** Settings → GitHub compares what the App or token grants with what OctoHatchery needs and says what breaks without each one; a missing permission shows as a banner on every page and in `/health`.
 - **Public repositories and forks.** A workflow in a pull request from a fork runs on your hardware if the repository allows it. For public repositories, keep GitHub's "require approval for first-time contributors" setting on, or restrict self-hosted jobs to trusted branches.
 
 ## Usage
 
 ### Adopt a repository
 
-Open the dashboard, go to **Repos** and adopt a repository. OctoHatchery checks that your GitHub credentials can see it and registers a webhook for `workflow_job` events. The same action is available as `POST /api/repos/adopt` and as the MCP tool `adopt_repo`.
+Open the dashboard, go to **Repos** and press **Adopt a repo**: the dialog lists the repositories your GitHub App installation or token can reach; one click adopts. With a token OctoHatchery also registers a webhook for `workflow_job` events; with an App the App's webhook already covers the repo. The same action is available as `POST /api/repos/adopt` and as the MCP tool `adopt_repo`.
 
 ### Point a workflow at a runner type
 

@@ -1,4 +1,5 @@
-import { ServiceError, type Event, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type RepoListItem, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
+import type { GitHubStatus } from '../../src/lib/github/permissions'
+import { ServiceError, type Event, type GitHubRepoItem, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type RepoListItem, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
 
 export const hosts: Host[] = [
   { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true, cpus: 8, memoryMb: 32768, os: 'Ubuntu 24.04.1 LTS', dockerVersion: '27.3.1', appVersion: '0.1.0-test' },
@@ -17,6 +18,7 @@ export const types: RunnerType[] = [
     mounts: ['/srv/cache:/cache:ro'],
     env: { CI: 'true' },
     secretEnv: ['NPM_TOKEN'],
+    docker: 'none',
     createdAt: '2026-10-19T09:00:00Z',
     updatedAt: '2026-10-19T09:00:00Z',
   },
@@ -124,9 +126,42 @@ export const health: HealthSnapshot = {
   runnersBusy: 1,
   lastWebhookAt: null,
   version: '0.1.0-test',
+  github: { ok: true, source: 'app', missing: [] },
 }
 
-export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: RepoListItem[]; githubAuth?: 'app' | 'pat' | 'none'; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
+const permissionRow = (key: string, level: 'read' | 'write', granted: GitHubStatus['permissions'][number]['granted'], ok: boolean | null) => ({ key, level, why: `why ${key}`, breaks: `breaks ${key}`, granted, ok })
+
+export const githubStatus: GitHubStatus = {
+  ok: false,
+  source: 'app',
+  account: 'acme',
+  installationId: 7654321,
+  repoCount: 3,
+  appSlug: 'octohatchery-acme',
+  appUrl: 'https://github.com/settings/apps/octohatchery-acme',
+  permissionsUrl: 'https://github.com/settings/apps/octohatchery-acme/permissions',
+  installUrl: 'https://github.com/settings/installations/7654321',
+  webhookUrl: 'https://hatch.example.com/webhooks/github',
+  permissions: [
+    permissionRow('metadata', 'read', 'read', true),
+    permissionRow('administration', 'write', 'write', true),
+    permissionRow('actions', 'write', 'read', false),
+    permissionRow('contents', 'write', 'write', true),
+    permissionRow('workflows', 'write', 'none', false),
+    permissionRow('pull_requests', 'write', 'write', true),
+  ],
+  missing: ['actions:write', 'workflows:write'],
+  checkedAt: '2026-10-20T10:00:00Z',
+}
+
+export const githubOk: GitHubStatus = { ...githubStatus, ok: true, permissions: githubStatus.permissions.map((p) => ({ ...p, granted: 'write', ok: true })), missing: [] }
+
+export const githubRepos: GitHubRepoItem[] = [
+  { fullName: 'acme/widgets', isPrivate: false, defaultBranch: 'main', adopted: true },
+  { fullName: 'acme/new-thing', isPrivate: true, defaultBranch: 'main', adopted: false },
+]
+
+export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: RepoListItem[]; githubAuth?: 'app' | 'pat' | 'none'; github?: GitHubStatus; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
 
 export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings, logs }
 export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {}, logs: {} }
@@ -144,6 +179,9 @@ export const makeService = (store: { data: FixtureSet }) => ({
   setSlots: async () => store.data.slots[0]!,
   listRepos: async () => store.data.repos,
   githubAuthKind: () => store.data.githubAuth ?? 'pat',
+  githubStatus: async () => store.data.github ?? githubOk,
+  recheckGitHub: async () => store.data.github ?? githubOk,
+  listGitHubRepos: async () => githubRepos,
   ensureWebhook: async () => ({ repo: store.data.repos[0]!, covered: 'hook' as const, created: true }),
   adoptRepo: async () => store.data.repos[0]!,
   unadoptRepo: async () => {},

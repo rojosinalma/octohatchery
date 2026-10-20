@@ -28,6 +28,8 @@ export const runnerTypes = sqliteTable('runner_types', {
   mounts: text('mounts').notNull().default('[]'),
   env: text('env').notNull().default('{}'),
   secretEnv: text('secret_env').notNull().default('[]'),
+  /** Docker access of the runner: `none`, `socket` (host daemon bind-mounted) or `dind` (private daemon sidecar). */
+  docker: text('docker').notNull().default('none'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

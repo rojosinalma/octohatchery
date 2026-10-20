@@ -1,4 +1,5 @@
 import type { Octokit } from '@octokit/rest'
+import type { PermissionReport } from './permissions'
 
 export type QueuedJob = { githubJobId: number; runId: number; name: string; labels: string[]; htmlUrl: string; queuedAt: string }
 export type JitConfig = { runnerId: number; encodedJitConfig: string }
@@ -17,12 +18,22 @@ export type GitHubClient = {
   /** PAT: create or update the repo's `workflow_job` hook. App: no-op, the App delivers webhooks. */
   ensureWebhook(repo: string, url: string, secret: string): Promise<WebhookResult | null>
   deleteWebhook(repo: string, hookId: number): Promise<void>
-  listInstallationRepos(): Promise<RepoInfo[]>
+  /** Repositories the App installation or the token can reach, at most `max` (the first pages). */
+  listInstallationRepos(max?: number): Promise<RepoInfo[]>
+  /**
+   * What the credentials are allowed to do. App: the installation's accepted permissions. PAT: fine-grained tokens expose
+   * no grant list, so cheap reads on `probeRepo` (when given) prove definite absence only.
+   */
+  permissions(probeRepo?: string): Promise<PermissionReport>
   getRepo(fullName: string): Promise<RepoInfo>
   getFileContents(repo: string, path: string, ref?: string): Promise<FileContents | null>
-  putFile(repo: string, input: { path: string; content: string; message: string; sha?: string; branch: string }): Promise<{ commitSha: string }>
+  putFile(repo: string, input: { path: string; content: string; message: string; sha?: string; branch: string }): Promise<{ commitSha: string; htmlUrl: string }>
   createBranch(repo: string, name: string, fromBranch: string): Promise<void>
-  openPullRequest(repo: string, input: { title: string; body: string; head: string; base: string }): Promise<{ url: string }>
+  /** Deletes `refs/heads/<name>`; a branch that is already gone is not an error. */
+  deleteBranch(repo: string, name: string): Promise<void>
+  openPullRequest(repo: string, input: { title: string; body: string; head: string; base: string }): Promise<{ url: string; number: number }>
+  /** Reads a pull request back; null when GitHub does not know it. */
+  getPullRequest(repo: string, number: number): Promise<{ url: string; state: string } | null>
   listWorkflowFiles(repo: string, ref?: string): Promise<string[]>
   /** Plain-text log of a finished job (follows GitHub's redirect). Throws with `status: 404` while the log is not ready. */
   getJobLog(repo: string, githubJobId: number): Promise<string>

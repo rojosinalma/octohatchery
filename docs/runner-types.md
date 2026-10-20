@@ -17,12 +17,13 @@ not code: you add and change them from the dashboard (Runner types page), the JS
 | `mounts` | Extra bind mounts, verbatim Docker form `src:dst[:ro]`. Empty by default. |
 | `env` | Plain environment variables, stored as given. Never put secrets here. |
 | `secretEnv` | Names of environment variables whose values live on the node. |
+| `docker` | What a job can do with Docker: `none` (default), `socket` or `dind`. See [Docker access](#docker-access). |
 
 Every runner also gets:
 
 - the named volume `octohatchery-tool-cache` at `/opt/hostedtoolcache` (`RUNNER_TOOL_CACHE`), one per host,
 - `BUILDKIT_HOST` pointing at the node's buildkitd sidecar (setting `buildkit_host`),
-- a PID limit of 1024, no Docker socket, no added capabilities.
+- a PID limit of 1024, no added capabilities, and no Docker socket unless the type says `docker: socket`.
 
 A type change affects runners started after the change. Running runners finish with their old settings.
 
@@ -36,6 +37,30 @@ not leak anything.
 
 This also means a type with secrets only runs on hosts that have those values. Give such a type slots
 only on those hosts.
+
+## Docker access
+
+GitHub's `services:` containers, `docker run` steps and `docker compose` all need a daemon the runner
+can talk to. Image builds do not: `docker buildx build` goes to the shared `buildkitd` sidecar over
+`BUILDKIT_HOST` in every type. The `docker` field picks what else a job gets:
+
+| Option | What happens | Trade-off |
+|---|---|---|
+| `none` (default) | No daemon. `BUILDKIT_HOST` only. | `services:`, `docker run` and Compose steps fail. Safest. |
+| `socket` | The node's Docker socket (`DOCKER_HOST` when it is a unix socket, else `/var/run/docker.sock`) is bind-mounted at `/var/run/docker.sock`, and the runner's user is added to the socket's group. | Everything works and is fast (shared image cache). Every job on this type sees and can stop, start or exec into **every container on the host**, including OctoHatchery itself. Only for types whose repos you fully trust. |
+| `dind` | Before the runner, the node starts a `docker:28-dind` sidecar (privileged, plain TCP, same runner network, named `<runner>-dind`, labelled with the runner id and `octohatchery.role=dind`) and points the runner's `DOCKER_HOST` at it. The runner's entrypoint waits up to 30 s for the daemon. The sidecar is removed with the runner by the reaper, the stale sweep and `kill`. | Isolated: the job controls only its own daemon. About 5 s slower to start; images are pulled fresh every job (no shared cache); the sidecar is privileged on the host. |
+
+For `socket`, the node adds the socket's group id to the runner container when it can `stat` the
+socket (the socket is mounted into the app container, so this normally works). When it cannot, it
+logs a warning and starts the runner without the extra group; the socket must then be readable by the
+runner user (uid 1001), for example by making the host's `docker` group world-readable on the socket
+or by using `dind` instead.
+
+`dind` needs a runner image whose entrypoint waits for `DOCKER_HOST` (the shipped
+`octohatchery-runner` from this change on). An older image starts fine but its first `docker` step
+may race the daemon.
+
+The shipped `generic` and `deploy` types start with `none`; pick what each needs in the type dialog.
 
 ## Mounts
 

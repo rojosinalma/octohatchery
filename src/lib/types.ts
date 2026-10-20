@@ -13,6 +13,9 @@ export type Host = {
   appVersion: string | null
 }
 export type HostSpecs = Pick<Host, 'cpus' | 'memoryMb' | 'os' | 'dockerVersion' | 'appVersion'>
+/** Docker access a runner gets: none, the host's daemon over its socket, or a private daemon sidecar per runner. */
+export type RunnerDocker = 'none' | 'socket' | 'dind'
+export const RUNNER_DOCKER_OPTIONS: readonly RunnerDocker[] = ['none', 'socket', 'dind']
 export type RunnerType = {
   id: number
   name: string
@@ -24,6 +27,7 @@ export type RunnerType = {
   mounts: string[]
   env: Record<string, string>
   secretEnv: string[]
+  docker: RunnerDocker
   createdAt: string
   updatedAt: string
 }
@@ -83,10 +87,14 @@ export type HealthSnapshot = {
   runnersBusy: number
   lastWebhookAt: string | null
   version: string
+  /** GitHub credentials check (cached): a missing permission is a warning, never a 503. */
+  github: { ok: boolean; source: 'app' | 'pat' | 'none'; missing: string[] }
 }
 export type Actor = string // 'user' | 'mcp:<client>' | 'webhook' | 'scheduler' | 'sweep'
 export type RunsOnMode = 'snippet' | 'pr' | 'commit'
-export type ApplyRunsOnResult = { ok: boolean; message: string; snippet?: string; prUrl?: string; commitSha?: string; files?: string[] }
+export type ApplyRunsOnResult = { ok: boolean; message: string; snippet?: string; prUrl?: string; commitSha?: string; htmlUrl?: string; files?: string[] }
+/** A repository the credentials can reach, with whether this instance already adopted it. */
+export type GitHubRepoItem = { fullName: string; isPrivate: boolean; defaultBranch: string; adopted: boolean }
 
 export class ServiceError extends Error {
   constructor(

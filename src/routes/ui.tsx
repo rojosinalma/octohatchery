@@ -33,8 +33,17 @@ const version = async () => {
 const theme = (settings: Record<string, string>): Theme => ({ skin: settings['ui_skin'], palette: settings['ui_palette'], mode: settings['ui_mode'] })
 
 const page = async (active: NavKey, title: string, body: JSX.Element, side?: JSX.Element) => {
-  const [v, settings] = await Promise.all([version(), service.getSettings().catch(() => ({}) as Record<string, string>)])
-  return <Layout title={title} active={active} tailorHead={tailorHead} version={v} theme={theme(settings)} side={side}>{body}</Layout>
+  const [v, settings, github] = await Promise.all([
+    version(),
+    service.getSettings().catch(() => ({}) as Record<string, string>),
+    // The banner must never block a page: an unreachable GitHub renders no banner.
+    service.githubStatus().catch(() => undefined),
+  ])
+  return (
+    <Layout title={title} active={active} tailorHead={tailorHead} version={v} theme={theme(settings)} side={side} github={github}>
+      {body}
+    </Layout>
+  )
 }
 
 /** Serve one file from `public/`; `rel` is the raw wildcard. Anything that resolves outside `public/` is a 404. */
@@ -160,6 +169,6 @@ export const ui = new Elysia({ name: 'ui' })
   )
 
   .get('/settings', async () => {
-    const [settings, v] = await Promise.all([service.getSettings(), version()])
-    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} />, <SettingsSide />)
+    const [settings, v, github] = await Promise.all([service.getSettings(), version(), service.githubStatus()])
+    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} github={github} />, <SettingsSide />)
   })
