@@ -66,22 +66,18 @@ The shipped `generic` and `deploy` types start with `none`; pick what each needs
 ### `services:` and localhost on containerised runners
 
 GitHub-hosted runners run on a VM, so a `services:` container's published port is reachable on
-`localhost`. Here the runner is itself a container, and the Actions runner publishes service ports
-on **the Docker daemon's host**: with `socket` that is the node, with `dind` it is the sidecar.
-Neither is the runner container, so `localhost:5432` inside a step finds nothing.
+`localhost`. On a containerised runner the Actions runner publishes service ports on **the Docker
+daemon's host**, so what `localhost` means depends on the Docker option of the type:
 
-Two ways that work:
-
-- Address the service through the daemon's hostname. With `dind`, `DOCKER_HOST` is
-  `tcp://<runner>-dind:2375`, so the daemon's host is `<runner>-dind`; a step can derive it with
-  `echo "${DOCKER_HOST#tcp://}" | cut -d: -f1`. With `socket` the daemon runs on the node; use the
-  node's address on the runner network (the runner joins the compose network of the node, so the
-  app container's name resolves; the host's own IP is `ip route | awk '/default/ {print $3}'`).
-- Run the job inside a container (`container: node:22`) on the same `dind` or `socket` daemon:
-  GitHub then puts the job container and its services on one network and the service is
-  reachable by its `services:` key (`postgres:5432`), exactly as on GitHub-hosted runners. This
-  is the simpler option and the one the official documentation recommends for containerised
-  runners.
+- **Docker-in-Docker**: the runner shares the sidecar daemon's network namespace
+  (`network_mode: container:<sidecar>`), so every port the daemon publishes is on the job's own
+  `localhost`, exactly as on a hosted runner. Workflows need no change. `DOCKER_HOST` is
+  `tcp://localhost:2375`; the BuildKit sidecar stays reachable by name.
+- **Host socket**: the daemon is the node itself, so a published port lands on the node, not in the
+  runner, and `localhost:5432` inside a step finds nothing. Either address the node (the runner is on
+  the node's compose network; the host's gateway IP is `ip route | awk '/default/ {print $3}'`), or run
+  the job inside a container (`container: node:22`): GitHub then puts the job container and its
+  services on one network and the service is reachable by its `services:` key (`postgres:5432`).
 
 ## Images
 

@@ -17,7 +17,7 @@ export const TOOL_CACHE_PATH = '/opt/hostedtoolcache'
 export const MAX_CLAIM_RETRIES = 3
 /** Where the runner image expects the daemon socket (the Docker CLI default). */
 export const RUNNER_SOCKET_PATH = '/var/run/docker.sock'
-/** Docker-in-Docker sidecar: pinned major of the official image, plain TCP on the runner network (no TLS, private network). */
+/** Docker-in-Docker sidecar: pinned major of the official image, plain TCP shared with the runner's network namespace (no TLS). */
 export const DIND_IMAGE = 'docker:28-dind'
 export const DIND_PORT = 2375
 export const DIND_ROLE = 'dind'
@@ -104,11 +104,14 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     }
     const jit = await github().createJitConfig({ repo, name: runner.name, labels })
     logger.info(`registered ${runner.name} with ${repo} (github runner ${jit.runnerId})`)
+    let runnerNetwork = network
     if (type.docker === 'dind') {
-      // The daemon starts first so the runner's entrypoint can wait for it by name.
+      // The daemon starts first and owns the network stack; the runner joins it (`container:<sidecar>`), so a port
+      // the daemon publishes (GitHub `services:` ports) is on the job's own localhost, as on a hosted runner.
       const sidecarId = await backend().spawnSidecar({ runner, name: dindName(runner), image: DIND_IMAGE, role: DIND_ROLE, env: { DOCKER_TLS_CERTDIR: '' }, network, privileged: true })
       await waitForDaemon(sidecarId, runner.name)
-      env.DOCKER_HOST = `tcp://${dindName(runner)}:${DIND_PORT}`
+      env.DOCKER_HOST = `tcp://localhost:${DIND_PORT}`
+      runnerNetwork = `container:${sidecarId}`
     }
     const containerId = await backend().spawnRunner({
       runner,
@@ -116,7 +119,7 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
       jitconfig: jit.encodedJitConfig,
       env,
       mounts: runnerMounts(type),
-      network,
+      network: runnerNetwork,
       groupAdd,
     })
     const updated = await updateRunner(runner.id, { state: 'idle', containerId, githubRunnerId: jit.runnerId, repo })

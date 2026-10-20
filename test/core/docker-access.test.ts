@@ -52,7 +52,7 @@ describe('runner docker access', () => {
     expect(w.docker.sidecars.size).toBe(0)
   })
 
-  test('dind type: sidecar first, DOCKER_HOST points at it, kill removes both', async () => {
+  test('dind type: sidecar first, runner joins its network, kill removes both', async () => {
     const w = await fresh()
     await service.adoptRepo('acme/app', 'user')
     await service.upsertRunnerType({ ...base, name: 'dindy', docker: 'dind' }, 'user')
@@ -63,7 +63,9 @@ describe('runner docker access', () => {
     expect(sidecar.input).toMatchObject({ name: dindName(runner), image: DIND_IMAGE, role: 'dind', privileged: true, env: { DOCKER_TLS_CERTDIR: '' } })
     expect(sidecar.labels['octohatchery.runner-id']).toBe(String(runner.id))
     expect(sidecar.labels['octohatchery.runner']).toBeUndefined()
-    expect(w.docker.spawns[0]!.env.DOCKER_HOST).toBe(`tcp://${dindName(runner)}:2375`)
+    // The runner shares the sidecar's network stack: the daemon and every port it publishes are on localhost.
+    expect(w.docker.spawns[0]!.env.DOCKER_HOST).toBe('tcp://localhost:2375')
+    expect(w.docker.spawns[0]!.network).toBe(`container:${sidecar.id}`)
     expect(w.docker.spawns[0]!.mounts).not.toContain('/var/run/docker.sock:/var/run/docker.sock')
     expect((await w.docker.listOwned()).length).toBe(1) // sidecars are not runners
     await service.kill(runner.id, 'user')
