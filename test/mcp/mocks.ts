@@ -24,6 +24,7 @@ export const service = {
   listRepos: ok([]),
   adoptRepo: mock(async (fullName: string) => ({ id: 1, fullName, adopted: true, isPrivate: false, webhookId: 7, adoptedAt: 't' })),
   unadoptRepo: ok(undefined),
+  ensureWebhook: mock(async (fullName: string) => ({ repo: { id: 1, fullName, adopted: true, isPrivate: false, webhookId: 7, adoptedAt: 't' }, covered: 'hook', created: true })),
   applyRunsOn: ok({ ok: true, message: 'snippet', snippet: 'runs-on: [self-hosted, generic]' }),
   listJobs: ok([]),
   getJob: ok({ id: 1, name: 'build' }),

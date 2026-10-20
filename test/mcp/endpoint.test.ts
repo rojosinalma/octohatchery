@@ -64,7 +64,7 @@ describe('/mcp endpoint', () => {
     const { client, transport } = await connect('test')
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name)).toContain('adopt_repo')
-    expect(tools).toHaveLength(19)
+    expect(tools).toHaveLength(20)
     expect(tools.find((t) => t.name === 'get_job_log')?.annotations?.readOnlyHint).toBe(true)
     expect(tools.find((t) => t.name === 'kill')!.annotations?.destructiveHint).toBe(true)
     await transport.terminateSession()

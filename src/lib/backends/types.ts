@@ -25,12 +25,17 @@ export const RUNNER_ID_LABEL = 'octohatchery.runner-id'
 export const RUNNER_TYPE_LABEL = 'octohatchery.type'
 export const RUNNER_HOST_LABEL = 'octohatchery.host'
 
+/** What the engine reports about the machine it runs on; fields it does not know are null. */
+export type EngineInfo = { version: string | null; os: string | null; cpus: number | null; memoryMb: number | null }
+
 /** One line of container output with the engine's timestamp (ISO-8601). */
 export type ContainerLogLine = { at: string; line: string }
 
 export type ContainerBackend = {
   kind: 'docker' | 'fake'
   ping(): Promise<boolean>
+  /** The engine's view of its host (version, OS, CPUs, memory); null when the engine does not answer. */
+  info(): Promise<EngineInfo | null>
   /** Creates and starts the container; returns its id. */
   spawnRunner(input: SpawnInput): Promise<string>
   inspect(containerId: string): Promise<ContainerInfo>

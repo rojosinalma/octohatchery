@@ -10,6 +10,11 @@ export const hosts = sqliteTable('hosts', {
   lastSeenAt: text('last_seen_at').notNull(),
   isLeader: integer('is_leader', { mode: 'boolean' }).notNull().default(false),
   dockerOk: integer('docker_ok', { mode: 'boolean' }).notNull().default(false),
+  cpus: integer('cpus'),
+  memoryMb: integer('memory_mb'),
+  os: text('os'),
+  dockerVersion: text('docker_version'),
+  appVersion: text('app_version'),
 })
 
 export const runnerTypes = sqliteTable('runner_types', {

@@ -40,6 +40,11 @@ export function toHost(r: Row): Host {
     lastSeenAt: str(r.last_seen_at),
     isLeader: bool(r.is_leader),
     dockerOk: bool(r.docker_ok),
+    cpus: numOrNull(r.cpus),
+    memoryMb: numOrNull(r.memory_mb),
+    os: strOrNull(r.os),
+    dockerVersion: strOrNull(r.docker_version),
+    appVersion: strOrNull(r.app_version),
   }
 }
 

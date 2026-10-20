@@ -6,10 +6,11 @@ import { STATUS_BY_CODE } from '../lib/json'
 import { ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
 import { OverviewLive, OverviewPage } from '../views/overview'
-import { JOB_STATUSES, JobsPage, JobsTable } from '../views/jobs'
+import { JOB_STATUSES, JobsPage, JobsTable, type JobsFilter } from '../views/jobs'
 import { JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
 import { RunnerTypesPage } from '../views/runner-types'
+import { HostsPage } from '../views/hosts'
 import { EventsPage, EventsTable } from '../views/events'
 import { SettingsPage, SettingsSide } from '../views/settings'
 
@@ -88,12 +89,36 @@ export const ui = new Elysia({ name: 'ui' })
     '/jobs',
     async ({ query }) => {
       const status = JOB_STATUSES.includes(query.status as JobStatus) ? (query.status as JobStatus) : undefined
-      const filter = { repo: query.repo || undefined, status }
-      const [jobs, repos] = await Promise.all([service.listJobs({ ...filter, limit: 200 }), query.partial ? Promise.resolve([]) : service.listRepos()])
-      if (query.partial) return <JobsTable jobs={jobs} filter={filter} />
-      return page('jobs', 'Jobs', <JobsPage jobs={jobs} repos={repos} filter={filter} />)
+      const since = query.since && !Number.isNaN(Date.parse(query.since)) ? new Date(Date.parse(query.since)).toISOString() : undefined
+      const filter: JobsFilter = {
+        repo: query.repo || undefined,
+        status,
+        q: query.q?.trim() || undefined,
+        since,
+        running: query.running === '1' || undefined,
+        failed: query.failed === '1' || undefined,
+      }
+      const [jobs, runners, repos] = await Promise.all([
+        service.listJobs({ ...filter, limit: 200 }),
+        service.listRunners({ limit: 1000 }),
+        query.partial ? Promise.resolve([]) : service.listRepos(),
+      ])
+      const runnerNames = Object.fromEntries(runners.map((r) => [r.id, r.name]))
+      if (query.partial) return <JobsTable jobs={jobs} filter={filter} runnerNames={runnerNames} />
+      return page('jobs', 'Jobs', <JobsPage jobs={jobs} repos={repos} filter={filter} runnerNames={runnerNames} />)
     },
-    { query: t.Object({ partial: t.Optional(t.String()), repo: t.Optional(t.String()), status: t.Optional(t.String()), job: t.Optional(t.String()) }) },
+    {
+      query: t.Object({
+        partial: t.Optional(t.String()),
+        repo: t.Optional(t.String({ maxLength: 200 })),
+        status: t.Optional(t.String({ maxLength: 20 })),
+        q: t.Optional(t.String({ maxLength: 200 })),
+        since: t.Optional(t.String({ maxLength: 40 })),
+        running: t.Optional(t.String({ maxLength: 1 })),
+        failed: t.Optional(t.String({ maxLength: 1 })),
+        job: t.Optional(t.String()),
+      }),
+    },
   )
 
   .get(
@@ -111,12 +136,17 @@ export const ui = new Elysia({ name: 'ui' })
 
   .get('/repos', async () => {
     const [repos, types] = await Promise.all([service.listRepos(), service.listRunnerTypes()])
-    return page('repos', 'Repos', <ReposPage repos={repos} types={types} />)
+    return page('repos', 'Repos', <ReposPage repos={repos} types={types} githubAuth={service.githubAuthKind()} />)
   })
 
   .get('/runner-types', async () => {
     const [types, hosts, slots] = await Promise.all([service.listRunnerTypes(), service.listHosts(), service.listSlots()])
     return page('runner-types', 'Runner types', <RunnerTypesPage types={types} hosts={hosts} slots={slots} />)
+  })
+
+  .get('/hosts', async () => {
+    const [hosts, slots] = await Promise.all([service.listHosts(), service.listSlots()])
+    return page('hosts', 'Hosts', <HostsPage hosts={hosts} slots={slots} />)
   })
 
   .get(

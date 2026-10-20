@@ -1,8 +1,8 @@
-import { ServiceError, type Event, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
+import { ServiceError, type Event, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type RepoListItem, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
 
 export const hosts: Host[] = [
-  { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true },
-  { id: 2, name: 'node-b', status: 'offline', lastSeenAt: '2026-10-18T10:00:00Z', isLeader: false, dockerOk: false },
+  { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true, cpus: 8, memoryMb: 32768, os: 'Ubuntu 24.04.1 LTS', dockerVersion: '27.3.1', appVersion: '0.1.0-test' },
+  { id: 2, name: 'node-b', status: 'offline', lastSeenAt: '2026-10-18T10:00:00Z', isLeader: false, dockerOk: false, cpus: null, memoryMb: null, os: null, dockerVersion: null, appVersion: null },
 ]
 
 export const types: RunnerType[] = [
@@ -27,9 +27,10 @@ export const slots: Slot[] = [
   { host: 'node-b', type: 'generic', count: 1, used: 0, free: 1 },
 ]
 
-export const repos: Repo[] = [
-  { id: 1, fullName: 'acme/widgets', adopted: true, isPrivate: false, webhookId: 42, adoptedAt: '2026-10-19T09:30:00Z' },
-  { id: 2, fullName: 'acme/old', adopted: false, isPrivate: true, webhookId: null, adoptedAt: null },
+export const repos: RepoListItem[] = [
+  { id: 1, fullName: 'acme/widgets', adopted: true, isPrivate: false, webhookId: 42, adoptedAt: '2026-10-19T09:30:00Z', jobCount: 2 },
+  { id: 3, fullName: 'acme/polled', adopted: true, isPrivate: true, webhookId: null, adoptedAt: '2026-10-19T09:40:00Z', jobCount: 0 },
+  { id: 2, fullName: 'acme/old', adopted: false, isPrivate: true, webhookId: null, adoptedAt: null, jobCount: 0 },
 ]
 
 export const jobs: Job[] = [
@@ -125,7 +126,7 @@ export const health: HealthSnapshot = {
   version: '0.1.0-test',
 }
 
-export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: Repo[]; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
+export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: RepoListItem[]; githubAuth?: 'app' | 'pat' | 'none'; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
 
 export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings, logs }
 export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {}, logs: {} }
@@ -142,11 +143,21 @@ export const makeService = (store: { data: FixtureSet }) => ({
   listSlots: async () => store.data.slots,
   setSlots: async () => store.data.slots[0]!,
   listRepos: async () => store.data.repos,
+  githubAuthKind: () => store.data.githubAuth ?? 'pat',
+  ensureWebhook: async () => ({ repo: store.data.repos[0]!, covered: 'hook' as const, created: true }),
   adoptRepo: async () => store.data.repos[0]!,
   unadoptRepo: async () => {},
   applyRunsOn: async () => ({ ok: true, message: 'ok' }),
-  listJobs: async (filter?: { repo?: string; status?: string }) =>
-    store.data.jobs.filter((j) => (!filter?.repo || j.repo === filter.repo) && (!filter?.status || j.status === filter.status)),
+  listJobs: async (filter?: { repo?: string; status?: string; q?: string; since?: string; running?: boolean; failed?: boolean }) =>
+    store.data.jobs.filter(
+      (j) =>
+        (!filter?.repo || j.repo === filter.repo) &&
+        (!filter?.status || j.status === filter.status) &&
+        (!filter?.q || `${j.name} ${j.repo}`.toLowerCase().includes(filter.q.toLowerCase())) &&
+        (!filter?.since || j.queuedAt >= filter.since) &&
+        (!filter?.running || j.status === 'claimed' || j.status === 'in_progress') &&
+        (!filter?.failed || ['failure', 'timed_out', 'cancelled'].includes(j.conclusion ?? '')),
+    ),
   listRunners: async () => store.data.runners,
   getJob: async (id: number) => {
     const job = store.data.jobs.find((j) => j.id === id)

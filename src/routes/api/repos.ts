@@ -32,6 +32,18 @@ export const repos = new Elysia({ prefix: '/repos' })
     { body: RepoBody },
   )
   .post(
+    '/webhook',
+    async ({ body, headers }) => {
+      const out = await service.ensureWebhook(body.fullName, actorOf(headers))
+      const message =
+        out.covered === 'app'
+          ? `${body.fullName} is covered by the GitHub App; no repository webhook is needed`
+          : `webhook #${out.repo.webhookId} ${out.created ? 'created' : 'repaired'} on ${body.fullName}`
+      return jsonOk(out, message)
+    },
+    { body: RepoBody },
+  )
+  .post(
     '/runs-on',
     async ({ body, headers, set }) => {
       const result = await service.applyRunsOn(body, actorOf(headers))

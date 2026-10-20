@@ -13,10 +13,14 @@ const LOG_POLL_MS = 2_000
 const LOG_PAGE = 5000
 
 export const jobs = new Elysia({ prefix: '/jobs' })
-  .get('/', async ({ query }) => jsonOk({ jobs: await service.listJobs(query) }), {
+  .get('/', async ({ query }) => jsonOk({ jobs: await service.listJobs({ ...query, running: query.running === true, failed: query.failed === true }) }), {
     query: t.Object({
-      repo: t.Optional(t.String()),
+      repo: t.Optional(t.String({ maxLength: 200 })),
       status: t.Optional(JobStatusSchema),
+      q: t.Optional(t.String({ maxLength: 200 })),
+      since: t.Optional(t.String({ format: 'date-time' })),
+      running: t.Optional(t.Boolean()),
+      failed: t.Optional(t.Boolean()),
       limit: t.Optional(t.Integer({ minimum: 1, maximum: 1000 })),
     }),
   })

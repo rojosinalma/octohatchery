@@ -1,13 +1,14 @@
 import { type PropsWithChildren } from '@kitajs/html'
 import { BrandMark, Icon } from './parts'
 
-export type NavKey = 'overview' | 'jobs' | 'repos' | 'runner-types' | 'events' | 'settings'
+export type NavKey = 'overview' | 'repos' | 'jobs' | 'runner-types' | 'hosts' | 'events' | 'settings'
 
 export const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: 'overview', href: '/', label: 'Overview', icon: 'bi-speedometer2' },
-  { key: 'jobs', href: '/jobs', label: 'Jobs', icon: 'bi-briefcase' },
   { key: 'repos', href: '/repos', label: 'Repos', icon: 'bi-github' },
+  { key: 'jobs', href: '/jobs', label: 'Jobs', icon: 'bi-briefcase' },
   { key: 'runner-types', href: '/runner-types', label: 'Runner types', icon: 'bi-cpu' },
+  { key: 'hosts', href: '/hosts', label: 'Hosts', icon: 'bi-hdd-rack' },
   { key: 'events', href: '/events', label: 'Events', icon: 'bi-journal-text' },
   { key: 'settings', href: '/settings', label: 'Settings', icon: 'bi-gear' },
 ]
@@ -49,9 +50,6 @@ export const Layout = ({ title, active, tailorHead, version, theme = {}, side, r
             <BrandMark />
             OctoHatchery
           </a>
-          <span class="brand-tagline t-muted t-small t-hide" data-hide="md">
-            one tentacle per job
-          </span>
           <ul class="t-navbar-nav">
             {NAV.map((n) => (
               <li>

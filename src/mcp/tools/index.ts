@@ -2,6 +2,7 @@ import { adoptRepo } from './adopt_repo'
 import { applyRunsOn } from './apply_runs_on'
 import type { ToolDefinition } from './define'
 import { deleteRunnerType } from './delete_runner_type'
+import { ensureWebhook } from './ensure_webhook'
 import { getJobLog } from './get_job_log'
 import { getSettings } from './get_settings'
 import { health } from './health'
@@ -31,6 +32,7 @@ export const tools: ToolDefinition[] = [
   listRepos,
   adoptRepo,
   unadoptRepo,
+  ensureWebhook,
   applyRunsOn,
   listJobs,
   getJobLog,

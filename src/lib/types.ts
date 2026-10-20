@@ -1,4 +1,18 @@
-export type Host = { id: number; name: string; status: 'online' | 'offline'; lastSeenAt: string; isLeader: boolean; dockerOk: boolean }
+export type Host = {
+  id: number
+  name: string
+  status: 'online' | 'offline'
+  lastSeenAt: string
+  isLeader: boolean
+  dockerOk: boolean
+  /** Reported by the node's heartbeat; null until the first report (older nodes never report them). */
+  cpus: number | null
+  memoryMb: number | null
+  os: string | null
+  dockerVersion: string | null
+  appVersion: string | null
+}
+export type HostSpecs = Pick<Host, 'cpus' | 'memoryMb' | 'os' | 'dockerVersion' | 'appVersion'>
 export type RunnerType = {
   id: number
   name: string
@@ -15,6 +29,10 @@ export type RunnerType = {
 }
 export type Slot = { host: string; type: string; count: number; used: number; free: number }
 export type Repo = { id: number; fullName: string; adopted: boolean; isPrivate: boolean; webhookId: number | null; adoptedAt: string | null }
+/** A repo as listed: with the number of job rows it has in the retention window. */
+export type RepoListItem = Repo & { jobCount: number }
+/** Outcome of `ensureWebhook`: a repo hook was created or repaired, or the GitHub App delivers the events. */
+export type WebhookOutcome = { repo: Repo; covered: 'hook' | 'app'; created: boolean }
 export type JobStatus = 'queued' | 'claimed' | 'in_progress' | 'completed' | 'ignored'
 export type Job = {
   id: number

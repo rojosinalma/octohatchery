@@ -22,10 +22,10 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Overview
 
-- Hosts: status, Docker reachability, last heartbeat. The node that currently runs the sweep
-  carries a `leader` badge.
-- Slots: one row per runner type, one column per host, a bar showing used / total. The total
-  column sums the row.
+- One Hosts card with a section per host. The header line shows the status dot, the name (links
+  to the Hosts screen), a `leader` badge on the node that runs the sweep, the status, whether
+  Docker answers and the last heartbeat. Under it, one row per runner type that has slots on that
+  host with a used / total bar. A host without slots says so and links to Runner types.
 - Runners: only live runners (`spawning`, `idle`, `busy`). Repo and job link into the jobs
   screen; `Kill` asks for confirmation, then calls `DELETE /api/runners/:id`.
 - Empty state: "No hosts yet". A node registers itself on boot, so the first host appears as
@@ -33,8 +33,14 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Jobs
 
-- Status filter: `?status=queued|claimed|in_progress|completed|ignored`; repo filter:
-  `?repo=owner/name`. Unknown values are ignored.
+- Columns: Runner (the runner's name, linking to the job page), Status, Job, Repo (links to the
+  list filtered on that repo), Queued, Duration, Run (opens the run on GitHub).
+- Filters, all kept in the URL so a view can be shared: a status select
+  (`?status=queued|claimed|in_progress|completed|ignored`), a repo select (`?repo=owner/name`),
+  a search box (`?q=` matches job name, repo and runner name, case-insensitive; Enter or a short
+  pause navigates, `/` focuses it) and quick filters on the right: Running now (`?running=1`),
+  Failed (`?failed=1`: failure, timed out or cancelled), Last 24 h and This week (`?since=<ISO>`).
+  A pressed quick filter clears itself on the next click. Unknown values are ignored.
 - Finished jobs show their conclusion (`success`, `failure`, …) instead of `completed`; a
   failed row is tinted.
 - Duration is computed from `startedAt` to `completedAt` (or now).
@@ -60,6 +66,13 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 ### Repos
 
 - Adopt: `POST /api/repos/adopt {fullName}`. The GitHub App or token must have access to the repo.
+  An empty or malformed name is reported under the field; the browser's own bubble never shows.
+- Columns: repo, visibility, webhook state (`via App` when a GitHub App delivers the events;
+  `active` or `polling` with a token), Jobs (how many job rows the repo has; links to the filtered
+  Jobs screen), adopted since, actions.
+- Add webhook / Repair webhook: `POST /api/repos/webhook {fullName}` creates the `workflow_job`
+  hook on the repo, or updates an existing one, and stores its id. With a GitHub App the button
+  is disabled: the App already delivers the events.
 - `runs-on`: opens a dialog with one snippet per runner type
   (`runs-on: [self-hosted, <type>]`), a copy button, and two actions that call
   `POST /api/repos/runs-on {fullName, mode, type}`: **Open a pull request** (`mode: pr`) and
@@ -73,12 +86,26 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   added), image, caps, mount and env counts, and the names of secret environment variables.
   Secret values are never shown or stored; they are read from the node's own environment when a
   runner starts.
+- The table shows Environment (count) before Mounts (count); hovering either lists the names.
 - Edit and New open the same dialog; saving calls `PUT /api/runner-types/:name` with the full
-  type. Mounts are one `src:dst[:ro]` per line, environment one `KEY=value` per line, labels and
-  secret names comma-separated.
+  type. Labels are chips: Enter, comma or space adds one, × removes it; `self-hosted`, the type
+  name and the host are shown first as fixed badges because every runner gets them anyway.
+  Environment (one `KEY=value` per line) comes before Mounts (one `src:dst[:ro]` per line);
+  secret names are comma-separated.
 - Slots matrix: a number field per type × host. Leaving the field saves that one cell with
   `PUT /api/slots {host, type, count}`; a failed save reverts the field. The play button calls
   `POST /api/runners/spawn {type, host}` and is disabled for offline hosts.
+
+### Hosts
+
+- One row per node: status dot, name, `leader` badge, Docker reachability, CPUs, memory, OS,
+  Docker version, app version, last heartbeat and the slots used / total on that host. The specs
+  are what the node's heartbeat reports (`GET /api/hosts` carries them too); a dash means the node
+  has not reported yet, for example an older version.
+- "Add a host" opens a dialog that explains how a host joins: start a node on it with the same
+  database and GitHub settings and its own `HOST_NAME`; it registers itself on its first
+  heartbeat. The dialog carries a copyable `.env` skeleton and links to the cluster section of
+  the operations guide. There is no API to add a host.
 
 ### Events
 

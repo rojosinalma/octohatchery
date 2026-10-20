@@ -27,8 +27,8 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
             <th>Image</th>
             <th class="t-col-num">CPUs</th>
             <th class="t-col-num">Memory</th>
-            <th>Mounts</th>
-            <th>Env</th>
+            <th class="t-col-num">Environment</th>
+            <th class="t-col-num">Mounts</th>
             <th>Secrets</th>
             <th class="t-col-actions">Actions</th>
           </tr>
@@ -64,8 +64,16 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
               </td>
               <td class="t-col-num">{String(t.cpus)}</td>
               <td class="t-col-num">{`${t.memoryMb} MB`}</td>
-              <td class="t-col-num">{String(t.mounts.length)}</td>
-              <td class="t-col-num">{String(Object.keys(t.env).length)}</td>
+              <td class="t-col-num">
+                {Object.keys(t.env).length ? (
+                  <span data-tip={Object.keys(t.env).join(', ')}>{String(Object.keys(t.env).length)}</span>
+                ) : (
+                  <span class="t-muted">0</span>
+                )}
+              </td>
+              <td class="t-col-num">
+                {t.mounts.length ? <span data-tip={t.mounts.join(', ')}>{String(t.mounts.length)}</span> : <span class="t-muted">0</span>}
+              </td>
               <td>
                 {t.secretEnv.map((name) => (
                   <span class="t-badge" data-tone="warning" data-variant="outline" data-size="xs" data-tip="Read from the node's environment at spawn time" safe>
@@ -74,7 +82,7 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
                 ))}
               </td>
               <td class="t-col-actions">
-                <div class="t-cluster" data-gap="1">
+                <div class="t-cluster row-actions" data-gap="1">
                   <button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" data-tip="Edit" data-action="type-edit" data-type={JSON.stringify(t)}>
                     <Icon id="bi-pencil" />
                   </button>
@@ -200,11 +208,25 @@ const TypeDialog = () => (
           <p class="t-hint">Must contain the GitHub Actions runner and start it from <code>RUNNER_JITCONFIG</code>.</p>
         </div>
         <div class="t-field" data-span="6">
-          <label class="t-label" for="tf-labels">
-            Extra labels
+          <label class="t-label" for="tf-labels-entry">
+            Labels
           </label>
-          <input class="t-input" id="tf-labels" name="labels" placeholder="linux, x64" />
-          <p class="t-hint">Comma-separated. <code>self-hosted</code>, the type and the host are always added.</p>
+          <div class="chip-input" id="tf-labels-chips" data-chips-for="tf-labels">
+            <span class="t-badge" data-tone="neutral" data-variant="outline" data-fixed data-tip="Always added by OctoHatchery">
+              self-hosted
+            </span>
+            <span class="t-badge" data-tone="accent" data-variant="outline" data-fixed data-tip="Always added by OctoHatchery" id="tf-labels-type">
+              type
+            </span>
+            <span class="t-badge chip-example" data-tone="neutral" data-variant="outline" data-fixed data-tip="Always added by OctoHatchery: the name of the host the runner starts on" id="tf-labels-host">
+              host
+            </span>
+            <input class="chip-entry" id="tf-labels-entry" placeholder="Add a label…" autocomplete="off" aria-describedby="tf-labels-hint" />
+          </div>
+          <input type="hidden" id="tf-labels" name="labels" />
+          <p class="t-hint" id="tf-labels-hint">
+            Enter, comma or space adds a label; × removes it. Lowercase letters, digits, <code>-</code> or <code>_</code>.
+          </p>
         </div>
         <div class="t-field" data-span="3">
           <label class="t-label" for="tf-cpus">
@@ -219,21 +241,21 @@ const TypeDialog = () => (
           <input class="t-input" id="tf-memory" name="memoryMb" type="number" min="128" step="128" required value="4096" />
         </div>
         <div class="t-field" data-span="6">
-          <label class="t-label" for="tf-mounts">
-            Mounts
-          </label>
-          <textarea class="t-textarea" id="tf-mounts" name="mounts" rows="4" placeholder="/srv/cache:/cache:ro"></textarea>
-          <p class="t-hint">
-            One <code>src:dst[:ro]</code> per line. The tool cache volume is mounted on every runner anyway.
-          </p>
-        </div>
-        <div class="t-field" data-span="6">
           <label class="t-label" for="tf-env">
             Environment
           </label>
           <textarea class="t-textarea" id="tf-env" name="env" rows="4" placeholder="NODE_OPTIONS=--max-old-space-size=4096"></textarea>
           <p class="t-hint">
             One <code>KEY=value</code> per line. Plain values only; stored in the database.
+          </p>
+        </div>
+        <div class="t-field" data-span="6">
+          <label class="t-label" for="tf-mounts">
+            Mounts
+          </label>
+          <textarea class="t-textarea" id="tf-mounts" name="mounts" rows="4" placeholder="/srv/cache:/cache:ro"></textarea>
+          <p class="t-hint">
+            One <code>src:dst[:ro]</code> per line. The tool cache volume is mounted on every runner anyway.
           </p>
         </div>
         <div class="t-field" data-span="12">

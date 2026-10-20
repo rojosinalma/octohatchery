@@ -74,6 +74,9 @@ export function createFakeBackend(): FakeBackend {
     async ping() {
       return fake.up
     },
+    async info() {
+      return fake.up ? { version: 'fake-1.0', os: 'Fake OS 1', cpus: 4, memoryMb: 8192 } : null
+    },
     async spawnRunner(input) {
       const id = `fake-${++n}`
       spawns.push(input)

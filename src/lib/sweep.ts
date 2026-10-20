@@ -1,4 +1,6 @@
 import { sql } from 'drizzle-orm'
+import { cpus, platform, release, totalmem } from 'node:os'
+import pkg from '../../package.json'
 import { db } from '../db'
 import { backend } from './backends'
 import { config } from './config'
@@ -8,6 +10,7 @@ import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
 import { activeRunners, adoptedRepos, insertJobIfNew, updateRunner, upsertHost } from './store'
+import type { HostSpecs } from './types'
 
 const logger = log('sweep')
 
@@ -20,18 +23,63 @@ export function isLeader(): boolean {
   return leader
 }
 
-/** Single mode is always leader; cluster mode asks Postgres for the advisory lock (kept until the process ends). */
+/**
+ * Single mode is always leader. Cluster mode asks Postgres for the advisory lock on every pass, so a node whose
+ * lock session died (failover, network) steps down within one sweep instead of staying leader forever, and a
+ * node that got the lock on a standby never counts.
+ */
 export async function electLeader(): Promise<boolean> {
-  if (leader) return true
-  leader = config().mode === 'single' ? true : await db().tryLeaderLock()
-  if (leader) logger.info(`this node (${config().hostName}) is the leader`)
+  const was = leader
+  if (config().mode === 'single') {
+    leader = true
+  } else {
+    try {
+      leader = await db().tryLeaderLock()
+    } catch (err) {
+      leader = false
+      logger.warn('leader lock check failed; stepping down until the database answers', err instanceof Error ? err : String(err))
+    }
+  }
+  if (leader && !was) logger.info(`this node (${config().hostName}) is the leader`)
+  if (!leader && was) logger.warn(`this node (${config().hostName}) lost the leader lock`)
   return leader
 }
 
-/** Heartbeat: upsert this host as online with its docker state; mark silent hosts offline. */
+/** `PRETTY_NAME` from /etc/os-release when readable, else `<platform> <release>`; read once. */
+let osName: string | undefined
+async function osPrettyName(): Promise<string> {
+  if (osName) return osName
+  try {
+    const text = await Bun.file('/etc/os-release').text()
+    const m = /^PRETTY_NAME="?([^"\n]+)"?$/m.exec(text)
+    if (m?.[1]) return (osName = m[1])
+  } catch {
+    // not Linux, or no such file: fall through
+  }
+  return (osName = `${platform()} ${release()}`)
+}
+
+/**
+ * What this node knows about its host. The container engine sees the real machine (CPUs, memory, OS), so its
+ * answer wins; a field the engine leaves out falls back to the process's own view (inside a container: the
+ * container's). While the engine is down nothing but the app version is reported, so the stored values stay.
+ */
+export async function hostSpecs(dockerOk: boolean): Promise<HostSpecs> {
+  const engine = dockerOk ? await backend().info() : null
+  if (!engine) return { cpus: null, memoryMb: null, os: null, dockerVersion: null, appVersion: pkg.version }
+  return {
+    cpus: engine.cpus ?? (cpus().length || null),
+    memoryMb: engine.memoryMb ?? (Math.round(totalmem() / 1_048_576) || null),
+    os: engine.os ?? (await osPrettyName()),
+    dockerVersion: engine.version,
+    appVersion: pkg.version,
+  }
+}
+
+/** Heartbeat: upsert this host as online with its docker state and specs; mark silent hosts offline. */
 export async function heartbeat(): Promise<void> {
   const dockerOk = await backend().ping()
-  await upsertHost({ name: config().hostName, isLeader: leader, dockerOk })
+  await upsertHost({ name: config().hostName, isLeader: leader, dockerOk, specs: await hostSpecs(dockerOk) })
   const grace = 3 * (await settings.fetchInt('heartbeat_s', 15))
   const cutoff = new Date(Date.now() - grace * 1000).toISOString()
   await db().run(sql`update hosts set status = 'offline' where last_seen_at < ${cutoff} and status <> 'offline'`)

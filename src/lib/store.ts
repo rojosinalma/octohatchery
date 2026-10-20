@@ -2,7 +2,7 @@ import { sql, type SQL } from 'drizzle-orm'
 import { db, type Db } from '../db'
 import { toHost, toJob, toLogLine, toRepo, toRunner, toRunnerType } from '../db/rows'
 import { bus } from './bus'
-import type { Host, Job, JobStatus, LogLine, Repo, Runner, RunnerState, RunnerType, Slot } from './types'
+import type { Host, HostSpecs, Job, JobStatus, LogLine, Repo, RepoListItem, Runner, RunnerState, RunnerType, Slot } from './types'
 
 // Shared queries used by the service, scheduler, sweep and webhook handlers.
 
@@ -30,12 +30,18 @@ export async function hostByName(name: string, d: Db = db()): Promise<Host | und
   return row ? toHost(row) : undefined
 }
 
-export async function upsertHost(input: { name: string; isLeader: boolean; dockerOk: boolean }, d: Db = db()): Promise<Host> {
+/** Heartbeat upsert. `specs` is optional: a node that cannot read them keeps what the row already has. */
+export async function upsertHost(input: { name: string; isLeader: boolean; dockerOk: boolean; specs?: Partial<HostSpecs> }, d: Db = db()): Promise<Host> {
+  const s = input.specs ?? {}
   const [row] = await d.all(sql`
-    insert into hosts (name, status, last_seen_at, is_leader, docker_ok)
-    values (${input.name}, 'online', ${now()}, ${input.isLeader}, ${input.dockerOk})
+    insert into hosts (name, status, last_seen_at, is_leader, docker_ok, cpus, memory_mb, os, docker_version, app_version)
+    values (${input.name}, 'online', ${now()}, ${input.isLeader}, ${input.dockerOk},
+      ${s.cpus ?? null}, ${s.memoryMb ?? null}, ${s.os ?? null}, ${s.dockerVersion ?? null}, ${s.appVersion ?? null})
     on conflict (name) do update set status = 'online', last_seen_at = excluded.last_seen_at,
-      is_leader = excluded.is_leader, docker_ok = excluded.docker_ok
+      is_leader = excluded.is_leader, docker_ok = excluded.docker_ok,
+      cpus = coalesce(excluded.cpus, hosts.cpus), memory_mb = coalesce(excluded.memory_mb, hosts.memory_mb),
+      os = coalesce(excluded.os, hosts.os), docker_version = coalesce(excluded.docker_version, hosts.docker_version),
+      app_version = coalesce(excluded.app_version, hosts.app_version)
     returning *`)
   return toHost(row!)
 }
@@ -71,8 +77,17 @@ export async function slotsView(d: Db = db()): Promise<Slot[]> {
 
 // repos
 
-export async function listRepos(d: Db = db()): Promise<Repo[]> {
-  return (await d.all(sql`select * from repos order by full_name`)).map(toRepo)
+/** Every repo with its job-row count, in one query (a correlated count, not one query per repo). */
+export async function listRepos(d: Db = db()): Promise<RepoListItem[]> {
+  const rows = await d.all(sql`
+    select r.*, (select count(*) from jobs j where j.repo = r.full_name) as job_count
+    from repos r order by r.full_name`)
+  return rows.map((r) => ({ ...toRepo(r), jobCount: Number(r.job_count ?? 0) }))
+}
+
+export async function setRepoWebhook(fullName: string, webhookId: number | null, d: Db = db()): Promise<Repo | undefined> {
+  const [row] = await d.all(sql`update repos set webhook_id = ${webhookId} where full_name = ${fullName} returning *`)
+  return row ? toRepo(row) : undefined
 }
 
 export async function repoByName(fullName: string, d: Db = db()): Promise<Repo | undefined> {

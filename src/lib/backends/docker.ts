@@ -150,6 +150,18 @@ export const dockerBackend: BackendAdapter = {
           return false
         }
       },
+      async info() {
+        try {
+          const i = (await docker.info()) as { ServerVersion?: unknown; OperatingSystem?: unknown; NCPU?: unknown; MemTotal?: unknown }
+          const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+          const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : null)
+          const mem = num(i.MemTotal)
+          return { version: str(i.ServerVersion), os: str(i.OperatingSystem), cpus: num(i.NCPU), memoryMb: mem === null ? null : Math.round(mem / 1_048_576) }
+        } catch (err) {
+          logger.warn('info failed', err instanceof Error ? err.message : String(err))
+          return null
+        }
+      },
       async spawnRunner({ runner, type, jitconfig, env, mounts, network }) {
         await pullIfMissing(docker, type.image)
         const container = await docker.createContainer({

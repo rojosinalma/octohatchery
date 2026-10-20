@@ -40,10 +40,29 @@ export const postgresDriver: Driver = {
       async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
         return orm.transaction((tx) => fn(wrap(tx, common)))
       },
+      // Session-level advisory lock on a reserved connection. Re-asked every pass: the same session gets `true`
+      // again (the lock is reentrant for its holder), a dead session is dropped and re-reserved, and a standby
+      // (HAProxy may hand one out during a failover) never counts: its locks are local to that server.
       async tryLeaderLock() {
-        leaderConn ??= await client.reserve()
-        const [row] = await leaderConn`select pg_try_advisory_lock(hashtext(${LEADER_KEY})) as locked`
-        return row?.locked === true
+        try {
+          leaderConn ??= await client.reserve()
+          const [role] = await leaderConn`select pg_is_in_recovery() as standby`
+          if (role?.standby === true) {
+            leaderConn.release()
+            leaderConn = undefined
+            return false
+          }
+          const [row] = await leaderConn`select pg_try_advisory_lock(hashtext(${LEADER_KEY})) as locked`
+          return row?.locked === true
+        } catch (err) {
+          try {
+            leaderConn?.release()
+          } catch {
+            // the connection is already gone
+          }
+          leaderConn = undefined
+          throw err
+        }
       },
       async ping() {
         try {

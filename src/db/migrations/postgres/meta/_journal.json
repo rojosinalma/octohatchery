@@ -15,6 +15,13 @@
       "when": 1792457317364,
       "tag": "0001_job_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792490933558,
+      "tag": "0002_host_specs",
+      "breakpoints": true
     }
   ]
 }

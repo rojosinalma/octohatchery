@@ -5,95 +5,56 @@ export type OverviewData = { hosts: Host[]; slots: Slot[]; runners: Runner[] }
 
 const LIVE_STATES = new Set(['spawning', 'idle', 'busy'])
 
-const HostsTable = ({ hosts }: { hosts: Host[] }) => (
-  <div class="t-table-wrap">
-    <table class="t-table" data-variant="data" data-density="compact" id="hosts-table">
-      <thead>
-        <tr>
-          <th class="t-col-icon"></th>
-          <th>Host</th>
-          <th>Status</th>
-          <th>Docker</th>
-          <th>Last seen</th>
-        </tr>
-      </thead>
-      <tbody>
-        {hosts.map((h) => (
-          <tr data-name={h.name} data-tone={h.status === 'offline' ? 'danger' : undefined}>
-            <td class="t-col-icon">
-              <span class="t-dot" data-status={h.status === 'online' ? (h.dockerOk ? 'running' : 'degraded') : 'stopped'} data-tip={h.status}></span>
-            </td>
-            <td>
-              <span class="t-mono" safe>
-                {h.name}
-              </span>{' '}
-              {h.isLeader ? (
-                <span class="t-badge" data-tone="accent" data-tip="Leader: the one node that runs the cluster-wide chores (GitHub polling, stale-runner cleanup, retention purge, migrations). Elected with a database lock; another node takes over when it goes away. Every node schedules its own runners.">
-                  <Icon id="bi-star-fill" size="xs" /> leader
-                </span>
-              ) : null}
-            </td>
-            <td>
-              <span class="t-badge" data-tone={h.status === 'online' ? 'success' : 'danger'} safe>
-                {h.status}
-              </span>
-            </td>
-            <td>
-              <span class="t-badge" data-tone={h.dockerOk ? 'success' : 'danger'}>
-                {h.dockerOk ? 'ok' : 'unreachable'}
-              </span>
-            </td>
-            <td>
-              <RelTime at={h.lastSeenAt} />
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)
-
-const SlotsTable = ({ slots }: { slots: Slot[] }) => {
-  const types = [...new Set(slots.map((s) => s.type))].sort()
-  const hosts = [...new Set(slots.map((s) => s.host))].sort()
-  const cell = (type: string, host: string) => slots.find((s) => s.type === type && s.host === host)
+/** One host: its header line, then one row per runner type that has slots here. */
+const HostSection = ({ host, slots }: { host: Host; slots: Slot[] }) => {
+  const mine = slots.filter((s) => s.host === host.name).sort((a, b) => a.type.localeCompare(b.type))
   return (
-    <div class="t-table-wrap">
-      <table class="t-table" data-variant="data" data-density="compact" id="slots-table">
-        <thead>
-          <tr>
-            <th>Type</th>
-            {hosts.map((h) => (
-              <th safe>{h}</th>
-            ))}
-            <th class="t-col-num">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {types.map((t) => {
-            const row = slots.filter((s) => s.type === t)
-            const used = row.reduce((n, s) => n + s.used, 0)
-            const count = row.reduce((n, s) => n + s.count, 0)
-            return (
-              <tr data-type={t}>
+    <section class="host-section" data-name={host.name} data-tone={host.status === 'offline' ? 'danger' : undefined} aria-label={`Host ${host.name}`}>
+      <header class="host-head t-cluster" data-gap="2" data-align="center">
+        <span class="t-dot" data-status={host.status === 'online' ? (host.dockerOk ? 'running' : 'degraded') : 'stopped'} data-tip={host.status}></span>
+        <a class="t-mono host-name" href="/hosts" data-tip="Host details" safe>
+          {host.name}
+        </a>
+        {host.isLeader ? (
+          <span class="t-badge" data-tone="accent" data-tip="Leader: the one node that runs the cluster-wide chores (GitHub polling, stale-runner cleanup, retention purge, migrations). Elected with a database lock; another node takes over when it goes away. Every node schedules its own runners.">
+            <Icon id="bi-star-fill" size="xs" /> leader
+          </span>
+        ) : null}
+        <span class="t-badge" data-tone={host.status === 'online' ? 'success' : 'danger'} safe>
+          {host.status}
+        </span>
+        <span class="t-badge" data-tone={host.dockerOk ? 'success' : 'danger'} data-tip="Can this node reach its container engine?">
+          {host.dockerOk ? 'Docker ok' : 'Docker unreachable'}
+        </span>
+        <span class="t-toolbar-spacer"></span>
+        <span class="t-muted t-small">
+          seen <RelTime at={host.lastSeenAt} />
+        </span>
+      </header>
+      {mine.length === 0 ? (
+        <p class="t-muted t-small host-no-slots">
+          No slots on this host.{' '}
+          <a href="/runner-types">Set some under Runner types</a>
+        </p>
+      ) : (
+        <table class="t-table host-slots" data-variant="data" data-density="compact" aria-label={`Slots on ${host.name}`}>
+          <tbody>
+            {mine.map((s) => (
+              <tr data-type={s.type}>
                 <td>
                   <a href="/runner-types" class="t-mono" safe>
-                    {t}
+                    {s.type}
                   </a>
                 </td>
-                {hosts.map((h) => {
-                  const s = cell(t, h)
-                  return <td>{s ? <SlotBar slot={s} /> : <span class="t-muted">–</span>}</td>
-                })}
-                <td class="t-col-num">
-                  <span class="t-mono">{`${used}/${count}`}</span>
+                <td>
+                  <SlotBar slot={s} />
                 </td>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
 
@@ -231,26 +192,22 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
   }
   return (
     <div id="overview-live" data-live="runner slot" class="t-stack" data-gap="4">
-      <section class="t-section">
-        <h2 class="t-section-title">
-          Hosts <span class="t-counter">{String(hosts.length)}</span>
-        </h2>
-        <div class="t-section-body">
-          <HostsTable hosts={hosts} />
+      <section class="t-card" aria-labelledby="overview-hosts-title">
+        <div class="t-card-header">
+          <h2 class="t-card-title" id="overview-hosts-title">
+            <Icon id="bi-hdd-rack" /> Hosts <span class="t-counter">{String(hosts.length)}</span>
+            <span class="t-muted t-small">slots used / total</span>
+          </h2>
+          <div class="t-card-tools">
+            <a class="t-btn" data-size="xs" data-variant="ghost" href="/hosts">
+              All hosts <Icon id="bi-arrow-right" size="xs" />
+            </a>
+          </div>
         </div>
-      </section>
-      <section class="t-section">
-        <h2 class="t-section-title">Slots (used / total)</h2>
-        <div class="t-section-body">
-          {slots.length === 0 ? (
-            <Empty icon="bi-cpu" title="No slots set" text="Give a runner type a slot count per host under Runner types. A slot is one runner that may run at a time.">
-              <a class="t-btn" data-variant="primary" href="/runner-types">
-                Runner types
-              </a>
-            </Empty>
-          ) : (
-            <SlotsTable slots={slots} />
-          )}
+        <div class="t-card-body host-list">
+          {hosts.map((h) => (
+            <HostSection host={h} slots={slots} />
+          ))}
         </div>
       </section>
       <section class="t-section">

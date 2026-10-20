@@ -1,0 +1,253 @@
+/* OctoHatchery — project styles on top of tailor. Tokens only, no colour literals. */
+
+/* The main column scrolls, not the document: header and footer span the full width and the
+   scrollbar sits under them. The sidebar scrolls on its own next to it. */
+.t-shell {
+  height: 100vh;
+  min-height: 0;
+}
+
+.t-shell-main,
+.t-shell-side {
+  overflow-y: auto;
+  max-height: none;
+}
+
+/* Overview: one Hosts card, one section per host with that host's slots under its header line. */
+.host-list {
+  padding: 0;
+}
+
+.host-section + .host-section {
+  border-top: var(--t-border-w) solid var(--t-border);
+}
+
+.host-list > .host-section > .host-head {
+  padding: var(--t-space-2) 0.9rem;
+  margin-bottom: 0;
+}
+
+/* Slot rows sit under the host name; the empty track must stay visible on the table background. */
+.host-slots td:first-child {
+  padding-left: 2rem;
+}
+
+.host-slots .t-progress {
+  background: color-mix(in srgb, var(--t-border) 70%, transparent);
+}
+
+.host-name {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.host-slots td:first-child {
+  width: 14rem;
+}
+
+.host-no-slots {
+  margin: 0;
+  padding: 0 0.9rem var(--t-space-3) 2rem;
+}
+
+/* A page-level toolbar (filters, adopt form) sits above a table. */
+.page-toolbar {
+  margin-bottom: var(--t-space-3);
+}
+
+/* Table action clusters stay on one row; a disabled button's tooltip hangs on its wrapper. */
+.row-actions {
+  flex-wrap: nowrap;
+}
+
+.row-action-disabled {
+  display: inline-flex;
+}
+
+/* Adopt form: one line is reserved under the input for the drawn feedback, so nothing shifts when it appears. */
+.adopt-form {
+  align-items: flex-start;
+  padding-bottom: 1.25rem;
+}
+
+.adopt-form .t-field {
+  position: relative;
+}
+
+.adopt-form .t-field .t-feedback {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--t-space-1);
+  white-space: nowrap;
+}
+
+.brand-mark {
+  width: 1.4em;
+  height: 1.4em;
+}
+
+.brand-tagline {
+  margin-right: var(--t-space-3);
+  font-style: italic;
+}
+
+.slot-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  min-width: 8rem;
+}
+
+.slot-bar .t-small {
+  min-width: 3.5ch;
+}
+
+.slot-bar .t-progress {
+  flex: 0 0 6rem;
+}
+
+.slot-cell .t-input {
+  width: 4.5rem;
+}
+
+.event-kv + .event-kv::before {
+  content: " ";
+}
+
+#live-dot {
+  margin-left: var(--t-space-2);
+}
+
+/* The runs-on dialog shows one snippet per type; keep the code line readable. */
+#runs-on-dlg .t-code-pre {
+  white-space: pre-wrap;
+}
+
+/* Runner types: label chips in an input-like box; fixed badges first, the entry grows to fill the rest. */
+.chip-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--t-space-1);
+  min-height: var(--t-control-h);
+  padding: var(--t-space-1) 0.75rem;
+  background: var(--t-selection);
+  border: var(--t-border-w) solid var(--t-disabled);
+  border-radius: var(--t-radius-md);
+}
+
+.chip-input:focus-within {
+  border-color: var(--t-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-accent) 30%, transparent);
+}
+
+.chip-input .t-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.chip-input .chip-example {
+  border-style: dashed;
+  color: var(--t-muted);
+}
+
+.chip-entry {
+  flex: 1 1 8ch;
+  width: 8ch;
+  min-width: 8ch;
+  padding: 0.15rem 0;
+  font: inherit;
+  color: var(--t-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.chip-entry::placeholder {
+  color: var(--t-muted);
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  padding: 0;
+  margin-left: 0.1em;
+  font: inherit;
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.chip-remove:hover,
+.chip-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  outline: 0;
+}
+
+/* Add-host dialog: the steps list sits flush with the paragraphs around it. */
+#add-host-dlg ol {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+/* Skin and palette selects in the Appearance row: side by side, each wide enough for its longest option. */
+.t-setting-control > .t-pickers {
+  gap: var(--t-space-2);
+}
+
+.t-setting-control > .t-pickers > .t-select-wrap {
+  flex: 1 1 10rem;
+  display: block;
+}
+
+/* Job page: facts in a compact grid, the log as a scrolling terminal-like pane. */
+.job-facts {
+  grid-template-columns: max-content 1fr;
+  column-gap: var(--t-space-4);
+}
+
+.log-toolbar {
+  margin-bottom: var(--t-space-2);
+  align-items: center;
+  gap: var(--t-space-2);
+}
+
+.log-toolbar .t-section-title {
+  margin: 0;
+}
+
+.log-view {
+  max-height: calc(100vh - 22rem);
+  min-height: 12rem;
+  overflow: auto;
+  white-space: pre;
+  tab-size: 4;
+  margin: 0;
+}
+
+.log-line {
+  display: block;
+}
+
+.log-time {
+  display: inline-block;
+  width: 9ch;
+  color: var(--t-muted);
+  user-select: none;
+}
+
+.log-line:hover {
+  background: color-mix(in srgb, var(--t-accent) 10%, transparent);
+}
+
+.log-empty {
+  min-height: 12rem;
+}

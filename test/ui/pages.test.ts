@@ -23,6 +23,7 @@ const PAGES: [string, string, string][] = [
   ['/jobs', 'Jobs', 'Jobs · OctoHatchery'],
   ['/repos', 'Repos', 'Repos · OctoHatchery'],
   ['/runner-types', 'Runner types', 'Runner types · OctoHatchery'],
+  ['/hosts', 'Hosts', 'Hosts · OctoHatchery'],
   ['/events', 'Events', 'Events · OctoHatchery'],
   ['/settings', 'Settings', 'Settings · OctoHatchery'],
 ]
@@ -36,8 +37,9 @@ describe('layout', () => {
     expect(body).toContain(`<title>${title}</title>`)
     expect(body).toContain(`<h1 class="t-page-title">${h1}</h1>`)
     expect((body.match(/<h1\b/g) ?? []).length).toBe(1)
-    // navbar with six links, the active one marked
-    expect((body.match(/class="t-navbar-link"/g) ?? []).length).toBe(6)
+    // navbar with seven links in the agreed order, the active one marked
+    expect((body.match(/class="t-navbar-link"/g) ?? []).length).toBe(7)
+    expect(body.match(/class="t-navbar-link" href="([^"]+)"/g)?.map((m) => m.slice(m.indexOf('href="') + 6, -1))).toEqual(['/', '/repos', '/jobs', '/runner-types', '/hosts', '/events', '/settings'])
     expect(body).toMatch(new RegExp(`href="${path.replace('/', '\\/')}" aria-current="page"`))
     // tailor head snippet, app assets, favicon, toasts, confirm dialog
     expect(body).toContain('managed by tailor')
@@ -62,9 +64,9 @@ describe('layout', () => {
     expect(body).not.toContain('alert(1)')
   })
 
-  test('tagline uses the tentacle concept once; tables say runners', async () => {
+  test('the concept word stays out of the dashboard; tables say runners', async () => {
     const { body } = await get('/')
-    expect((body.match(/tentacle/g) ?? []).length).toBe(1)
+    expect(body).not.toMatch(/tentacle/)
     expect(body).toContain('Runners')
   })
 })
@@ -72,12 +74,18 @@ describe('layout', () => {
 describe('overview', () => {
   test('hosts, leader badge, slot bars, runners table with kill buttons', async () => {
     const { body } = await get('/')
-    expect(body).toContain('id="hosts-table"')
-    expect(body).toContain('node-a')
+    // one Hosts card, one section per host with its slots underneath
+    expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(1)
+    expect(body).toContain('href="/hosts">All hosts')
+    const sections = [...body.matchAll(/<section class="host-section" data-name="([^"]+)"/g)].map((m) => m[1])
+    expect(sections).toEqual(['node-a', 'node-b'])
     expect(body).toContain('leader')
-    expect(body).toContain('id="slots-table"')
-    expect(body).toContain('style="--t-value: 25%"')
-    expect(body).toContain('1/4')
+    expect(body).toContain('>Docker unreachable<')
+    const nodeA = body.slice(body.indexOf('data-name="node-a"'), body.indexOf('data-name="node-b"'))
+    expect(nodeA).toContain('<table class="t-table host-slots"')
+    expect(nodeA).toContain('style="--t-value: 25%"')
+    expect(nodeA).toContain('1/4')
+    expect(nodeA).not.toContain('No slots on this host')
     expect(body).toContain('id="runners-table"')
     expect(body).toContain('generic-node-a-3')
     // only live runners are listed
@@ -87,6 +95,15 @@ describe('overview', () => {
     // user-controlled text is escaped
     expect(body).toContain('build &lt;main&gt;')
     expect(body).not.toContain('>build <main><')
+  })
+
+  test('a host without slots says so and points at Runner types', async () => {
+    store.data = { ...full, slots: full.slots.filter((s) => s.host === 'node-a') }
+    const { body } = await get('/')
+    const nodeB = body.slice(body.indexOf('data-name="node-b"'))
+    expect(nodeB).toContain('No slots on this host.')
+    expect(nodeB).toContain('href="/runner-types">Set some under Runner types</a>')
+    expect(nodeB).not.toContain('host-slots')
   })
 
   test('empty state explains self-registration', async () => {
@@ -120,11 +137,37 @@ describe('jobs', () => {
     expect(body).toContain('<option value="acme/widgets"')
   })
 
-  test('filters narrow the list and mark the active button', async () => {
-    const { body } = await get('/jobs?status=completed&repo=acme%2Fwidgets')
+  test('columns: runner, status, job, repo, queued, duration, run', async () => {
+    const { body } = await get('/jobs')
+    const heads = [...body.matchAll(/<th[^>]*>(?:<button>)?([A-Za-z ]+?)\s*(?:<span class="t-sort-icon">)?<\//g)].map((m) => m[1]!.trim())
+    expect(heads).toEqual(['Runner', 'Status', 'Job', 'Repo', 'Queued', 'Duration', 'Run'])
+    // the runner name links to the job page; a job without a runner shows a dash
+    expect(body).toContain('<a class="t-mono" href="/jobs/7" data-tip="Open the job and its log">generic-node-a-3</a>')
+    expect(body).not.toContain('>Labels<')
+  })
+
+  test('status select, search box and quick filters keep the other params', async () => {
+    const { body } = await get('/jobs?status=completed&repo=acme%2Fwidgets&q=te')
     expect(body).toContain('data-job-id="8"')
     expect(body).not.toContain('data-job-id="7"')
-    expect(body).toMatch(/href="\/jobs\?repo=acme%2Fwidgets&status=completed" aria-pressed="true"/)
+    expect(body).toMatch(/<select class="t-select"[^>]*data-nav="status"[^>]*id="jobs-status">/)
+    expect(body).toContain('<option value="completed" selected>Completed</option>')
+    expect(body).toMatch(/<input class="t-input"[^>]*type="search"[^>]*data-nav="q"[^>]*value="te"/)
+    expect(body).toMatch(/<span class="t-toolbar-spacer"><\/span><div class="t-btn-group" role="group" data-role="filter" aria-label="Quick filters">/)
+    expect(body).toMatch(/href="\/jobs\?repo=acme%2Fwidgets&status=completed&q=te&running=1" aria-pressed="false">Running now/)
+    expect(body).toMatch(/href="\/jobs\?repo=acme%2Fwidgets&status=completed&q=te&failed=1" aria-pressed="false">Failed/)
+    expect(body).toMatch(/since=2026-\d\d-\d\dT[^"]+" aria-pressed="false" data-preset="24h">Last 24 h/)
+    expect(body).toMatch(/data-preset="7d">This week/)
+  })
+
+  test('quick filters are pressed when active, and the link then clears them', async () => {
+    const since = new Date(Date.now() - 24 * 3_600_000).toISOString()
+    const { body } = await get(`/jobs?running=1&since=${encodeURIComponent(since)}`)
+    expect(body).toMatch(/href="\/jobs\?since=[^"]+" aria-pressed="true">Running now/)
+    expect(body).toMatch(/href="\/jobs\?running=1" aria-pressed="true" data-preset="24h">Last 24 h/)
+    expect(body).toMatch(/aria-pressed="false" data-preset="7d">This week/)
+    // a bad `since` is ignored
+    expect((await get('/jobs?since=yesterday')).res.status).toBe(200)
   })
 
   test('unknown status is ignored, empty filter result has a clear link', async () => {
@@ -137,11 +180,12 @@ describe('jobs', () => {
     store.data = empty
     expect((await get('/jobs')).body).toContain('No jobs yet')
     store.data = full
-    const { body } = await get('/jobs?partial=1&status=in_progress')
+    const { body } = await get('/jobs?partial=1&running=1')
     expect(body.trim().startsWith('<div id="jobs-live" data-live="job"')).toBe(true)
     expect(body).not.toContain('<html')
     expect(body).toContain('data-job-id="7"')
     expect(body).not.toContain('data-job-id="8"')
+    expect(body).toContain('generic-node-a-3')
   })
 
   test('job names link to the job page', async () => {
@@ -210,6 +254,18 @@ describe('repos', () => {
     expect(body).not.toContain('acme/old')
     expect(body).toContain('data-action="unadopt"')
     expect(body).toContain('data-action="runs-on"')
+    // no native validation bubble: tailor draws the feedback
+    expect(body).toMatch(/<form class="t-toolbar page-toolbar adopt-form" id="adopt-form"[^>]*novalidate>/)
+    // jobs count links to the filtered jobs page; zero is muted text
+    expect(body).toContain('<a class="t-mono" href="/jobs?repo=acme%2Fwidgets" data-tip="Jobs of this repo">2</a>')
+    expect(body).toMatch(/data-repo="acme\/polled"[^>]*>[\s\S]*?<td class="t-col-num"><span class="t-muted">0<\/span><\/td>/)
+    // three labelled actions in one non-wrapping cluster; the webhook button says what it does
+    const widgets = body.slice(body.indexOf('data-repo="acme/widgets"'), body.indexOf('data-repo="acme/polled"'))
+    expect(widgets).toContain('<div class="t-cluster row-actions" data-gap="1">')
+    expect(widgets).toContain('data-action="webhook" data-repo="acme/widgets"')
+    expect(widgets).toContain('Repair webhook')
+    expect(widgets).toContain('> Unadopt</button>')
+    expect(body).toContain('Add webhook')
     expect(body).toContain('id="runs-on-dlg"')
     expect(body).toContain('class="t-code-copy"')
     expect(body).toMatch(/runs-on<\/span>: \[<span class="t-tok-str">self-hosted<\/span>, <span class="t-tok-str">generic<\/span>\]/)
@@ -217,11 +273,53 @@ describe('repos', () => {
     expect(body).toContain('data-mode="commit"')
   })
 
+  test('with a GitHub App the webhook button is disabled and explained', async () => {
+    store.data = { ...full, githubAuth: 'app' }
+    const { body } = await get('/repos')
+    expect(body).toContain('<span data-tip="Covered by the GitHub App" class="row-action-disabled"><button class="t-btn" data-size="sm" data-variant="ghost" disabled>')
+    expect(body).toContain('>via App<')
+    expect(body).not.toContain('data-action="webhook"')
+  })
+
   test('empty state', async () => {
     store.data = empty
     const { body } = await get('/repos')
     expect(body).toContain('No repos adopted')
     expect(body).toContain('id="adopt-form"')
+  })
+})
+
+describe('hosts', () => {
+  test('table with specs, leader badge, slots per host and the add-host dialog', async () => {
+    const { body } = await get('/hosts')
+    expect(body).toContain('id="hosts-table"')
+    const heads = [...body.matchAll(/<th[^>]*>(?:<button>)?([A-Za-z ]+?)\s*(?:<span class="t-sort-icon">)?<\//g)].map((m) => m[1]!.trim())
+    expect(heads).toEqual(['Host', 'Docker', 'CPUs', 'Memory', 'OS', 'Docker version', 'App version', 'Last seen', 'Slots'])
+    expect(body).toContain('leader')
+    expect(body).toContain('<td class="t-col-num">8</td>')
+    expect(body).toContain('32.0 GiB')
+    expect(body).toContain('Ubuntu 24.04.1 LTS')
+    expect(body).toContain('27.3.1')
+    expect(body).toContain('v0.1.0-test</span>')
+    expect(body).toContain('>1/4</a>')
+    // node-b has not reported yet
+    const nodeB = body.slice(body.indexOf('data-name="node-b"'))
+    expect(nodeB).toContain('data-tip="Reported by the node on its next heartbeat"')
+    expect(nodeB).toContain('>0/1</a>')
+    // the dialog explains how a host joins and offers the .env skeleton
+    expect(body).toContain('data-dialog-open="add-host-dlg"')
+    expect(body).toContain('id="add-host-dlg"')
+    for (const key of ['MODE=cluster', 'HOST_NAME=', 'DATABASE_URL=', 'GITHUB_AUTH=', 'GITHUB_WEBHOOK_SECRET=', 'PUBLIC_URL=']) expect(body).toContain(key)
+    expect(body).toContain('docs/operations.md#cluster-mode')
+    expect(body).toContain('class="t-code-copy"')
+  })
+
+  test('empty state names the action', async () => {
+    store.data = empty
+    const { body } = await get('/hosts')
+    expect(body).toContain('No hosts yet')
+    expect(body).toMatch(/t-empty-actions"><button class="t-btn" data-variant="primary" data-dialog-open="add-host-dlg">/)
+    expect(body).not.toContain('id="hosts-table"')
   })
 })
 
@@ -235,6 +333,15 @@ describe('runner types', () => {
     expect(body).toContain('data-action="type-edit"')
     expect(body).toContain('id="type-form"')
     for (const name of ['name', 'description', 'labels', 'image', 'cpus', 'memoryMb', 'mounts', 'env', 'secretEnv']) expect(body).toContain(`name="${name}"`)
+    // environment before mounts, in the table and in the dialog
+    expect(body.indexOf('<th class="t-col-num">Environment</th>')).toBeLessThan(body.indexOf('<th class="t-col-num">Mounts</th>'))
+    expect(body.indexOf('id="tf-env"')).toBeLessThan(body.indexOf('id="tf-mounts"'))
+    // labels: chip input over a hidden field, fixed badges first
+    expect(body).toContain('<div class="chip-input" id="tf-labels-chips" data-chips-for="tf-labels">')
+    expect(body).toMatch(/data-fixed data-tip="Always added by OctoHatchery">self-hosted<\/span>/)
+    expect(body).toContain('id="tf-labels-type"')
+    expect(body).toContain('<input type="hidden" id="tf-labels" name="labels"')
+    expect(body).toContain('class="chip-entry" id="tf-labels-entry"')
     expect(body).toContain('id="slots-matrix"')
     expect(body).toContain('data-slot-type="generic" data-slot-host="node-a"')
     expect(body).toContain('value="4"')

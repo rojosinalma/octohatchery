@@ -46,11 +46,11 @@ did what.
 
 Read-only:
 
-- `list_hosts`: the nodes, their status, leader flag and whether Docker answers.
+- `list_hosts`: the nodes, their status, leader flag, whether Docker answers, and what each node reports about its host (CPUs, memory, OS, Docker and app versions).
 - `list_runner_types`: runner templates with labels, image, caps, mounts, env and secret names.
 - `list_slots`: per host and type, how many runners may run, are running and are free.
 - `list_repos`: repos the credentials can see, with the adopted flag.
-- `list_jobs {repo?, status?, limit?}`: queue and history.
+- `list_jobs {repo?, status?, q?, since?, running?, failed?, limit?}`: queue and history. `q` is a case-insensitive substring over job name, repo and runner name; `since` an ISO time; `running` keeps claimed and in-progress jobs; `failed` keeps failure, timed out and cancelled.
 - `get_job_log {job_id, tail?}`: the last `tail` lines (default 200, max 5000) of a job's log as
   text, oldest first, each with its timestamp. The first line says where the log comes from
   (`runner` while the job runs or when GitHub never handed out its log, `github` once the final log
@@ -66,6 +66,7 @@ Changes:
 - `upsert_runner_type {name, image, cpus, memoryMb, labels?, mounts?, env?, secretEnv?, description?}`: create or replace a type.
 - `set_slots {host, type, count}`: capacity for one type on one host; `0` removes it.
 - `adopt_repo {repo}`: start serving a repo (`owner/name`); creates the webhook when needed.
+- `ensure_webhook {repo}`: create or repair the `workflow_job` webhook of an adopted repo and store its id. With a GitHub App nothing is created and the result says `covered: "app"`.
 - `apply_runs_on {repo, mode, type, host?, workflows?}`: `snippet` returns YAML only; `pr` opens a pull request; `commit` pushes to the default branch.
 - `spawn {type, host}`: start one runner by hand.
 - `set_setting {key, value}`: change one runtime setting.

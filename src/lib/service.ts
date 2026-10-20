@@ -26,14 +26,18 @@ import {
   type JobLog,
   type JobStatus,
   type Repo,
+  type RepoListItem,
   type Runner,
   type RunnerState,
   type RunnerType,
   type RunsOnMode,
   type Slot,
+  type WebhookOutcome,
 } from './types'
 
 const logger = log('service')
+
+export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; limit?: number }
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/
 const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]*$/
 const MOUNT_RE = /^[^:]+:\/[^:]*(?::ro|:rw)?$/
@@ -144,8 +148,39 @@ export const service = {
     return slot
   },
 
-  async listRepos(): Promise<Repo[]> {
+  async listRepos(): Promise<RepoListItem[]> {
     return store.listRepos()
+  },
+
+  /** Which GitHub authentication this node runs with; the dashboard uses it to explain who delivers webhooks. */
+  githubAuthKind(): 'app' | 'pat' | 'none' {
+    return github().kind
+  },
+
+  /**
+   * Creates or repairs the repo's `workflow_job` webhook and stores its id. With a GitHub App the App itself
+   * delivers the events, so nothing is created and the outcome says `covered: 'app'`.
+   */
+  async ensureWebhook(fullName: string, actor: Actor): Promise<WebhookOutcome> {
+    const repo = await store.repoByName(fullName)
+    if (!repo?.adopted) throw new ServiceError(`repository "${fullName}" is not adopted`, 'not_found')
+    const gh = github()
+    if (gh.kind === 'app') {
+      await recordEvent(actor, 'repo.webhook', fullName, { covered: 'app' })
+      return { repo, covered: 'app', created: false }
+    }
+    const cfg = config()
+    if (!cfg.publicUrl || !cfg.githubWebhookSecret) throw new ServiceError('PUBLIC_URL and GITHUB_WEBHOOK_SECRET must be set to create a webhook', 'invalid')
+    let hook
+    try {
+      hook = await gh.ensureWebhook(fullName, `${cfg.publicUrl}/webhooks/github`, cfg.githubWebhookSecret)
+    } catch (err) {
+      throw new ServiceError(`GitHub refused the webhook on ${fullName}: ${err instanceof Error ? err.message : String(err)}`, 'unavailable')
+    }
+    if (!hook) throw new ServiceError(`GitHub returned no webhook for ${fullName}`, 'unavailable')
+    const updated = (await store.setRepoWebhook(fullName, hook.id)) ?? repo
+    await recordEvent(actor, 'repo.webhook', fullName, { webhookId: hook.id, created: hook.created })
+    return { repo: updated, covered: 'hook', created: hook.created }
   },
 
   async adoptRepo(fullName: string, actor: Actor): Promise<Repo> {
@@ -228,11 +263,28 @@ export const service = {
     return { ok: true, message: `opened a pull request touching ${changedFiles.length} workflow(s)`, snippet, prUrl: pr.url, files: changedFiles }
   },
 
-  async listJobs(filter: { repo?: string; status?: JobStatus; limit?: number } = {}): Promise<Job[]> {
+  /**
+   * Jobs newest first. `q` is a case-insensitive substring over job name, repo and runner name; `since` keeps jobs
+   * queued at or after that ISO time; `running` = claimed or in progress; `failed` = failure, timed out or cancelled.
+   */
+  async listJobs(filter: JobsFilter = {}): Promise<Job[]> {
     const where = [sql`1 = 1`]
-    if (filter.repo) where.push(sql`repo = ${filter.repo}`)
-    if (filter.status) where.push(sql`status = ${filter.status}`)
-    const rows = await db().all(sql`select * from jobs where ${sql.join(where, sql` and `)} order by queued_at desc, id desc limit ${limitOf(filter.limit)}`)
+    if (filter.repo) where.push(sql`j.repo = ${filter.repo}`)
+    if (filter.status) where.push(sql`j.status = ${filter.status}`)
+    if (filter.since) {
+      const t = Date.parse(filter.since)
+      if (Number.isNaN(t)) throw new ServiceError('since must be an ISO-8601 timestamp')
+      where.push(sql`j.queued_at >= ${new Date(t).toISOString()}`)
+    }
+    if (filter.running) where.push(sql`j.status in ('claimed', 'in_progress')`)
+    if (filter.failed) where.push(sql`j.conclusion in ('failure', 'timed_out', 'cancelled')`)
+    if (filter.q) {
+      const needle = `%${filter.q.trim().toLowerCase().replace(/[%_\\]/g, '\\$&')}%`
+      where.push(sql`(lower(j.name) like ${needle} escape '\\' or lower(j.repo) like ${needle} escape '\\' or lower(coalesce(r.name, '')) like ${needle} escape '\\')`)
+    }
+    const rows = await db().all(sql`
+      select j.* from jobs j left join runners r on r.id = j.runner_id
+      where ${sql.join(where, sql` and `)} order by j.queued_at desc, j.id desc limit ${limitOf(filter.limit)}`)
     return rows.map(toJob).map(({ retries: _retries, ...job }) => job)
   },
 

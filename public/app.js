@@ -41,6 +41,7 @@
       main.innerHTML = fresh.innerHTML
       T.upgrade(main)
       wireSlots(main)
+      wireChips(main)
     }).catch(function (err) { T.toast('warning', 'Could not refresh: ' + err.message) })
   }
   // Live blocks carry data-live="<event names>"; a matching SSE event re-fetches `?partial=1` and replaces the block.
@@ -82,6 +83,10 @@
       var job = btn.dataset.job ? '<p>It is working on <b>' + esc(btn.dataset.job) + '</b>; that job fails and GitHub re-queues it only if the workflow says so.</p>' : '<p>It is idle.</p>'
       return T.confirm('Kill runner ' + btn.dataset.name + '?', job + '<p>The container is stopped and the runner is deregistered.</p>', { label: 'Kill', danger: true })
         .then(function (ok) { if (!ok) return; busy(btn, true); return api('DELETE', '/api/runners/' + encodeURIComponent(btn.dataset.id)).then(toast).then(function () { busy(btn, false); scheduleLive('runner') }) })
+    },
+    webhook: function (btn) {
+      busy(btn, true)
+      return api('POST', '/api/repos/webhook', { fullName: btn.dataset.repo }).then(toast).then(function (res) { if (res.ok) swapMain(); else busy(btn, false) })
     },
     unadopt: function (btn) {
       var repo = btn.dataset.repo
@@ -144,11 +149,12 @@
     f.reset()
     $('#type-dlg-title').textContent = type ? 'Edit runner type' : 'New runner type'
     f.elements.name.readOnly = Boolean(type)
-    if (!type) return
+    setChips(f, type ? type.labels || [] : [])
+    if (!type) { syncTypeBadge(f); return }
     f.elements.name.value = type.name
+    syncTypeBadge(f)
     f.elements.description.value = type.description || ''
     f.elements.image.value = type.image
-    f.elements.labels.value = (type.labels || []).join(', ')
     f.elements.cpus.value = type.cpus
     f.elements.memoryMb.value = type.memoryMb
     f.elements.mounts.value = (type.mounts || []).join('\n')
@@ -194,6 +200,70 @@
     if (fn) fn(f, f.querySelector('[type=submit]'))
   })
 
+  /* ── Chip input: labels as removable badges over a hidden comma-separated field ── */
+  var LABEL_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/
+  function chipsOf(box) { return $$('.t-badge:not([data-fixed])', box).map(function (b) { return b.dataset.value }) }
+  function writeChips(box) {
+    var hidden = document.getElementById(box.dataset.chipsFor)
+    if (!hidden) return
+    hidden.value = chipsOf(box).join(',')
+    hidden.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  function addChip(box, raw) {
+    var value = String(raw).trim().toLowerCase()
+    if (!value) return false
+    var fixed = $$('.t-badge[data-fixed]', box).map(function (b) { return b.textContent.trim() })
+    if (!LABEL_RE.test(value)) { T.toast('warning', 'Label "' + value + '" must be lowercase letters, digits, "-" or "_"'); return false }
+    if (value === 'self-hosted' || fixed.indexOf(value) >= 0) { T.toast('info', '"' + value + '" is always added'); return false }
+    if (chipsOf(box).indexOf(value) >= 0) return false
+    var chip = document.createElement('span')
+    chip.className = 't-badge'
+    chip.dataset.tone = 'neutral'
+    chip.dataset.value = value
+    chip.innerHTML = esc(value) + '<button type="button" class="chip-remove" aria-label="Remove ' + esc(value) + '">×</button>'
+    box.insertBefore(chip, $('.chip-entry', box))
+    writeChips(box)
+    return true
+  }
+  function setChips(form, values) {
+    var box = $('.chip-input', form)
+    if (!box) return
+    $$('.t-badge:not([data-fixed])', box).forEach(function (b) { b.remove() })
+    values.forEach(function (v) { addChip(box, v) })
+    writeChips(box)
+  }
+  // The type badge mirrors the Name field; "type" until a name is typed.
+  function syncTypeBadge(form) {
+    var badge = $('#tf-labels-type', form)
+    if (badge) badge.textContent = form.elements.name.value.trim() || 'type'
+  }
+  function wireChips(root) {
+    $$('.chip-input', root).forEach(function (box) {
+      if (box.dataset.wired !== undefined) return
+      box.dataset.wired = ''
+      var entry = $('.chip-entry', box)
+      var commit = function () { if (addChip(box, entry.value) || !entry.value.trim()) entry.value = '' }
+      entry.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ' ') { e.preventDefault(); commit(); return }
+        if (e.key === 'Backspace' && !entry.value) {
+          var last = $$('.t-badge:not([data-fixed])', box).pop()
+          if (last) { last.remove(); writeChips(box) }
+        }
+      })
+      entry.addEventListener('blur', commit)
+      box.addEventListener('click', function (e) {
+        var rm = e.target.closest('.chip-remove')
+        if (rm) { rm.closest('.t-badge').remove(); writeChips(box); entry.focus(); return }
+        if (e.target === box) entry.focus()
+      })
+    })
+    $$('#type-form', root).forEach(function (f) {
+      if (f.dataset.badgeWired !== undefined) return
+      f.dataset.badgeWired = ''
+      f.elements.name.addEventListener('input', function () { syncTypeBadge(f) })
+    })
+  }
+
   /* ── Slots matrix: save per cell on change, revert on failure ────────────── */
   function wireSlots(root) {
     $$('input[data-slot-type]', root).forEach(function (input) {
@@ -212,14 +282,32 @@
     })
   }
 
-  /* ── Jobs filter: repo select navigates ──────────────────────────────────── */
-  document.addEventListener('change', function (e) {
-    var sel = e.target.closest('[data-nav]')
-    if (!sel) return
+  /* ── Jobs filter: selects navigate on change, the search box on Enter (or after a pause) ── */
+  function navWith(el) {
     var q = new URLSearchParams(location.search)
-    if (sel.value) q.set(sel.dataset.nav, sel.value); else q.delete(sel.dataset.nav)
+    var value = el.value.trim()
+    if (value) q.set(el.dataset.nav, value); else q.delete(el.dataset.nav)
+    if (q.toString() === new URLSearchParams(location.search).toString()) return
     var s = q.toString()
     location.assign(location.pathname + (s ? '?' + s : ''))
+  }
+  document.addEventListener('change', function (e) {
+    var el = e.target.closest('[data-nav]')
+    if (el && !el.dataset.navOn) navWith(el)
+  })
+  var searchTimer = null
+  document.addEventListener('keydown', function (e) {
+    var el = e.target.closest('[data-nav][data-nav-on="enter"]')
+    if (!el) return
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(searchTimer); navWith(el); return }
+    if (e.key === 'Escape') { el.value = ''; clearTimeout(searchTimer); navWith(el); return }
+    clearTimeout(searchTimer)
+    searchTimer = setTimeout(function () { navWith(el) }, 600)
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '/' || e.target.closest('input, textarea, select, [contenteditable]')) return
+    var search = $('[data-nav-on="enter"]')
+    if (search) { e.preventDefault(); search.focus(); search.select() }
   })
 
   /* ── Settings: auto-save rows, theme as a setting ───────────────────────── */
@@ -350,6 +438,7 @@
   function boot() {
     if (!T) return
     wireSlots(document)
+    wireChips(document)
     wireSettings()
     wireJobLog()
     connect()

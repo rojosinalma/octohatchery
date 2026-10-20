@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { fresh, TEST_HOST } from './helpers'
+import { config, setConfig } from '../../src/lib/config'
 import { service } from '../../src/lib/service'
 import { heartbeat, pollQueuedJobs, purgeRetention, removeStaleRunners, electLeader } from '../../src/lib/sweep'
 import { claim } from '../../src/lib/scheduler'
@@ -18,6 +19,43 @@ describe('sweep', () => {
     const hosts = await service.listHosts()
     expect(hosts.find((h) => h.name === TEST_HOST)).toMatchObject({ status: 'online', isLeader: true, dockerOk: true })
     expect(hosts.find((h) => h.name === 'node-b')?.status).toBe('offline')
+  })
+
+  test('cluster mode re-asks for the lock on every pass and steps down when it is gone', async () => {
+    const w = await fresh()
+    setConfig({ ...config(), mode: 'cluster' })
+    const answers = [true, true, false, true]
+    const real = w.db.tryLeaderLock
+    w.db.tryLeaderLock = async () => answers.shift() ?? false
+    try {
+      expect(await electLeader()).toBe(true)
+      expect(await electLeader()).toBe(true)
+      expect(await electLeader()).toBe(false)
+      await heartbeat()
+      expect((await service.listHosts()).find((h) => h.name === TEST_HOST)?.isLeader).toBe(false)
+      expect(await electLeader()).toBe(true)
+      w.db.tryLeaderLock = async () => {
+        throw new Error('connection closed')
+      }
+      expect(await electLeader()).toBe(false)
+    } finally {
+      w.db.tryLeaderLock = real
+      setConfig({ ...config(), mode: 'single' })
+    }
+  })
+
+  test('heartbeat reports the host specs; a later heartbeat without them keeps the stored ones', async () => {
+    const w = await fresh()
+    await heartbeat()
+    const me = (await service.listHosts()).find((h) => h.name === TEST_HOST)!
+    expect(me).toMatchObject({ cpus: 4, memoryMb: 8192, os: 'Fake OS 1', dockerVersion: 'fake-1.0' })
+    expect(me.appVersion).toMatch(/^\d+\.\d+\.\d+/)
+    w.docker.up = false
+    await heartbeat()
+    const again = (await service.listHosts()).find((h) => h.name === TEST_HOST)!
+    expect(again.dockerOk).toBe(false)
+    expect(again.dockerVersion).toBe('fake-1.0')
+    expect(again.cpus).toBe(me.cpus)
   })
 
   test('poll fallback upserts queued jobs for adopted repos only', async () => {

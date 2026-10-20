@@ -10,6 +10,11 @@ export const hosts = pgTable('hosts', {
   lastSeenAt: text('last_seen_at').notNull(),
   isLeader: boolean('is_leader').notNull().default(false),
   dockerOk: boolean('docker_ok').notNull().default(false),
+  cpus: integer('cpus'),
+  memoryMb: integer('memory_mb'),
+  os: text('os'),
+  dockerVersion: text('docker_version'),
+  appVersion: text('app_version'),
 })
 
 export const runnerTypes = pgTable('runner_types', {

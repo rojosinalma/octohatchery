@@ -15,7 +15,11 @@ export type Db = {
   run(query: SQL): Promise<void>
   /** Serialisable unit of work; SQLite serialises callers, Postgres opens a real transaction. */
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>
-  /** True when this process holds the leader lock (SQLite: always). */
+  /**
+   * True when this process holds the leader lock right now (SQLite: always). Called on every sweep pass: a
+   * holder gets `true` again; a connection that died, or a server that turned out to be a standby, gives `false`
+   * and the caller steps down. Never caches a previous answer.
+   */
   tryLeaderLock(): Promise<boolean>
   ping(): Promise<boolean>
   close(): Promise<void>

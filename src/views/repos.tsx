@@ -1,9 +1,10 @@
-import type { Repo, RunnerType } from '../lib/types'
+import type { RepoListItem, RunnerType } from '../lib/types'
 import { Empty, Icon, RelTime } from './parts'
 
-export type ReposData = { repos: Repo[]; types: RunnerType[] }
+export type GitHubAuthKind = 'app' | 'pat' | 'none'
+export type ReposData = { repos: RepoListItem[]; types: RunnerType[]; githubAuth: GitHubAuthKind }
 
-export const ReposTable = ({ repos }: { repos: Repo[] }) => {
+export const ReposTable = ({ repos, githubAuth }: Pick<ReposData, 'repos' | 'githubAuth'>) => {
   const adopted = repos.filter((r) => r.adopted)
   if (adopted.length === 0) {
     return (
@@ -24,13 +25,18 @@ export const ReposTable = ({ repos }: { repos: Repo[] }) => {
             </th>
             <th>Visibility</th>
             <th>Webhook</th>
+            <th class="t-col-num" data-sort="jobs">
+              <button>
+                Jobs <span class="t-sort-icon"></span>
+              </button>
+            </th>
             <th>Adopted</th>
             <th class="t-col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
           {adopted.map((r) => (
-            <tr data-repo={r.fullName} data-name={r.fullName}>
+            <tr data-repo={r.fullName} data-name={r.fullName} data-jobs={String(r.jobCount)}>
               <td>
                 <a class="t-mono" href={`https://github.com/${r.fullName}`} target="_blank" rel="noopener" safe>
                   {r.fullName}
@@ -42,20 +48,46 @@ export const ReposTable = ({ repos }: { repos: Repo[] }) => {
                 </span>
               </td>
               <td>
-                <span class="t-badge" data-tone={r.webhookId ? 'success' : 'warning'} data-tip={r.webhookId ? `Webhook #${r.webhookId}` : 'No webhook: jobs are found by polling only'}>
-                  {r.webhookId ? 'active' : 'polling'}
-                </span>
+                {githubAuth === 'app' ? (
+                  <span class="t-badge" data-tone="success" data-tip="The GitHub App delivers workflow_job events for every repo it is installed on">
+                    via App
+                  </span>
+                ) : (
+                  <span class="t-badge" data-tone={r.webhookId ? 'success' : 'warning'} data-tip={r.webhookId ? `Webhook #${r.webhookId}` : 'No webhook: jobs are found by polling only'}>
+                    {r.webhookId ? 'active' : 'polling'}
+                  </span>
+                )}
+              </td>
+              <td class="t-col-num">
+                {r.jobCount > 0 ? (
+                  <a class="t-mono" href={`/jobs?repo=${encodeURIComponent(r.fullName)}`} data-tip="Jobs of this repo">
+                    {String(r.jobCount)}
+                  </a>
+                ) : (
+                  <span class="t-muted">0</span>
+                )}
               </td>
               <td>
                 <RelTime at={r.adoptedAt} />
               </td>
               <td class="t-col-actions">
-                <div class="t-cluster" data-gap="1">
+                <div class="t-cluster row-actions" data-gap="1">
                   <button class="t-btn" data-size="sm" data-variant="ghost" data-action="runs-on" data-repo={r.fullName}>
                     <Icon id="bi-code-slash" /> runs-on
                   </button>
-                  <button class="t-btn" data-size="sm" data-variant="ghost" data-tone="danger" data-icon="only" data-tip="Unadopt" data-action="unadopt" data-repo={r.fullName}>
-                    <Icon id="bi-trash" />
+                  {githubAuth === 'app' ? (
+                    <span data-tip="Covered by the GitHub App" class="row-action-disabled">
+                      <button class="t-btn" data-size="sm" data-variant="ghost" disabled>
+                        <Icon id="bi-link-45deg" /> Add webhook
+                      </button>
+                    </span>
+                  ) : (
+                    <button class="t-btn" data-size="sm" data-variant="ghost" data-action="webhook" data-repo={r.fullName} data-tip={r.webhookId ? 'Re-create or fix the workflow_job webhook on GitHub' : 'Create the workflow_job webhook so jobs arrive at once'}>
+                      <Icon id="bi-link-45deg" /> {r.webhookId ? 'Repair webhook' : 'Add webhook'}
+                    </button>
+                  )}
+                  <button class="t-btn" data-size="sm" data-variant="ghost" data-tone="danger" data-action="unadopt" data-repo={r.fullName}>
+                    <Icon id="bi-trash" /> Unadopt
                   </button>
                 </div>
               </td>
@@ -123,13 +155,13 @@ const RunsOnDialog = ({ types }: { types: RunnerType[] }) => (
   </dialog>
 )
 
-export const ReposPage = ({ repos, types }: ReposData) => (
+export const ReposPage = ({ repos, types, githubAuth }: ReposData) => (
   <>
     <header class="t-page-header">
       <h1 class="t-page-title">Repos</h1>
       <span class="t-page-lead">Adopted repos send their queued jobs here.</span>
     </header>
-    <form class="t-toolbar page-toolbar" id="adopt-form" data-action="adopt" aria-label="Adopt a repo">
+    <form class="t-toolbar page-toolbar adopt-form" id="adopt-form" data-action="adopt" aria-label="Adopt a repo" novalidate>
       <div class="t-field">
         <label class="t-label t-visually-hidden" for="adopt-name">
           Repo (owner/name)
@@ -148,7 +180,7 @@ export const ReposPage = ({ repos, types }: ReposData) => (
         </div>
       </span>
     </form>
-    <ReposTable repos={repos} />
+    <ReposTable repos={repos} githubAuth={githubAuth} />
     <RunsOnDialog types={types} />
   </>
 )
