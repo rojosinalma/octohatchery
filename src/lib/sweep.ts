@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { cpus, platform, release, totalmem } from 'node:os'
 import pkg from '../../package.json'
-import { db } from '../db'
+import { db, recoverDb } from '../db'
 import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
@@ -155,6 +155,7 @@ export async function sweepOnce(): Promise<void> {
     }
   } catch (err) {
     logger.error('sweep failed', err instanceof Error ? err : String(err))
+    await recoverDb()
   }
 }
 
