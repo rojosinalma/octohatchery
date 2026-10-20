@@ -28,6 +28,13 @@ export const SETTING_GROUPS: Group[] = [
         control: { kind: 'text', placeholder: 'tcp://octohatchery-buildkitd:1234' },
         default: 'tcp://octohatchery-buildkitd:1234',
       },
+      {
+        key: 'runner_image_default',
+        label: 'Default runner image',
+        help: 'Preselected in the Image field when you create a template. Any image that starts the GitHub Actions runner from RUNNER_JITCONFIG works.',
+        control: { kind: 'text', placeholder: 'ghcr.io/rojosinalma/octohatchery-runner:edge' },
+        default: 'ghcr.io/rojosinalma/octohatchery-runner:edge',
+      },
     ],
   },
   {

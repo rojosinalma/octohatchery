@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia'
 import { html } from '@elysiajs/html'
 import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
+import { SETTING_DEFAULTS } from '../lib/settings'
 import { STATUS_BY_CODE } from '../lib/json'
 import { ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
@@ -9,7 +10,7 @@ import { OverviewLive, OverviewPage } from '../views/overview'
 import { JOB_STATUSES, JobsPage, JobsTable, type JobsFilter } from '../views/jobs'
 import { JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
-import { RunnerTypesPage } from '../views/runner-types'
+import { RunnerTypesPage, SlotsMatrix } from '../views/runner-types'
 import { HostsPage } from '../views/hosts'
 import { EventsPage, EventsTable } from '../views/events'
 import { SettingsPage, SettingsSide, otherKeys } from '../views/settings'
@@ -148,10 +149,17 @@ export const ui = new Elysia({ name: 'ui' })
     return page('repos', 'Repos', <ReposPage repos={repos} types={types} githubAuth={service.githubAuthKind()} />)
   })
 
-  .get('/templates', async () => {
-    const [types, hosts, slots] = await Promise.all([service.listRunnerTypes(), service.listHosts(), service.listSlots()])
-    return page('templates', 'Templates', <RunnerTypesPage types={types} hosts={hosts} slots={slots} />)
-  })
+  .get(
+    '/templates',
+    async ({ query }) => {
+      const [types, hosts, slots] = await Promise.all([service.listRunnerTypes(), service.listHosts(), service.listSlots()])
+      if (query.partial) return <SlotsMatrix types={types} hosts={hosts} slots={slots} />
+      const settings = await service.getSettings().catch(() => ({}) as Record<string, string>)
+      const imageDefault = settings['runner_image_default'] || SETTING_DEFAULTS['runner_image_default']!
+      return page('templates', 'Templates', <RunnerTypesPage types={types} hosts={hosts} slots={slots} imageDefault={imageDefault} />)
+    },
+    { query: partialQuery },
+  )
 
   // The page was `/runner-types` before the dashboard called them templates; the API path keeps the old name.
   .get('/runner-types', ({ redirect }) => redirect('/templates', 301))

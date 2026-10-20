@@ -40,6 +40,7 @@ Every node in a cluster needs the same GitHub values and webhook secret, its own
 | `sse_idle_s` | `300` | An SSE client that received nothing for this long is disconnected. |
 | `log_level` | `info` | `debug`, `info`, `warn` or `error`. |
 | `buildkit_host` | `tcp://octohatchery-buildkitd:1234` | `BUILDKIT_HOST` injected into every runner. Points at the sidecar on the compose network. |
+| `runner_image_default` | `ghcr.io/rojosinalma/octohatchery-runner:edge` | The image preselected when a template is created on the dashboard. |
 
 Settings are read at use time with a cache of at most five seconds, so a change is live within that window on every node.
 

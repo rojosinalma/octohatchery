@@ -18,9 +18,13 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 - Settings → GitHub: the auth mode, App, installation, repository count and webhook URL, plus a table of required versus granted permissions with why each is needed and what breaks without it; links to edit the App's permissions and accept them on the installation; Re-check. `GET /api/github/status`, `POST /api/github/recheck`; `GET /health` carries `github: {ok, source, missing}`; a warning banner on every page while a permission is missing or no GitHub source is configured.
 - Repos → Adopt a repo: a dialog listing the repositories the installation or token can reach (`GET /api/github/repos`, cached 60 s, first 500), filtered as you type, one click adopts; clear error states with the fix when the list cannot be fetched. The free-text adopt form is gone.
 - Docker access per runner type (`runner_types.docker`: `none`, `socket`, `dind`; migration `0003_runner_type_docker`): host socket bind-mount with the socket's group, or a privileged `docker:28-dind` sidecar per runner that the reaper, the stale sweep and `kill` remove with the runner; the runner entrypoint waits for `DOCKER_HOST`. Three cards with trade-offs in the type dialog, a Docker column in the table; `upsert_runner_type` and `PUT /api/runner-types/:name` accept `docker`.
+- Setting `runner_image_default` (default `ghcr.io/rojosinalma/octohatchery-runner:edge`, Settings → BuildKit): the image preselected when a template is created.
+- Templates: the slots matrix updates live from `runner` and `slot` events (`GET /templates?partial=slots`), after a spawn and after a saved cell; a field being edited is never overwritten.
 
 ### Changed
 
+- Templates dialog: the Image field is a select of the default image and every image in use, with "Other…" to type a new one; editing preselects the template's image.
+- Loading states: the runs-on actions, the adopt rows and the spawn buttons show a spinner and are disabled while the request runs; the sibling runs-on button is disabled too and both come back on failure.
 - Overview: one Hosts card with hosts as columns; a one-line header per host (status dot, name, `leader` badge, `offline` / `Docker unreachable` only when true, specs and last heartbeat), a `N of M slots busy` line and one pill per slot per template (a bar beyond 12 slots). Navbar order is Overview, Repos, Jobs, Templates, Hosts, Events, Settings.
 - Dashboard: runner types are called templates on the pages (`/templates`, `/runner-types` redirects there); the API and MCP names are unchanged.
 - Repos and Templates: the action columns are icon-only buttons with tooltips (runs-on, Add / Repair webhook, Unadopt; Edit, Delete).

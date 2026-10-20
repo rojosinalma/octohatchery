@@ -11,6 +11,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sse_idle_s: '300',
   log_level: 'info',
   buildkit_host: 'tcp://octohatchery-buildkitd:1234',
+  runner_image_default: 'ghcr.io/rojosinalma/octohatchery-runner:edge',
   scheduler_tick_s: '5',
   heartbeat_s: '15',
   ui_skin: 'bootstrap',

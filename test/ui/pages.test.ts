@@ -456,6 +456,31 @@ describe('templates', () => {
     expect(body).toContain('data-action="spawn"')
     // offline host: spawn disabled
     expect(body).toMatch(/data-host="node-b"\s+disabled/)
+    // the matrix is a live block refreshed on runner / slot events
+    expect(body).toContain('<div id="slots-live" data-live="runner slot" class="t-table-wrap">')
+    // image: a select of the default plus every image in use, "Other…" last, the real value in a hidden field
+    expect(body).toContain('<form id="type-form" data-action="type-save" data-image-default="ghcr.io/rojosinalma/octohatchery-runner:edge">')
+    expect(body).toContain('<select class="t-select" id="tf-image-pick"')
+    expect(body).toMatch(/<option value="ghcr.io\/rojosinalma\/octohatchery-runner:edge" selected>ghcr.io\/rojosinalma\/octohatchery-runner:edge<\/option><option value="ghcr.io\/example\/runner:1">ghcr.io\/example\/runner:1<\/option><option value="">Other…<\/option>/)
+    expect(body).toContain('<input class="t-input" id="tf-image-other" placeholder="registry/name:tag" aria-label="Other image" autocomplete="off" hidden/>')
+    expect(body).toContain('<input type="hidden" id="tf-image" name="image" value="ghcr.io/rojosinalma/octohatchery-runner:edge"/>')
+    expect(body).not.toContain('placeholder="ghcr.io/rojosinalma/octohatchery-runner:latest"')
+  })
+
+  test('the default image comes from the runner_image_default setting', async () => {
+    store.data = { ...full, settings: { ...full.settings, runner_image_default: 'registry.example/runner:2' } }
+    const { body } = await get('/templates')
+    expect(body).toContain('data-image-default="registry.example/runner:2"')
+    expect(body).toMatch(/<option value="registry.example\/runner:2" selected>/)
+  })
+
+  test('?partial=slots returns the matrix alone', async () => {
+    const { res, body } = await get('/templates?partial=slots')
+    expect(res.status).toBe(200)
+    expect(body.startsWith('<div id="slots-live" data-live="runner slot"')).toBe(true)
+    expect(body).toContain('id="slots-matrix"')
+    expect(body).not.toContain('<h1')
+    expect(body).not.toContain('id="type-dlg"')
   })
 
   test('empty state', async () => {

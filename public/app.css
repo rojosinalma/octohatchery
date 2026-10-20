@@ -383,3 +383,18 @@
 .docker-options .t-hint {
   margin-top: var(--t-space-2);
 }
+
+/* A busy button shows the skin's spinner in place of its leading icon, not next to it. */
+.t-btn[aria-busy="true"] > .t-icon {
+  display: none;
+}
+
+/* A busy list row (adopt dialog) dims; its spinner sits in the trail next to the badges. */
+.t-list-item[aria-busy="true"] {
+  opacity: 0.7;
+}
+
+/* Template dialog: the "Other…" image field appears under the select. */
+#tf-image-other:not([hidden]) {
+  margin-top: var(--t-space-2);
+}

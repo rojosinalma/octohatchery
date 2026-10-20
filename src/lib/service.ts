@@ -494,6 +494,8 @@ export const service = {
       if (!LOG_LEVELS.includes(value)) throw new ServiceError(`log_level must be one of ${LOG_LEVELS.join(', ')}`)
     } else if (key === 'buildkit_host') {
       if (!/^(tcp|unix):\/\/.+/.test(value)) throw new ServiceError('buildkit_host must be a tcp:// or unix:// address')
+    } else if (key === 'runner_image_default') {
+      if (!/^[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/.test(value)) throw new ServiceError('runner_image_default must be an image reference like registry/name:tag')
     } else if (key.startsWith('ui_')) {
       if (!/^[a-z0-9-]{1,40}$/.test(value)) throw new ServiceError(`${key} must be a short lowercase identifier`)
     } else if (!/^\d+$/.test(value)) {

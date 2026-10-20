@@ -78,7 +78,8 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Adopt a repo: a button that opens a dialog listing the repositories the GitHub App installation
   or the token can reach (`GET /api/github/repos`, first 500, cached 60 s), with a filter box,
   a private/public badge and an `adopted` badge on rows already served (disabled). One click calls
-  `POST /api/repos/adopt {fullName}`; nothing is typed by hand. When the list cannot be fetched the
+  `POST /api/repos/adopt {fullName}`; nothing is typed by hand. The clicked row shows a spinner
+  and the other rows are disabled until GitHub answers. When the list cannot be fetched the
   dialog says why and what fixes it: no GitHub access configured → link to Settings → GitHub; GitHub
   refused (401/403) → "Check GitHub permissions"; an App installed on no repositories → link to the
   installation page to add some.
@@ -95,8 +96,9 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   `POST /api/repos/runs-on {fullName, mode, type}`: **Open a pull request** (`mode: pr`) and
   **Commit to default branch** (`mode: commit`, confirmed as a dangerous action). On success the
   buttons give way to a result line ("Pull request opened" or "Committed <sha>") with a link to
-  the pull request or commit. On failure the dialog stays open and shows GitHub's exact message,
-  also as a toast; a missing permission names the GitHub page where to grant it.
+  the pull request or commit. While the request runs, the clicked button shows a spinner and both
+  buttons are disabled. On failure the dialog stays open, the buttons come back and GitHub's exact
+  message is shown, also as a toast; a missing permission names the GitHub page where to grant it.
 - Unadopt (bin icon): confirmed, then `POST /api/repos/unadopt {fullName}`.
 - Empty state: "No repos adopted" with the Adopt button.
 
@@ -111,13 +113,19 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Edit (pencil) and New open the same dialog; saving calls `PUT /api/runner-types/:name` with the
   full template. Delete (bin) asks first. Labels are chips: Enter, comma or space adds one, ×
   removes it; `self-hosted`, the template name and the host are shown first as fixed badges
-  because every runner gets them anyway.
+  because every runner gets them anyway. Image is a select: the default image (setting
+  `runner_image_default`, Settings → BuildKit) and every image a template already uses, with
+  **Other…** last to type a new one; editing preselects the template's image.
   Environment (one `KEY=value` per line) comes before Mounts (one `src:dst[:ro]` per line);
   secret names are comma-separated. Docker is three cards (None, Host socket, Docker-in-Docker),
   each with its trade-off; see [runner-types.md](runner-types.md#docker-access).
 - Slots matrix: a number field per template × host. Leaving the field saves that one cell with
   `PUT /api/slots {host, type, count}`; a failed save reverts the field. The play button calls
-  `POST /api/runners/spawn {type, host}` and is disabled for offline hosts.
+  `POST /api/runners/spawn {type, host}`, shows a spinner while it runs and is disabled for offline
+  hosts. The matrix is live: `runner` and `slot` events from `/events/stream` (and a spawn or a
+  saved cell) re-fetch `GET /templates?partial=slots` and swap the block in place, so the
+  used / free counts follow the runners. A refresh waits while a slot field has focus and runs
+  when the field is left, so a number being typed is never overwritten.
 
 ### Hosts
 
@@ -143,7 +151,7 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
   saving / saved / failed and a toast reports the outcome. There is no Save button.
 - Durations are entered as a number with a unit (s / min / h). `stale_runner_minutes` is stored
   in minutes; the dashboard converts.
-- Sections, in sidebar order: Appearance, GitHub, BuildKit, Live updates, Retention, Scheduler,
+- Sections, in sidebar order: Appearance, GitHub, BuildKit (BuildKit host, Default runner image), Live updates, Retention, Scheduler,
   Logging, Other, About. "Other" lists settings the dashboard does not know as plain text fields
   and exists only while there are any.
 - Appearance: skin and palette selects (alphabetical). The choice is stored as the settings

@@ -25,9 +25,20 @@
     }, function (err) { return { ok: false, message: 'Network error: ' + err.message } })
   }
   function toast(res) { T.toast(res.ok ? 'success' : 'danger', res.message); return res }
+  // Loading state on a .t-btn: aria-busy draws the skin's spinner (the leading icon hides meanwhile, see app.css).
   function busy(btn, on) {
     if (!btn) return
     if (on) { btn.setAttribute('aria-busy', 'true'); btn.disabled = true } else { btn.removeAttribute('aria-busy'); btn.disabled = false }
+  }
+  // Loading state on a non-button element (list rows): aria-busy plus an explicit .t-spinner where `slot` points.
+  function busySpinner(el, slot, on) {
+    if (!el) return
+    var old = $('.t-spinner', el); if (old) old.remove()
+    if (on) {
+      el.setAttribute('aria-busy', 'true')
+      var sp = document.createElement('span'); sp.className = 't-spinner'; sp.dataset.size = 'sm'; sp.setAttribute('aria-hidden', 'true')
+      ;(slot || el).prepend(sp)
+    } else el.removeAttribute('aria-busy')
   }
 
   /* ── Re-render in place ──────────────────────────────────────────────────── */
@@ -42,22 +53,32 @@
       T.upgrade(main)
       wireSlots(main)
       wireChips(main)
+      wireImagePick(main)
     }).catch(function (err) { T.toast('warning', 'Could not refresh: ' + err.message) })
   }
   // Live blocks carry data-live="<event names>"; a matching SSE event re-fetches `?partial=1` and replaces the block.
-  var pending = null
+  var pending = null, deferred = false
+  // A field the user is editing inside the live block must not be swapped away: the refresh waits for blur.
+  function editing(block) {
+    var a = document.activeElement
+    return Boolean(a && a !== document.body && block.contains(a) && a.matches('input, textarea, select, .t-number-step'))
+  }
   function refreshLive() {
     pending = null
     var block = $('[data-live]')
     if (!block) return
+    if (editing(block)) { deferred = true; return }
+    deferred = false
     var q = new URLSearchParams(location.search); q.set('partial', '1')
     refetch(location.pathname + '?' + q.toString()).then(function (html) {
       var tpl = document.createElement('template'); tpl.innerHTML = html.trim()
       var fresh = tpl.content.firstElementChild
       var current = $('[data-live]')
       if (!fresh || !current) return
+      if (editing(current)) { deferred = true; return }
       current.replaceWith(fresh)
       T.upgrade(fresh)
+      wireSlots(fresh)
     }).catch(function () { /* next event retries */ })
   }
   function scheduleLive(name) {
@@ -66,6 +87,11 @@
     if (pending) clearTimeout(pending)
     pending = setTimeout(refreshLive, 300)
   }
+  // Leaving the edited field lets a deferred refresh through (after the cell's own save round-trip).
+  document.addEventListener('focusout', function (e) {
+    var block = e.target.closest && e.target.closest('[data-live]')
+    if (block && deferred && !pending) pending = setTimeout(refreshLive, 400)
+  })
 
   /* ── SSE ─────────────────────────────────────────────────────────────────── */
   function liveDot(status, tip) { var d = $('#live-dot'); if (d) { d.dataset.status = status; d.dataset.tip = 'Live updates: ' + tip } }
@@ -110,11 +136,14 @@
       return T.confirm(mode === 'commit' ? 'Commit to the default branch?' : 'Open a pull request?', body, { label: mode === 'commit' ? 'Commit' : 'Open PR', danger: mode === 'commit' })
         .then(function (ok) {
           if (!ok) return
+          var toolbar = btn.closest('.t-toolbar')
+          var siblings = $$('[data-action="runs-on-apply"]', toolbar).filter(function (b) { return b !== btn })
           busy(btn, true)
+          siblings.forEach(function (b) { b.disabled = true })
           return api('POST', '/api/repos/runs-on', { fullName: repo, mode: mode, type: type }).then(function (res) {
             busy(btn, false)
+            siblings.forEach(function (b) { b.disabled = false })
             // Failure: GitHub's exact message, dialog stays open. Success: the buttons give way to the result and its link.
-            var toolbar = btn.closest('.t-toolbar')
             $$('.runs-on-error', toolbar.parentNode).forEach(function (n) { n.remove() })
             if (!res.ok) {
               // The modal dims everything outside it, so the exact message also lands inside the dialog, URLs clickable.
@@ -158,11 +187,11 @@
     'adopt-pick': function (btn) {
       var dlg = btn.closest('dialog'), name = btn.dataset.repo
       $$('[data-action="adopt-pick"]', dlg).forEach(function (b) { b.disabled = true })
-      busy(btn, true)
+      busySpinner(btn, $('.t-list-trail', btn), true)
       return api('POST', '/api/repos/adopt', { fullName: name }).then(function (res) {
         toast(res)
         if (res.ok) { dlg.close(''); swapMain(); return }
-        busy(btn, false)
+        busySpinner(btn, null, false)
         $$('[data-action="adopt-pick"]', dlg).forEach(function (b) { if (b.dataset.adopted === undefined) b.disabled = false })
       })
     },
@@ -175,7 +204,7 @@
     },
     spawn: function (btn) {
       busy(btn, true)
-      return api('POST', '/api/runners/spawn', { type: btn.dataset.type, host: btn.dataset.host }).then(toast).then(function () { busy(btn, false) })
+      return api('POST', '/api/runners/spawn', { type: btn.dataset.type, host: btn.dataset.host }).then(toast).then(function () { busy(btn, false); scheduleLive('slot') })
     },
   }
 
@@ -203,17 +232,48 @@
     f.elements.name.readOnly = Boolean(type)
     setChips(f, type ? type.labels || [] : [])
     setRadio(f, 'docker', type && type.docker ? type.docker : 'none')
-    if (!type) { syncTypeBadge(f); return }
+    if (!type) { syncTypeBadge(f); setImage(f, f.dataset.imageDefault || ''); return }
     f.elements.name.value = type.name
     syncTypeBadge(f)
     f.elements.description.value = type.description || ''
-    f.elements.image.value = type.image
+    setImage(f, type.image)
     f.elements.cpus.value = type.cpus
     f.elements.memoryMb.value = type.memoryMb
     f.elements.mounts.value = (type.mounts || []).join('\n')
     f.elements.env.value = Object.keys(type.env || {}).map(function (k) { return k + '=' + type.env[k] }).join('\n')
     f.elements.secretEnv.value = (type.secretEnv || []).join(', ')
     $$('input, select, textarea', f).forEach(function (el) { T.sync(el) })
+  }
+
+  /* ── Image picker: known images in a select, "Other…" reveals a text field; both write the hidden `image` ── */
+  function setImage(form, value) {
+    var pick = $('#tf-image-pick', form), other = $('#tf-image-other', form)
+    var known = $$('option', pick).some(function (o) { return o.value && o.value === value })
+    pick.value = known ? value : ''
+    other.value = known ? '' : value
+    form.elements.image.value = value
+    T.sync(pick)
+    showOther(form, !known)
+  }
+  function showOther(form, on) {
+    var other = $('#tf-image-other', form)
+    other.hidden = !on
+    other.disabled = !on
+    other.required = on
+  }
+  function wireImagePick(root) {
+    $$('#tf-image-pick', root).forEach(function (pick) {
+      if (pick.dataset.wired !== undefined) return
+      pick.dataset.wired = ''
+      var form = pick.closest('form'), other = $('#tf-image-other', form)
+      pick.addEventListener('change', function () {
+        var isOther = pick.value === ''
+        showOther(form, isOther)
+        form.elements.image.value = isOther ? other.value.trim() : pick.value
+        if (isOther) other.focus()
+      })
+      other.addEventListener('input', function () { form.elements.image.value = other.value.trim() })
+    })
   }
 
   /* ── Adopt dialog: the repos GitHub lets us see, filtered as you type, one click adopts ── */
@@ -381,6 +441,7 @@
           if (cell) cell.removeAttribute('aria-busy')
           if (res.ok) { input.dataset.last = String(count); input.value = String(count) } else { input.value = input.dataset.last }
           T.sync(input)
+          if (res.ok) scheduleLive('slot')
         })
       })
     })
@@ -543,6 +604,7 @@
     if (!T) return
     wireSlots(document)
     wireChips(document)
+    wireImagePick(document)
     wireSettings()
     wireJobLog()
     connect()
