@@ -44,26 +44,84 @@ const HostSpecs = ({ host }: { host: Host }) => {
   )
 }
 
-/** One row per template with slots on this host: the name, then one pill per slot (filled = busy). */
-const SlotRow = ({ slot }: { slot: Slot }) => (
-  <div class="slot-row" data-type={slot.type} data-tip={`${slot.type} on ${slot.host}: ${slot.used}/${slot.count}`}>
-    <a href={`/templates#${encodeURIComponent(slot.type)}`} class="t-mono t-small slot-type" safe>
-      {slot.type}
-    </a>
-    {slot.count > PILL_MAX ? (
-      <SlotBar slot={slot} />
-    ) : (
-      <span class="slot-pills" role="img" aria-label={`${slot.type} on ${slot.host}: ${slot.used} of ${slot.count} slots used`}>
-        {Array.from({ length: slot.count }, (_, i) => (
-          <span class="slot-pill" data-busy={i < slot.used ? 'true' : undefined}></span>
-        ))}
+/** One runner in a slot seat: busy tile, spawning, idle, or free. */
+const RunnerSeat = ({ runner }: { runner?: Runner }) => {
+  if (!runner) {
+    return (
+      <div class="runner-seat runner-seat-free" data-tip="Free slot">
+        <span class="t-muted t-small">free</span>
+      </div>
+    )
+  }
+
+  const isBusy = runner.state === 'busy'
+  const isSpawning = runner.state === 'spawning'
+  const jobDisplay = runner.repo ? runner.repo.split('/')[1] : runner.jobId ? String(runner.jobId).slice(0, 6) : '—'
+
+  return (
+    <a
+      href={`/jobs?runner=${encodeURIComponent(runner.name)}`}
+      class="runner-seat"
+      data-state={runner.state}
+      data-tip={`${runner.name} · ${runner.state}${isBusy && runner.jobName ? ` · ${runner.jobName}` : ''}`}
+    >
+      <span class="runner-seat-state">
+        {isBusy && <Icon id="bi-play-circle-fill" size="xs" />}
+        {runner.state === 'idle' && <Icon id="bi-circle-fill" size="xs" />}
+        {isSpawning && <span class="t-spinner" style="--t-spinner-size: 0.7rem"></span>}
       </span>
-    )}
+      <span class="runner-seat-info">
+        {isBusy ? (
+          <span class="runner-seat-job">{jobDisplay}</span>
+        ) : (
+          <span class="runner-seat-state-text">{runner.state}</span>
+        )}
+      </span>
+    </a>
+  )
+}
+
+/** One row per template with its slots shown as seats (busy runners, free, etc). */
+const SlotRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => {
+  const runnersBySlot = new Map<number, Runner>()
+  // Runners are listed in creation order; assume they fill slots 0..used-1
+  runners.slice(0, slot.used).forEach((r, i) => {
+    runnersBySlot.set(i, r)
+  })
+
+  return (
+    <div class="slot-row" data-type={slot.type}>
+      <a href={`/templates#${encodeURIComponent(slot.type)}`} class="slot-type" safe>
+        {slot.type}
+      </a>
+      <div class="slot-seats">
+        {slot.count > PILL_MAX ? (
+          <>
+            <SlotBar slot={slot} />
+            {Array.from({ length: slot.used }, (_, i) => (
+              <RunnerSeat runner={runnersBySlot.get(i)} />
+            ))}
+            {slot.free > 0 && <span class="slot-free-count t-muted t-small">+{slot.free} free</span>}
+          </>
+        ) : (
+          Array.from({ length: slot.count }, (_, i) => (
+            <RunnerSeat runner={runnersBySlot.get(i)} />
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Progress bar for 12+ slots. */
+const SlotBar = ({ slot }: { slot: Slot }) => (
+  <div class="t-progress" role="progressbar" aria-valuenow={slot.used} aria-valuemin={0} aria-valuemax={slot.count} style={`--t-value: ${Math.round((slot.used * 100) / slot.count)}%`} data-tip={`${slot.used}/${slot.count} slots busy`}>
+    <div class="t-progress-bar"></div>
   </div>
 )
 
 /** One host column: a one-line header, the slot summary, then one row per template with slots here. */
-const HostSection = ({ host, slots }: { host: Host; slots: Slot[] }) => {
+const HostSection = ({ host, slots, runners }: { host: Host; slots: Slot[]; runners: Runner[] }) => {
   const mine = slots.filter((s) => s.host === host.name && s.count > 0).sort((a, b) => a.type.localeCompare(b.type))
   const used = mine.reduce((n, s) => n + s.used, 0)
   const total = mine.reduce((n, s) => n + s.count, 0)
@@ -81,169 +139,30 @@ const HostSection = ({ host, slots }: { host: Host; slots: Slot[] }) => {
             offline
           </span>
         ) : null}
-        {host.dockerOk ? null : (
-          <span class="t-badge" data-tone="danger" data-size="xs" data-tip="This node cannot reach its container engine">
+        {host.dockerOk === false ? (
+          <span class="t-badge" data-tone="danger" data-size="xs">
             Docker unreachable
           </span>
-        )}
-        <span class="t-toolbar-spacer"></span>
+        ) : null}
         <HostSpecs host={host} />
       </header>
-      <p class="t-small host-summary" data-tone={total > 0 && used === total ? 'warning' : undefined}>
-        {total === 0 ? (
-          <>
-            No slots on this host. <a href="/templates">Set some under Templates</a>
-          </>
-        ) : (
-          `${used} of ${total} slots busy`
-        )}
-      </p>
       {mine.length > 0 ? (
-        <div class="host-slots t-stack" data-gap="1" aria-label={`Slots on ${host.name}`}>
-          {mine.map((s) => (
-            <SlotRow slot={s} />
+        <div class="host-templates">
+          {mine.map((slot) => (
+            <SlotRow slot={slot} runners={runners.filter((r) => r.host === host.name && r.type === slot.type)} />
           ))}
         </div>
-      ) : null}
+      ) : (
+        <p class="t-small t-muted">
+          No slots on this host. <a href="/templates">Set some under Templates</a>
+        </p>
+      )}
     </section>
   )
 }
 
-const SlotBar = ({ slot }: { slot: Slot }) => {
-  const pct = slot.count > 0 ? Math.round((slot.used / slot.count) * 100) : 0
-  const tone = slot.count === 0 ? 'neutral' : slot.free === 0 ? 'warning' : 'success'
-  return (
-    <div class="slot-bar">
-      <span class="t-small t-mono" data-tip={`${slot.free} free`}>{`${slot.used}/${slot.count}`}</span>
-      <div
-        class="t-progress"
-        data-size="sm"
-        role="progressbar"
-        aria-valuenow={String(slot.used)}
-        aria-valuemin="0"
-        aria-valuemax={String(slot.count)}
-        aria-label={`${slot.type} on ${slot.host}: ${slot.used} of ${slot.count} slots used`}
-      >
-        <div class="t-progress-bar" data-tone={tone} style={`--t-value: ${pct}%`}></div>
-      </div>
-    </div>
-  )
-}
-
-export const RunnersTable = ({ runners }: { runners: Runner[] }) => {
-  const live = runners.filter((r) => LIVE_STATES.has(r.state))
-  if (live.length === 0) {
-    return (
-      <Empty icon="bi-inbox" title="No runners right now" text="A runner starts when a queued job matches a template with a free slot." size="sm">
-        <a class="t-btn" data-size="sm" data-variant="ghost" href="/templates">
-          Spawn one from Templates
-        </a>
-      </Empty>
-    )
-  }
-  return (
-    <div class="t-table-wrap">
-      <table class="t-table" data-variant="data" data-density="compact" id="runners-table">
-        <thead>
-          <tr>
-            <th data-sort="name">
-              <button>
-                Runner <span class="t-sort-icon"></span>
-              </button>
-            </th>
-            <th data-sort="host">
-              <button>
-                Host <span class="t-sort-icon"></span>
-              </button>
-            </th>
-            <th data-sort="type">
-              <button>
-                Template <span class="t-sort-icon"></span>
-              </button>
-            </th>
-            <th data-sort="state">
-              <button>
-                State <span class="t-sort-icon"></span>
-              </button>
-            </th>
-            <th>Repo</th>
-            <th>Job</th>
-            <th data-sort="since">
-              <button>
-                Since <span class="t-sort-icon"></span>
-              </button>
-            </th>
-            <th class="t-col-actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {live.map((r) => (
-            <tr data-runner-id={String(r.id)} data-name={r.name} data-host={r.host} data-type={r.type} data-state={r.state} data-since={r.createdAt}>
-              <td>
-                <a class="t-mono" href={`/jobs?runner=${encodeURIComponent(r.name)}`} data-tip="Jobs this runner handled" safe>
-                  {r.name}
-                </a>
-              </td>
-              <td>
-                <a href={`/hosts#${encodeURIComponent(r.host)}`} data-tip="Host details" safe>
-                  {r.host}
-                </a>
-              </td>
-              <td>
-                <a href={`/templates#${encodeURIComponent(r.type)}`} data-tip="Template" safe>
-                  {r.type}
-                </a>
-              </td>
-              <td>
-                <RunnerBadge state={r.state} />
-              </td>
-              <td>
-                {r.repo ? (
-                  <a href={`/jobs?repo=${encodeURIComponent(r.repo)}`} safe>
-                    {r.repo}
-                  </a>
-                ) : (
-                  <span class="t-muted">–</span>
-                )}
-              </td>
-              <td>
-                {r.jobId ? (
-                  <a href={`/jobs/${r.jobId}`} data-tip="Open the job and its log" safe>
-                    {r.jobName ?? `job #${r.jobId}`}
-                  </a>
-                ) : (
-                  <span class="t-muted">waiting</span>
-                )}
-              </td>
-              <td>
-                <RelTime at={r.createdAt} />
-              </td>
-              <td class="t-col-actions">
-                <button
-                  class="t-btn"
-                  data-size="sm"
-                  data-variant="ghost"
-                  data-tone="danger"
-                  data-icon="only"
-                  data-tip="Kill runner"
-                  data-action="kill"
-                  data-id={String(r.id)}
-                  data-name={r.name}
-                  data-job={r.jobName ?? ''}
-                >
-                  <Icon id="bi-x-octagon" />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 /** The live block: re-fetched whole by `app.js` on `runner` / `slot` events (`GET /?partial=1`). */
-export const OverviewLive = ({ hosts, slots, runners, recent }: OverviewData & { recent?: RecentJobsData }) => {
+export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
   if (hosts.length === 0) {
     return (
       <div id="overview-live" data-live="runner slot">
@@ -251,19 +170,18 @@ export const OverviewLive = ({ hosts, slots, runners, recent }: OverviewData & {
       </div>
     )
   }
-
   return (
-    <div id="overview-live" data-live="runner slot">
-      <section class="t-card" aria-labelledby="overview-title">
+    <div id="overview-live" data-live="runner slot" class="t-stack" data-gap="4">
+      <section class="t-card" aria-labelledby="overview-hosts-title">
         <div class="t-card-header">
-          <h2 class="t-card-title" id="overview-title">
-            <Icon id="bi-hdd-rack" /> Capacity <span class="t-counter">{String(hosts.length)} hosts</span>{' '}
+          <h2 class="t-card-title" id="overview-hosts-title">
+            <Icon id="bi-hdd-rack" /> Hosts <span class="t-counter">{String(hosts.length)}</span>{' '}
             <span class="t-help" data-tone="info">
-              <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About capacity">
+              <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About slots">
                 i
               </button>
               <div class="t-help-box" hidden>
-                <p>Each row is a host and its runner templates. Runners appear inline under the template they belong to. Set slots and templates under Templates.</p>
+                <p>Each column is a host and its templates. Runners appear as tiles in their slots. Set slots under Templates.</p>
               </div>
             </span>
           </h2>
@@ -273,82 +191,15 @@ export const OverviewLive = ({ hosts, slots, runners, recent }: OverviewData & {
             </a>
           </div>
         </div>
-        <div class="t-card-body overview-hierarchy">
-          {hosts.map((host) => (
-            <HostBlock host={host} slots={slots.filter((s) => s.host === host.name && s.count > 0)} runners={runners.filter((r) => r.host === host.name)} />
+        <div class="t-card-body host-list t-grid" data-min="md">
+          {hosts.map((h) => (
+            <HostSection host={h} slots={slots} runners={runners} />
           ))}
         </div>
       </section>
-      {recent && <RecentJobs {...recent} />}
     </div>
   )
 }
-
-const HostBlock = ({ host, slots, runners }: { host: Host; slots: Slot[]; runners: Runner[] }) => {
-  const liveRunners = runners.filter((r) => LIVE_STATES.has(r.state))
-  const byType: Map<string, Runner[]> = new Map()
-  liveRunners.forEach((r) => {
-    const type = r.type || 'unknown'
-    if (!byType.has(type)) byType.set(type, [])
-    byType.get(type)!.push(r)
-  })
-
-  return (
-    <details class="host-block" open>
-      <summary class="host-block-header">
-        <Icon id="bi-chevron-right" size="sm" />
-        <span class="host-name">
-          {host.name}
-          {host.isLeader && <LeaderBadge />}
-        </span>
-        <HostSpecs host={host} />
-      </summary>
-      <div class="host-block-templates">
-        {slots.sort((a, b) => a.type.localeCompare(b.type)).map((slot) => (
-          <TemplateRow slot={slot} runners={byType.get(slot.type) || []} />
-        ))}
-      </div>
-    </details>
-  )
-}
-
-const TemplateRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => (
-  <div class="template-row">
-    <a href={`/templates#${encodeURIComponent(slot.type)}`} class="template-name" safe>
-      {slot.type}
-    </a>
-    <div class="template-slots">
-      {slot.count > PILL_MAX ? (
-        <SlotBar slot={slot} />
-      ) : (
-        <span class="slot-pills" role="img" aria-label={`${slot.type}: ${slot.used}/${slot.count} slots used`}>
-          {Array.from({ length: slot.count }, (_, i) => (
-            <span class="slot-pill" data-busy={i < slot.used ? 'true' : undefined} data-tip={i < slot.used ? 'busy' : 'free'}></span>
-          ))}
-        </span>
-      )}
-    </div>
-    {runners.length > 0 && (
-      <div class="template-runners">
-        {runners.map((r) => (
-          <RunnerBadgeInline runner={r} />
-        ))}
-      </div>
-    )}
-  </div>
-)
-
-const RunnerBadgeInline = ({ runner }: { runner: Runner }) => (
-  <a href={`/jobs?runner=${encodeURIComponent(runner.name)}`} class="runner-badge" data-state={runner.state} data-tip={`${runner.name} · ${runner.state}`}>
-    <span class="runner-badge-state">
-      {runner.state === 'busy' && <Icon id="bi-play-circle-fill" size="xs" />}
-      {runner.state === 'idle' && <Icon id="bi-circle-fill" size="xs" />}
-      {runner.state === 'spawning' && <span class="t-spinner" style="--t-spinner-size: 0.7rem"></span>}
-    </span>
-    <span class="runner-badge-name">{runner.jobId ? runner.repo?.split('/')[1] || String(runner.jobId).slice(0, 8) : 'idle'}</span>
-  </a>
-)
-
 
 /**
  * The "Recent jobs" card: the Jobs toolbar and table under the `j_` param prefix so its filters and paging never
@@ -378,9 +229,11 @@ export const OverviewPage = ({ recent, ...data }: OverviewData & { recent: Recen
   <>
     <header class="t-page-header">
       <h1 class="t-page-title">Overview</h1>
-      <span class="t-page-lead">Hosts, templates, active runners and recent jobs all in one view.</span>
+      <span class="t-page-lead">Hosts, slots, the runners working right now and the latest jobs.</span>
     </header>
-    <OverviewLive {...data} recent={recent} />
+    <div class="t-stack" data-gap="5">
+      <OverviewLive {...data} />
+      <RecentJobs {...recent} />
+    </div>
   </>
 )
-
