@@ -180,6 +180,19 @@ export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], j
 
 const notFound = (message: string) => new ServiceError(message, 'not_found')
 
+type JobsFilterLike = { repo?: string; status?: string; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string; page?: number; per?: number }
+const filterJobs = (data: FixtureSet, filter?: JobsFilterLike) =>
+  data.jobs.filter(
+    (j) =>
+      (!filter?.repo || j.repo === filter.repo) &&
+      (!filter?.runner || data.runners.find((r) => r.id === j.runnerId)?.name === filter.runner) &&
+      (!filter?.status || j.status === filter.status) &&
+      (!filter?.q || `${j.name} ${j.repo}`.toLowerCase().includes(filter.q.toLowerCase())) &&
+      (!filter?.since || j.queuedAt >= filter.since) &&
+      (!filter?.running || j.status === 'claimed' || j.status === 'in_progress') &&
+      (!filter?.failed || ['failure', 'timed_out', 'cancelled'].includes(j.conclusion ?? '')),
+  )
+
 /** A facade double over one fixture set; `data` can be swapped between tests. */
 export const makeService = (store: { data: FixtureSet }) => ({
   listHosts: async () => store.data.hosts,
@@ -198,17 +211,13 @@ export const makeService = (store: { data: FixtureSet }) => ({
   adoptRepo: async () => store.data.repos[0]!,
   unadoptRepo: async () => {},
   applyRunsOn: async () => ({ ok: true, message: 'ok' }),
-  listJobs: async (filter?: { repo?: string; status?: string; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string }) =>
-    store.data.jobs.filter(
-      (j) =>
-        (!filter?.repo || j.repo === filter.repo) &&
-        (!filter?.runner || store.data.runners.find((r) => r.id === j.runnerId)?.name === filter.runner) &&
-        (!filter?.status || j.status === filter.status) &&
-        (!filter?.q || `${j.name} ${j.repo}`.toLowerCase().includes(filter.q.toLowerCase())) &&
-        (!filter?.since || j.queuedAt >= filter.since) &&
-        (!filter?.running || j.status === 'claimed' || j.status === 'in_progress') &&
-        (!filter?.failed || ['failure', 'timed_out', 'cancelled'].includes(j.conclusion ?? '')),
-    ),
+  listJobs: async (filter?: JobsFilterLike) => {
+    const all = filterJobs(store.data, filter)
+    if (filter?.per === undefined) return all
+    const page = filter.page ?? 1
+    return all.slice((page - 1) * filter.per, page * filter.per)
+  },
+  countJobs: async (filter?: JobsFilterLike) => filterJobs(store.data, filter).length,
   listRunners: async () => store.data.runners,
   getJob: async (id: number) => {
     const job = store.data.jobs.find((j) => j.id === id)

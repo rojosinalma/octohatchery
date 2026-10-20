@@ -56,41 +56,50 @@
       wireImagePick(main)
     }).catch(function (err) { T.toast('warning', 'Could not refresh: ' + err.message) })
   }
-  // Live blocks carry data-live="<event names>"; a matching SSE event re-fetches `?partial=1` and replaces the block.
-  var pending = null, deferred = false
+  // Live blocks carry data-live="<event names>" and, when the page has more than one, data-partial="<name>":
+  // a matching SSE event re-fetches `?partial=<name>` (default 1) and replaces that block alone.
+  var pending = {}, deferred = {}
   // A field the user is editing inside the live block must not be swapped away: the refresh waits for blur.
   function editing(block) {
     var a = document.activeElement
     return Boolean(a && a !== document.body && block.contains(a) && a.matches('input, textarea, select, .t-number-step'))
   }
-  function refreshLive() {
-    pending = null
-    var block = $('[data-live]')
+  function partialOf(block) { return block.dataset.partial || '1' }
+  function refreshLive(name) {
+    delete pending[name]
+    var block = liveBlock(name)
     if (!block) return
-    if (editing(block)) { deferred = true; return }
-    deferred = false
-    var q = new URLSearchParams(location.search); q.set('partial', '1')
+    if (editing(block)) { deferred[name] = true; return }
+    delete deferred[name]
+    var q = new URLSearchParams(location.search); q.set('partial', name)
     refetch(location.pathname + '?' + q.toString()).then(function (html) {
       var tpl = document.createElement('template'); tpl.innerHTML = html.trim()
       var fresh = tpl.content.firstElementChild
-      var current = $('[data-live]')
+      var current = liveBlock(name)
       if (!fresh || !current) return
-      if (editing(current)) { deferred = true; return }
+      if (editing(current)) { deferred[name] = true; return }
       current.replaceWith(fresh)
       T.upgrade(fresh)
       wireSlots(fresh)
     }).catch(function () { /* next event retries */ })
   }
-  function scheduleLive(name) {
-    var block = $('[data-live]')
-    if (!block || block.dataset.live.split(/\s+/).indexOf(name) < 0) return
-    if (pending) clearTimeout(pending)
-    pending = setTimeout(refreshLive, 300)
+  function liveBlock(name) {
+    return $$('[data-live]').filter(function (b) { return partialOf(b) === name })[0] || null
+  }
+  function scheduleLive(event) {
+    $$('[data-live]').forEach(function (block) {
+      if (block.dataset.live.split(/\s+/).indexOf(event) < 0) return
+      var name = partialOf(block)
+      if (pending[name]) clearTimeout(pending[name])
+      pending[name] = setTimeout(function () { refreshLive(name) }, 300)
+    })
   }
   // Leaving the edited field lets a deferred refresh through (after the cell's own save round-trip).
   document.addEventListener('focusout', function (e) {
     var block = e.target.closest && e.target.closest('[data-live]')
-    if (block && deferred && !pending) pending = setTimeout(refreshLive, 400)
+    if (!block) return
+    var name = partialOf(block)
+    if (deferred[name] && !pending[name]) pending[name] = setTimeout(function () { refreshLive(name) }, 400)
   })
 
   /* ── SSE ─────────────────────────────────────────────────────────────────── */
@@ -521,6 +530,8 @@
     var q = new URLSearchParams(location.search)
     var value = el.value.trim()
     if (value) q.set(el.dataset.nav, value); else q.delete(el.dataset.nav)
+    // A changed filter or page size starts over at the first page.
+    if (el.dataset.navReset) q.delete(el.dataset.navReset)
     if (q.toString() === new URLSearchParams(location.search).toString()) return
     var s = q.toString()
     location.assign(location.pathname + (s ? '?' + s : ''))
@@ -569,44 +580,120 @@
     })
   }
 
-  /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy ──────── */
+  /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy, folded groups ─ */
   var LOG_DOM_LINES = 5000
+  // Group markers, the same rules as src/views/log-groups.ts: `##[group]`/`##[section]Starting:` open a group
+  // (closing the one before), `##[endgroup]`/`##[section]Finishing:` close it, `##[error]`/`##[warning]` tone a line.
+  var LOG_OPEN_RE = /^##\[(?:group\]|section\]Starting: )(.*)$/, LOG_CLOSE_RE = /^##\[(?:endgroup\]|section\]Finishing: )/, LOG_TONE_RE = /^##\[(error|warning)\]/
+  function classifyLine(raw) {
+    var text = plainText(raw), m = LOG_OPEN_RE.exec(text)
+    if (m) return { kind: 'open', title: m[1].trim() || 'group' }
+    if (LOG_CLOSE_RE.test(text)) return { kind: 'close' }
+    m = LOG_TONE_RE.exec(text)
+    if (m) return { kind: 'line', tone: m[1] === 'error' ? 'danger' : 'warning' }
+    return { kind: 'line' }
+  }
+  function clock(at) { var m = /T(\d{2}:\d{2}:\d{2})/.exec(at); return m ? m[1] : at }
+  function spanMs(a, b) { var x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? 0 : Math.max(0, y - x) }
+  function fmtDuration(ms) {
+    var s = Math.round(ms / 1000)
+    if (s < 60) return s + ' s'
+    if (s < 3600) return Math.floor(s / 60) + ' min ' + (s % 60) + ' s'
+    return Math.floor(s / 3600) + ' h ' + Math.floor((s % 3600) / 60) + ' min'
+  }
   function wireJobLog() {
     var section = $('#log')
     if (!section) return
     var view = $('#log-view'), empty = $('#log-empty'), count = $('#log-count')
     var followBtn = $('[data-action="log-follow"]', section), copyBtn = $('[data-action="log-copy"]', section)
+    var expandBtn = $('[data-action="log-expand"]', section), collapseBtn = $('[data-action="log-collapse"]', section)
     var sourceBadge = $('#log-source'), truncatedBadge = $('#log-truncated')
     var jobId = section.dataset.jobId, lastSeq = Number(section.dataset.lastSeq || 0)
+    var raw = section.dataset.raw === 'true'
     var following = followBtn.getAttribute('aria-pressed') === 'true'
     var es = null
+    // The group still receiving lines (the server left it without data-closed), and the line count across groups.
+    var open = null, lineCount = $$('.log-line', view).length
+    var last = view.lastElementChild
+    if (!raw && last && last.matches('details.log-group:not([data-closed])')) open = last
 
     function setFollow(on) {
       following = on
       followBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
       if (on) view.scrollTop = view.scrollHeight
     }
-    function lineNode(l) {
+    function lineNode(l, tone, marker) {
       var span = document.createElement('span')
       span.className = 'log-line'
       span.dataset.seq = String(l.seq)
       span.dataset.at = l.at
-      var m = /T(\d{2}:\d{2}:\d{2})/.exec(l.at)
-      span.innerHTML = '<span class="log-time">' + esc(m ? m[1] : l.at) + '</span><span class="log-text">' + esc(l.line) + '</span>\n'
+      if (tone) span.dataset.tone = tone
+      if (marker) { span.dataset.marker = ''; span.hidden = true }
+      span.innerHTML = '<span class="log-time">' + esc(clock(l.at)) + '</span><span class="log-text">' + esc(plainText(l.line)) + '</span>\n'
       return span
+    }
+    function groupNode(l, title) {
+      var d = document.createElement('details')
+      d.className = 'log-group'
+      d.open = true
+      d.innerHTML = '<summary class="log-summary"><span class="log-time">' + esc(clock(l.at)) + '</span><span class="log-chevron" aria-hidden="true"></span>'
+        + '<span class="log-group-title">' + esc(title) + '</span><span class="log-group-meta t-muted"></span></summary>'
+      d.dataset.first = l.at
+      d.dataset.count = '0'
+      return d
+    }
+    function updateMeta(g, at) {
+      var n = Number(g.dataset.count || 0)
+      $('.log-group-meta', g).textContent = n + ' lines · ' + fmtDuration(spanMs(g.dataset.first, at))
+    }
+    function closeGroup() {
+      if (!open) return
+      open.dataset.closed = ''
+      // Earlier groups fold as they close; one holding an error stays open.
+      if (open.dataset.tone !== 'danger') open.open = false
+      open = null
+    }
+    function place(node, target) { (target || view).appendChild(node); lineCount++ }
+    function appendOne(l) {
+      if (raw) { var m0 = classifyLine(l.line); place(lineNode(l, m0.kind === 'line' ? m0.tone : undefined)); return }
+      var m = classifyLine(l.line)
+      if (m.kind === 'open') {
+        closeGroup()
+        open = groupNode(l, m.title)
+        view.appendChild(open)
+        place(lineNode(l, undefined, true), open)
+        updateMeta(open, l.at)
+      } else if (m.kind === 'close') {
+        if (open) { place(lineNode(l, undefined, true), open); updateMeta(open, l.at); closeGroup() }
+        else place(lineNode(l, undefined, true))
+      } else if (open) {
+        place(lineNode(l, m.tone), open)
+        open.dataset.count = String(Number(open.dataset.count || 0) + 1)
+        if (m.tone === 'danger' || (m.tone === 'warning' && !open.dataset.tone)) { open.dataset.tone = m.tone; if (m.tone === 'danger') open.open = true }
+        updateMeta(open, l.at)
+      } else place(lineNode(l, m.tone))
+    }
+    // Drop the oldest lines past the cap; a group left without lines goes with them.
+    function trim() {
+      while (lineCount > LOG_DOM_LINES) {
+        var first = view.firstElementChild
+        if (!first) break
+        if (first.matches('.log-line')) { first.remove(); lineCount--; continue }
+        var inner = $('.log-line', first)
+        if (inner) { inner.remove(); lineCount-- }
+        if (!$('.log-line', first)) { if (first === open) open = null; first.remove() }
+      }
     }
     function append(lines) {
       if (!lines.length) return
-      var frag = document.createDocumentFragment()
-      lines.forEach(function (l) { if (l.seq > lastSeq) { frag.appendChild(lineNode(l)); lastSeq = l.seq } })
-      view.appendChild(frag)
-      var extra = view.children.length - LOG_DOM_LINES
-      while (extra-- > 0) view.removeChild(view.firstElementChild)
+      lines.forEach(function (l) { if (l.seq > lastSeq) { appendOne(l); lastSeq = l.seq } })
+      trim()
       view.hidden = false
       empty.hidden = true
-      count.textContent = view.children.length + ' lines'
+      count.textContent = lineCount + ' lines'
       if (following) view.scrollTop = view.scrollHeight
     }
+    function reset() { view.textContent = ''; lastSeq = 0; open = null; lineCount = 0 }
     function finish(info) {
       section.removeAttribute('data-live')
       section.dataset.complete = 'true'
@@ -624,15 +711,15 @@
         sourceBadge.dataset.tip = 'Captured from the runner container; GitHub did not hand out its log in time'
       } else {
         sourceBadge.dataset.tone = 'neutral'
-        sourceBadge.textContent = view.children.length ? 'source: runner' : 'source: none'
+        sourceBadge.textContent = lineCount ? 'source: runner' : 'source: none'
       }
       if (info.replaced) {
         // GitHub's log replaced the live lines: reload the view from the start.
         api('GET', '/api/jobs/' + jobId + '/log?limit=' + LOG_DOM_LINES).then(function (res) {
           if (!res.ok) return
-          view.textContent = ''
-          lastSeq = 0
+          reset()
           append(res.lines)
+          closeGroup()
           view.scrollTop = 0
           T.toast('info', 'Log replaced with the final one from GitHub')
         })
@@ -657,13 +744,17 @@
       else if (atBottom && !following && !followBtn.disabled) setFollow(true)
     }, { passive: true })
     followBtn.addEventListener('click', function () { setFollow(!following) })
+    // Copy takes every stored line in view, the hidden group markers included, as plain text.
     copyBtn.addEventListener('click', function () {
-      var text = Array.prototype.map.call(view.children, function (n) { return n.textContent.replace(/\n$/, '') }).join('\n')
+      var nodes = $$('.log-line', view)
+      var text = nodes.map(function (n) { return n.textContent.replace(/\n$/, '') }).join('\n')
       if (!navigator.clipboard) { T.toast('warning', 'Clipboard is not available in this browser'); return }
       navigator.clipboard.writeText(text).then(
-        function () { T.toast('success', 'Copied ' + view.children.length + ' lines') },
+        function () { T.toast('success', 'Copied ' + nodes.length + ' lines') },
         function (err) { T.toast('danger', 'Copy failed: ' + err.message) })
     })
+    if (expandBtn) expandBtn.addEventListener('click', function () { $$('details.log-group', view).forEach(function (d) { d.open = true }) })
+    if (collapseBtn) collapseBtn.addEventListener('click', function () { $$('details.log-group', view).forEach(function (d) { d.open = false }) })
     if (following) view.scrollTop = view.scrollHeight
     connectLog()
   }

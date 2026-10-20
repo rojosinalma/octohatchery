@@ -65,4 +65,23 @@ describe('listJobs filters', () => {
     expect(await names({ runner: 'generic-node-a-xy' })).toEqual([])
     await expect(service.listJobs({ since: 'yesterday' })).rejects.toBeInstanceOf(ServiceError)
   })
+
+  test('countJobs matches the filter; page/per slice the same ordering, per capped at 100', async () => {
+    await fresh()
+    await service.adoptRepo('acme/widgets', 'user')
+    for (let i = 1; i <= 12; i++) await addJob('acme/widgets', i, `job ${String(i).padStart(2, '0')}`, `2026-10-${String(i).padStart(2, '0')}T10:00:00Z`)
+    await updateJob(3, { status: 'completed', conclusion: 'failure' })
+    expect(await service.countJobs()).toBe(12)
+    expect(await service.countJobs({ failed: true })).toBe(1)
+    expect(await service.countJobs({ q: 'job 1' })).toBe(3)
+    const names = async (f: Parameters<typeof service.listJobs>[0]) => (await service.listJobs(f)).map((j) => j.name)
+    expect(await names({ per: 5, page: 1 })).toEqual(['job 12', 'job 11', 'job 10', 'job 09', 'job 08'])
+    expect(await names({ per: 5, page: 3 })).toEqual(['job 02', 'job 01'])
+    expect(await names({ per: 5, page: 4 })).toEqual([])
+    expect(await names({ per: 5 })).toEqual(await names({ per: 5, page: 1 }))
+    expect(await names({ per: 10, page: 2, q: 'job 1' })).toEqual([])
+    expect((await service.listJobs({ per: 1000 })).length).toBe(12)
+    // `limit` alone is unchanged: first n rows, no offset
+    expect(await names({ limit: 2 })).toEqual(['job 12', 'job 11'])
+  })
 })
