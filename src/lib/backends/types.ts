@@ -44,6 +44,9 @@ export const RUNNER_ROLE_LABEL = 'octohatchery.role'
 /** What the engine reports about the machine it runs on; fields it does not know are null. */
 export type EngineInfo = { version: string | null; os: string | null; cpus: number | null; memoryMb: number | null }
 
+/** One image on the engine, once per tag it carries; `digest` is the repo digest when known. */
+export type ImageInfo = { reference: string; digest: string | null; sizeBytes: number | null; createdAt: string | null }
+
 /** One line of container output with the engine's timestamp (ISO-8601). */
 export type ContainerLogLine = { at: string; line: string }
 
@@ -65,6 +68,10 @@ export type ContainerBackend = {
   removeByRunnerId(runnerId: number): Promise<void>
   /** Every container labelled `octohatchery.runner=true`, running or exited (sidecars excluded). */
   listOwned(): Promise<ContainerInfo[]>
+  /** Every tagged image on the engine (one entry per tag); dangling images are left out. */
+  listImages(): Promise<ImageInfo[]>
+  /** Pulls an image, resolving once the engine has it; rejects with the engine's reason. */
+  pull(reference: string): Promise<void>
   /**
    * Follows stdout and stderr of a running container until it exits; `since` (ISO-8601) skips older output.
    * Returning from the iterator (`break`) stops following. A missing container yields nothing.

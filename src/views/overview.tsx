@@ -45,7 +45,7 @@ const HostSpecs = ({ host }: { host: Host }) => {
 /** One row per template with slots on this host: the name, then one pill per slot (filled = busy). */
 const SlotRow = ({ slot }: { slot: Slot }) => (
   <div class="slot-row" data-type={slot.type} data-tip={`${slot.type} on ${slot.host}: ${slot.used}/${slot.count}`}>
-    <a href="/templates" class="t-mono t-small slot-type" safe>
+    <a href={`/templates#${encodeURIComponent(slot.type)}`} class="t-mono t-small slot-type" safe>
       {slot.type}
     </a>
     {slot.count > PILL_MAX ? (
@@ -70,7 +70,7 @@ const HostSection = ({ host, slots }: { host: Host; slots: Slot[] }) => {
     <section class="host-section" data-name={host.name} data-tone={offline ? 'danger' : undefined} aria-label={`Host ${host.name}`}>
       <header class="host-head t-cluster" data-gap="2" data-align="center">
         <span class="t-dot" data-status={host.status === 'online' ? (host.dockerOk ? 'running' : 'degraded') : 'stopped'} data-tip={host.status}></span>
-        <a class="t-mono host-name" href="/hosts" data-tip="Host details" safe>
+        <a class="t-mono host-name" href={`/hosts#${encodeURIComponent(host.name)}`} data-tip="Host details" safe>
           {host.name}
         </a>
         {host.isLeader ? <LeaderBadge /> : null}
@@ -177,11 +177,21 @@ export const RunnersTable = ({ runners }: { runners: Runner[] }) => {
         <tbody>
           {live.map((r) => (
             <tr data-runner-id={String(r.id)} data-name={r.name} data-host={r.host} data-type={r.type} data-state={r.state} data-since={r.createdAt}>
-              <td class="t-mono" safe>
-                {r.name}
+              <td>
+                <a class="t-mono" href={`/jobs?runner=${encodeURIComponent(r.name)}`} data-tip="Jobs this runner handled" safe>
+                  {r.name}
+                </a>
               </td>
-              <td safe>{r.host}</td>
-              <td safe>{r.type}</td>
+              <td>
+                <a href={`/hosts#${encodeURIComponent(r.host)}`} data-tip="Host details" safe>
+                  {r.host}
+                </a>
+              </td>
+              <td>
+                <a href={`/templates#${encodeURIComponent(r.type)}`} data-tip="Template" safe>
+                  {r.type}
+                </a>
+              </td>
               <td>
                 <RunnerBadge state={r.state} />
               </td>

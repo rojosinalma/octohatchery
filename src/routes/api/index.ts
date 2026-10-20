@@ -5,6 +5,7 @@ import { ServiceError } from '../../lib/types'
 import { events } from './events'
 import { githubRoutes } from './github'
 import { hosts } from './hosts'
+import { images } from './images'
 import { jobs } from './jobs'
 import { repos } from './repos'
 import { runnerTypes } from './runner-types'
@@ -37,6 +38,7 @@ export const apiErrors = new Elysia({ name: 'api-errors' }).onError({ as: 'scope
 export const api = new Elysia({ prefix: '/api' })
   .use(apiErrors)
   .use(hosts)
+  .use(images)
   .use(runnerTypes)
   .use(slots)
   .use(repos)

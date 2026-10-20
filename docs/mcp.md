@@ -50,7 +50,7 @@ Read-only:
 - `list_runner_types`: runner templates with labels, image, caps, mounts, env and secret names.
 - `list_slots`: per host and type, how many runners may run, are running and are free.
 - `list_repos`: repos the credentials can see, with the adopted flag.
-- `list_jobs {repo?, status?, q?, since?, running?, failed?, limit?}`: queue and history. `q` is a case-insensitive substring over job name, repo and runner name; `since` an ISO time; `running` keeps claimed and in-progress jobs; `failed` keeps failure, timed out and cancelled.
+- `list_jobs {repo?, status?, q?, since?, running?, failed?, runner?, limit?}`: queue and history. `q` is a case-insensitive substring over job name, repo and runner name; `since` an ISO time; `running` keeps claimed and in-progress jobs; `failed` keeps failure, timed out and cancelled; `runner` keeps the jobs of one runner by its exact name.
 - `get_job_log {job_id, tail?}`: the last `tail` lines (default 200, max 5000) of a job's log as
   text, oldest first, each with its timestamp. The first line says where the log comes from
   (`runner` while the job runs or when GitHub never handed out its log, `github` once the final log
@@ -69,6 +69,7 @@ Changes:
 - `ensure_webhook {repo}`: create or repair the `workflow_job` webhook of an adopted repo and store its id. With a GitHub App nothing is created and the result says `covered: "app"`.
 - `apply_runs_on {repo, mode, type, host?, workflows?}`: `snippet` returns YAML only; `pr` opens a pull request; `commit` pushes to the default branch. Before writing it checks the GitHub permissions the mode needs (`pr`: contents, workflows, pull_requests; `commit`: contents, workflows) and fails naming the missing ones and the GitHub page to fix them. `pr` works on a branch, verifies the pull request exists and deletes the branch again on any failure; failures carry GitHub's own message. Returns `prUrl` or `commitSha` + `htmlUrl`.
 - `spawn {type, host}`: start one runner by hand.
+- `pull_image {host, reference}`: queue a pull of one image on one host; the node on that host runs it on its next tick and the image shows as present on Templates → Images once done. Only images the instance wants can be pulled (a runner type's image, the default runner image, `docker:28-dind`); a pull already queued or running for the same cell is returned as is.
 - `set_setting {key, value}`: change one runtime setting.
 
 Destructive (the description says so, and the tool carries `destructiveHint`):

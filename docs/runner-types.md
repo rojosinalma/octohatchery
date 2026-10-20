@@ -63,6 +63,44 @@ may race the daemon.
 
 The shipped `generic` and `deploy` types start with `none`; pick what each needs in the type dialog.
 
+### `services:` and localhost on containerised runners
+
+GitHub-hosted runners run on a VM, so a `services:` container's published port is reachable on
+`localhost`. Here the runner is itself a container, and the Actions runner publishes service ports
+on **the Docker daemon's host**: with `socket` that is the node, with `dind` it is the sidecar.
+Neither is the runner container, so `localhost:5432` inside a step finds nothing.
+
+Two ways that work:
+
+- Address the service through the daemon's hostname. With `dind`, `DOCKER_HOST` is
+  `tcp://<runner>-dind:2375`, so the daemon's host is `<runner>-dind`; a step can derive it with
+  `echo "${DOCKER_HOST#tcp://}" | cut -d: -f1`. With `socket` the daemon runs on the node; use the
+  node's address on the runner network (the runner joins the compose network of the node, so the
+  app container's name resolves; the host's own IP is `ip route | awk '/default/ {print $3}'`).
+- Run the job inside a container (`container: node:22`) on the same `dind` or `socket` daemon:
+  GitHub then puts the job container and its services on one network and the service is
+  reachable by its `services:` key (`postgres:5432`), exactly as on GitHub-hosted runners. This
+  is the simpler option and the one the official documentation recommends for containerised
+  runners.
+
+## Images
+
+Every node reports, on every heartbeat, which of the wanted images its engine holds: the image of
+each type, `runner_image_default` and `docker:28-dind`. The result is on **Templates → Images**
+(one row per image, one column per host: present with digest, size and build time, or missing)
+and in `GET /api/images` / `GET /api/hosts/:name/images`.
+
+A runner's first start on a host with a missing image pulls it then, which delays that job by the
+pull time. To pull ahead, use **Pull now** on a cell, **Pull on all hosts** on a row, the inline
+**Pull on <host>** in the type dialog, `POST /api/hosts/:name/images/pull {reference}` or the MCP
+tool `pull_image {host, reference}`. A pull is a row in `image_pulls` that the node owning that
+host claims on its next scheduler tick and runs in the background (one at a time per node, the
+scheduler keeps claiming jobs meanwhile); the outcome (`done` or `failed` with the engine's error)
+is recorded, an audit event is written and the matrix updates live. Only wanted references can be
+pulled: nothing is typed, images are listed by the templates that use them. A pull left `running`
+by a node that died is marked failed when the node comes back; finished pulls are purged with the
+retention window.
+
 ## Mounts
 
 Mounts are passed to Docker as written. `/srv/cache/npm:/home/runner/.npm` gives every runner a

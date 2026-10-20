@@ -133,3 +133,38 @@ export const settings = sqliteTable('settings', {
   value: text('value').notNull(),
   updatedAt: text('updated_at').notNull(),
 })
+
+/** Images present on a host's engine, one row per (host, reference) the orchestrator cares about; refreshed by the heartbeat. */
+export const hostImages = sqliteTable(
+  'host_images',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => hosts.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    digest: text('digest'),
+    sizeBytes: integer('size_bytes'),
+    pulledAt: text('pulled_at'),
+    seenAt: text('seen_at').notNull(),
+  },
+  (t) => [uniqueIndex('host_images_host_reference').on(t.hostId, t.reference)],
+)
+
+/** A requested image pull: queued by anyone, claimed and run by the node that owns the host. */
+export const imagePulls = sqliteTable(
+  'image_pulls',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => hosts.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    status: text('status').notNull().default('queued'),
+    error: text('error'),
+    requestedBy: text('requested_by').notNull(),
+    createdAt: text('created_at').notNull(),
+    finishedAt: text('finished_at'),
+  },
+  (t) => [index('image_pulls_host_status').on(t.hostId, t.status)],
+)

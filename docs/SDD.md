@@ -73,6 +73,7 @@ Each node runs one loop for its own host. On every tick it:
 3. Marks each selected job `claimed` with this host, inserts a `runners` row in state `spawning`, and commits.
 4. Outside the transaction, asks GitHub for a JIT runner configuration for the job's repository with labels `self-hosted`, `<type>`, `<host>` plus the type's extra labels, then asks the backend to start a container from the type's image with the configuration in `RUNNER_JITCONFIG`.
 5. Reaps: lists containers labelled `octohatchery.runner=true` on this host, reconciles them with the `runners` table (exited container → `exited`, missing container → `failed` or `removed`), and removes exited containers.
+6. Starts the oldest queued image pull for this host when none is running here; the pull runs in the background so the tick keeps claiming jobs, records `done` or `failed` with the engine's error, refreshes `host_images` and announces the change on the bus.
 
 A failure in any step is logged with its stack trace, the affected rows are moved to `failed` with the reason, and the loop continues on the next tick. The loop never exits on an error and backs off while the database or Docker is unreachable.
 
@@ -86,13 +87,13 @@ One node at a time holds the leader lease: a PostgreSQL advisory lock in cluster
 - **Polling fallback** every `poll_interval_s`: lists queued jobs for adopted repositories through the REST API and inserts any the webhook missed.
 - **Stale runner removal**: a runner that has been `idle` or `spawning` longer than `stale_runner_minutes` without a job has its container deleted and its GitHub registration revoked.
 - **Host liveness**: a host whose node has not updated `last_seen_at` recently is shown `offline`; its slots are not counted as available.
-- **Retention purge**: finished `jobs` (with their `job_logs`), `runners` and `events` older than `retention_days` are deleted.
+- **Retention purge**: finished `jobs` (with their `job_logs`), `runners`, `events` and finished `image_pulls` older than `retention_days` are deleted.
 
 If the leader dies, the lock is released by PostgreSQL and the next node that tries takes it on its following tick.
 
 ### 3.6 Data model
 
-Nine tables, schema owned by this project, Drizzle migrations, additive only.
+Eleven tables, schema owned by this project, Drizzle migrations, additive only.
 
 | Table | Holds | Notes |
 |---|---|---|
@@ -105,6 +106,8 @@ Nine tables, schema owned by this project, Drizzle migrations, additive only.
 | `runners` | one row per runner container: name, host, type, container id, state, job, timestamps | state `spawning → idle → busy → exited`, or `failed`, then `removed` |
 | `events` | audit log: actor, action, target, detail, time | actors: `user`, `mcp:<client>`, `webhook`, `scheduler`, `sweep` |
 | `settings` | key → value | tunables with defaults in code, read at use time with a short cache |
+| `host_images` | `(host, reference) → digest, size, built-at, seen-at` for every wanted image a host holds | rewritten by that host's heartbeat; a row disappears when the image or the template that wanted it does |
+| `image_pulls` | requested pulls: host, reference, status (`queued → running → done | failed`), error, who asked, when | claimed and run by the node that owns the host; finished rows purged with the retention window |
 
 Timestamps are stored as ISO-8601 UTC strings. `labels`, `mounts`, `env`, `secret_env` and `detail` are JSON columns.
 
@@ -131,7 +134,7 @@ GitHub          webhook route        jobs table      scheduler (host A)     GitH
   │                      │                 │                │   slot free again                    │
 ```
 
-Every state change emits an event on the in-process bus. The SSE route forwards `runner`, `job`, `event` and `slot` changes to connected dashboards, so the Overview page updates without polling.
+Every state change emits an event on the in-process bus. The SSE route forwards `runner`, `job`, `event`, `slot` and `image` changes to connected dashboards, so the Overview and Images pages update without polling.
 
 ### 3.8 Job logs
 
@@ -147,9 +150,9 @@ All of them run in the same process on the same port.
 
 | Interface | Path | Shape |
 |---|---|---|
-| JSON API | `/api/hosts`, `/api/runner-types`, `/api/slots`, `/api/repos`, `/api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/log`, `/api/runners`, `/api/events`, `/api/settings`, `/api/github/{status,recheck,repos}` | every response `{ ok, message, ...data }`, errors with the same shape and an HTTP status, never a redirect |
-| Dashboard | `/`, `/jobs`, `/jobs/:id`, `/repos`, `/runner-types`, `/hosts`, `/events`, `/settings` | server-rendered HTML, small scripts for fetch, toasts and SSE |
-| MCP | `/mcp` | Streamable HTTP; tools `list_hosts`, `list_runners`, `list_jobs`, `get_job_log`, `list_repos`, `adopt_repo`, `unadopt_repo`, `ensure_webhook`, `apply_runs_on`, `list_runner_types`, `upsert_runner_type`, `set_slots`, `spawn`, `kill`; each tool is one call into the service facade |
+| JSON API | `/api/hosts`, `/api/hosts/:name/images`, `/api/hosts/:name/images/pull`, `/api/images`, `/api/runner-types`, `/api/slots`, `/api/repos`, `/api/jobs`, `/api/jobs/:id`, `/api/jobs/:id/log`, `/api/runners`, `/api/events`, `/api/settings`, `/api/github/{status,recheck,repos}` | every response `{ ok, message, ...data }`, errors with the same shape and an HTTP status, never a redirect |
+| Dashboard | `/`, `/jobs`, `/jobs/:id`, `/repos`, `/templates`, `/templates/images`, `/hosts`, `/events`, `/settings` | server-rendered HTML, small scripts for fetch, toasts and SSE |
+| MCP | `/mcp` | Streamable HTTP; tools `list_hosts`, `list_runners`, `list_jobs`, `get_job_log`, `list_repos`, `adopt_repo`, `unadopt_repo`, `ensure_webhook`, `apply_runs_on`, `list_runner_types`, `upsert_runner_type`, `set_slots`, `spawn`, `kill`, `pull_image`; each tool is one call into the service facade |
 | Webhook | `POST /webhooks/github` | `workflow_job` events, `X-Hub-Signature-256` HMAC verified before parsing, payload schema-checked |
 | SSE | `GET /events/stream`, `GET /api/jobs/:id/log/stream` | `event: <name>` + `data: <json>`; one shared cap of `sse_max_clients` per node, idle clients dropped after `sse_idle_s`; the job stream sends `line` batches and `end` |
 | Health | `GET /health` | 200 only when the database and the local Docker daemon answer; JSON with mode, host, leader flag, slots used and free, queued jobs, busy runners, last webhook time, version, and `github: {ok, source, missing}` (a missing permission is a warning, never a 503) |
@@ -250,3 +253,8 @@ Append-only. One row per decision, dated. Reopen a decision by adding a new row 
 | `apply_runs_on` hardening | permissions for the mode are checked first (`RUNS_ON_PERMISSIONS`: pr = contents, workflows, pull_requests; commit = contents, workflows) and the error names the gap and the page to fix it; `pr` works on a branch and deletes it on any failure after creation (also when nothing changed); the pull request is read back (`GET /pulls/{n}`) before `prUrl` is returned; `commit` returns `commitSha` + `htmlUrl`; failures carry GitHub's message with the HTTP status | a half-written branch or an unverified PR leaves the repository in a state the operator cannot see; GitHub's own message is the only useful diagnosis | 2026-10-20 |
 | Adopt dialog | the Repos page adopts from a list (`GET /api/github/repos`: App `GET /installation/repositories`, PAT `GET /user/repos?affiliation=…`, paginated, first 500, cached 60 s, `adopted` flagged) filtered client-side; the free-text form is removed; list failures show the cause and the fix (configure access, check permissions, add repos to the installation) | known values are picked, not typed; the credentials already know the set; a typo can no longer adopt a repo GitHub cannot see | 2026-10-20 |
 | Runner Docker access | `runner_types.docker text not null default 'none'` ∈ `none`, `socket`, `dind` (`0003_runner_type_docker`, both dialects); `socket` bind-mounts the node's socket path (`DOCKER_HOST` unix socket or `/var/run/docker.sock`) at `/var/run/docker.sock` and adds the socket's gid via `group_add` when it can be stat'ed (else a warning and no group); `dind` starts a `docker:28-dind` sidecar (privileged, `DOCKER_TLS_CERTDIR=`, runner network, labels runner-id + host + `octohatchery.role=dind`, never `octohatchery.runner`) before the runner and sets `DOCKER_HOST=tcp://<runner>-dind:2375`; the runner entrypoint waits up to 30 s for the daemon; the backend gains `spawnSidecar` and `removeByRunnerId`, used by the reaper, the stale sweep, `kill` and spawn failure; shipped types stay `none` | `services:` and `docker run` are common CI needs the no-daemon default cannot serve; the choice and its blast radius must be explicit per type, with the host socket named for what it is; a sidecar keyed by runner id cannot outlive its runner | 2026-10-20 |
+| Runner-centred links | the Runners table (Overview) and the job page link the runner name to `/jobs?runner=<name>` (`listJobs.runner`: exact match on `runners.name`, on the API, MCP and the page, shown as a chip with a clear link), the host to `/hosts#<name>` and the template to `/templates#<name>`; host and template rows carry their name as `id` and `tr:target` is highlighted | every name an operator reads should take them to the thing it names; an exact runner filter is cheap (the join already exists for `q`) and a chip explains a filter the toolbar has no control for | 2026-10-20 |
+| Image inventory | `host_images (host_id, reference, digest, size_bytes, pulled_at, seen_at)`, unique per host and reference (`0004_host_images`, both dialects); the heartbeat asks the engine for its images (`listImages`: one entry per tag, repo digest, size, creation time) and rewrites this host's rows for the wanted references only — every template's image, `runner_image_default`, the dind sidecar — deleting rows for images no longer present or no longer wanted; a change emits `image` on the bus. `pulled_at` holds the image's build time and is labelled as such: engines do not record pull time | the engine is the only truth about what a host holds, and each node sees only its own engine, so the inventory is per node and refreshed where it is cheap (the heartbeat already talks to the engine); limiting rows to wanted references keeps the table proportional to templates, not to whatever else lives on the host | 2026-10-20 |
+| Image pulls | `image_pulls (host_id, reference, status, error, requested_by, created_at, finished_at)`; `POST /api/hosts/:name/images/pull` / MCP `pull_image` validate the reference (same shape as `runner_image_default`, must be a wanted reference, host online), reuse a queued/running row for the same cell, insert `queued` and record `image.pull`; each node's scheduler tick claims the oldest queued pull for its own host when none runs there and runs it in the background (`backend.pull`), then refreshes `host_images`, writes `done`/`failed` with the engine's error, records `image.pulled`/`image.pull_failed` and emits `image`; pulls left `running` by a dead node are failed with a reason on its next start; finished pulls are purged with `retention_days`; `GET /api/images` returns references × hosts × latest pull per cell | the cluster rule is that a node touches only its own engine, so a pull for another host must be a row that host's node picks up; the existing tick is the natural poll and a background pull keeps job claiming unaffected; refusing unknown references keeps the inventory to what templates need and removes a free-text path to arbitrary pulls | 2026-10-20 |
+| Templates tabs and Images page | `/templates` and `/templates/images` share one page header and a `.t-tabs` row of links (own URL per tab, nav keeps Templates active); the Images table is `references × hosts` with `present` (digest, size, build time), `missing` (+ last pull error) or `pulling` cells, an icon-only Pull now per cell (`aria-busy` while queued/running, disabled when the host is offline), Pull on all hosts per row and a live block on `image` events (`?partial=1`); Add image is a select of listed references missing on an online host that pulls on each, never free text; the template dialog appends `· missing on <hosts>` to each image option and shows a warning with inline Pull on <host> buttons when the picked image is missing on a host that has slots for the template | a separate page keeps Templates readable while images get the room a matrix needs; links as tabs keep the browser's history and sharing working; the matrix is the place to see and fix a slow first job before it happens; the inventory makes "known values are picked, not typed" possible for images | 2026-10-20 |
+

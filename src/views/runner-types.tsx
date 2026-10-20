@@ -1,4 +1,10 @@
-import type { Host, RunnerDocker, RunnerType, Slot } from "../lib/types";
+import type {
+  Host,
+  HostImage,
+  RunnerDocker,
+  RunnerType,
+  Slot,
+} from "../lib/types";
 import { Empty, Icon } from "./parts";
 
 export type RunnerTypesData = {
@@ -6,7 +12,50 @@ export type RunnerTypesData = {
   hosts: Host[];
   slots: Slot[];
   imageDefault: string;
+  /** What each host holds (from the heartbeats); the dialog marks images missing on a host. */
+  images: HostImage[];
 };
+
+/** The two sub-pages under Templates; links, so each has its own URL and the nav keeps `/templates` active. */
+export const TemplatesTabs = ({ active }: { active: "templates" | "images" }) => (
+  <div class="t-tabs templates-tabs" data-variant="underline">
+    <div class="t-tabs-list" role="tablist" aria-label="Templates sections">
+      <a
+        class="t-tab"
+        role="tab"
+        href="/templates"
+        id="tab-templates"
+        aria-selected={active === "templates" ? "true" : "false"}
+        tabindex={active === "templates" ? "0" : "-1"}
+      >
+        <Icon id="bi-cpu" /> Templates
+      </a>
+      <a
+        class="t-tab"
+        role="tab"
+        href="/templates/images"
+        id="tab-images"
+        aria-selected={active === "images" ? "true" : "false"}
+        tabindex={active === "images" ? "0" : "-1"}
+      >
+        <Icon id="bi-layers" /> Images
+      </a>
+    </div>
+  </div>
+);
+
+/** Hosts (by name) that have no row for `reference`: what the dialog appends to each option and warns about. */
+export const missingHosts = (
+  reference: string,
+  hosts: Host[],
+  images: HostImage[],
+): string[] =>
+  hosts
+    .filter(
+      (h) =>
+        !images.some((i) => i.reference === reference && i.host === h.name),
+    )
+    .map((h) => h.name);
 
 const TypesTable = ({ types }: { types: RunnerType[] }) => {
   if (types.length === 0) {
@@ -50,7 +99,7 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
         </thead>
         <tbody>
           {types.map((t) => (
-            <tr data-name={t.name}>
+            <tr id={t.name} data-name={t.name}>
               <td>
                 <span class="t-mono" safe>
                   {t.name}
@@ -338,11 +387,22 @@ export const DockerBadge = ({ docker }: { docker: RunnerDocker }) => {
 const TypeDialog = ({
   types,
   imageDefault,
-}: Pick<RunnerTypesData, "types" | "imageDefault">) => {
+  hosts,
+  slots,
+  images,
+}: Pick<
+  RunnerTypesData,
+  "types" | "imageDefault" | "hosts" | "slots" | "images"
+>) => {
   // Known images: the default first, then every image a template already uses, each once.
-  const images = [imageDefault, ...types.map((t) => t.image)].filter(
+  const known = [imageDefault, ...types.map((t) => t.image)].filter(
     (img, i, all) => img && all.indexOf(img) === i,
   );
+  // Hosts with at least one slot per template: a missing image only matters where runners of it may start.
+  const slotHosts: Record<string, string[]> = {};
+  for (const s of slots) {
+    if (s.count > 0) (slotHosts[s.type] ??= []).push(s.host);
+  }
   return (
     <dialog
       class="t-dialog"
@@ -354,6 +414,7 @@ const TypeDialog = ({
         id="type-form"
         data-action="type-save"
         data-image-default={imageDefault}
+        data-slot-hosts={JSON.stringify(slotHosts)}
       >
         <div class="t-dialog-header">
           <h2 class="t-dialog-title" id="type-dlg-title">
@@ -406,11 +467,21 @@ const TypeDialog = ({
               id="tf-image-pick"
               aria-describedby="tf-image-hint"
             >
-              {images.map((img) => (
-                <option value={img} selected={img === imageDefault} safe>
-                  {img}
-                </option>
-              ))}
+              {known.map((img) => {
+                const missing = missingHosts(img, hosts, images);
+                return (
+                  <option
+                    value={img}
+                    selected={img === imageDefault}
+                    data-missing={missing.join(",")}
+                    safe
+                  >
+                    {missing.length
+                      ? `${img} · missing on ${missing.join(", ")}`
+                      : img}
+                  </option>
+                );
+              })}
               <option value="">Other…</option>
             </select>
             <input
@@ -432,6 +503,17 @@ const TypeDialog = ({
               <code>RUNNER_JITCONFIG</code>. The list holds the default image
               and every image a template uses; pick Other… for a new one.
             </p>
+            <div
+              class="t-alert"
+              data-tone="warning"
+              role="status"
+              id="tf-image-alert"
+              hidden
+            >
+              <Icon id="bi-exclamation-triangle" />
+              <div class="t-alert-body" id="tf-image-alert-text"></div>
+              <div class="t-alert-actions" id="tf-image-alert-actions"></div>
+            </div>
           </div>
           <div class="t-field" data-span="6">
             <label class="t-label" for="tf-labels-entry">
@@ -619,6 +701,7 @@ export const RunnerTypesPage = (data: RunnerTypesData) => (
         </button>
       </div>
     </header>
+    <TemplatesTabs active="templates" />
     <div class="t-stack" data-gap="4">
       <section class="t-section">
         <h2 class="t-section-title">
@@ -658,6 +741,12 @@ export const RunnerTypesPage = (data: RunnerTypesData) => (
         </div>
       </section>
     </div>
-    <TypeDialog types={data.types} imageDefault={data.imageDefault} />
+    <TypeDialog
+      types={data.types}
+      imageDefault={data.imageDefault}
+      hosts={data.hosts}
+      slots={data.slots}
+      images={data.images}
+    />
   </>
 );

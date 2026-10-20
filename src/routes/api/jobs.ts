@@ -21,6 +21,7 @@ export const jobs = new Elysia({ prefix: '/jobs' })
       since: t.Optional(t.String({ format: 'date-time' })),
       running: t.Optional(t.Boolean()),
       failed: t.Optional(t.Boolean()),
+      runner: t.Optional(t.String({ maxLength: 200 })),
       limit: t.Optional(t.Integer({ minimum: 1, maximum: 1000 })),
     }),
   })

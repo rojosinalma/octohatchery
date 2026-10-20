@@ -6,6 +6,7 @@ import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
 import { github } from './github/auth'
+import { reportImages } from './images'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
@@ -81,6 +82,7 @@ export async function hostSpecs(dockerOk: boolean): Promise<HostSpecs> {
 export async function heartbeat(): Promise<void> {
   const dockerOk = await backend().ping()
   await upsertHost({ name: config().hostName, isLeader: leader, dockerOk, specs: await hostSpecs(dockerOk) })
+  if (dockerOk) await reportImages().catch((err) => logger.warn('image inventory failed', err instanceof Error ? err.message : String(err)))
   const grace = 3 * (await settings.fetchInt('heartbeat_s', 15))
   const cutoff = new Date(Date.now() - grace * 1000).toISOString()
   await db().run(sql`update hosts set status = 'offline' where last_seen_at < ${cutoff} and status <> 'offline'`)
@@ -123,8 +125,8 @@ export async function removeStaleRunners(nowMs = Date.now()): Promise<number> {
   return removed
 }
 
-/** Finished jobs, runners and events older than `retention_days` are deleted. */
-export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number; runners: number; events: number }> {
+/** Finished jobs, runners, events and image pulls older than `retention_days` are deleted. */
+export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number; runners: number; events: number; pulls: number }> {
   const days = await settings.fetchInt('retention_days', 30)
   const cutoff = new Date(nowMs - days * 86_400_000).toISOString()
   const d = db()
@@ -134,8 +136,9 @@ export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number
   const jobs = await d.all(sql`delete from jobs where ${finished} returning id`)
   const runners = await d.all(sql`delete from runners where state in ('exited', 'failed', 'removed') and coalesce(exited_at, created_at) < ${cutoff} returning id`)
   const events = await d.all(sql`delete from events where at < ${cutoff} returning id`)
-  const out = { jobs: jobs.length, runners: runners.length, events: events.length }
-  if (out.jobs || out.runners || out.events) logger.info(`purged ${out.jobs} jobs, ${out.runners} runners, ${out.events} events older than ${days}d`)
+  const pulls = await d.all(sql`delete from image_pulls where status in ('done', 'failed') and coalesce(finished_at, created_at) < ${cutoff} returning id`)
+  const out = { jobs: jobs.length, runners: runners.length, events: events.length, pulls: pulls.length }
+  if (out.jobs || out.runners || out.events || out.pulls) logger.info(`purged ${out.jobs} jobs, ${out.runners} runners, ${out.events} events, ${out.pulls} image pulls older than ${days}d`)
   return out
 }
 

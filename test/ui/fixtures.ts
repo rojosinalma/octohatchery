@@ -1,5 +1,5 @@
 import type { GitHubStatus } from '../../src/lib/github/permissions'
-import { ServiceError, type Event, type GitHubRepoItem, type HealthSnapshot, type Host, type Job, type JobLog, type Repo, type RepoListItem, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
+import { ServiceError, type Event, type GitHubRepoItem, type HealthSnapshot, type Host, type HostImage, type ImagePull, type Job, type JobLog, type Repo, type RepoListItem, type Runner, type RunnerType, type Slot } from '../../src/lib/types'
 
 export const hosts: Host[] = [
   { id: 1, name: 'node-a', status: 'online', lastSeenAt: '2026-10-19T10:00:00Z', isLeader: true, dockerOk: true, cpus: 8, memoryMb: 32768, os: 'Ubuntu 24.04.1 LTS', dockerVersion: '27.3.1', appVersion: '0.1.0-test' },
@@ -97,6 +97,18 @@ export const runners: Runner[] = [
   { id: 2, name: 'generic-node-a-2', host: 'node-a', type: 'generic', containerId: 'def', state: 'exited', jobId: 8, repo: 'acme/widgets', jobName: 'test', createdAt: '2026-10-19T08:00:05Z', exitedAt: '2026-10-19T08:05:12Z' },
 ]
 
+export const images: HostImage[] = [
+  { host: 'node-a', reference: 'ghcr.io/example/runner:1', digest: 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', sizeBytes: 1_288_490_189, pulledAt: '2026-10-18T09:00:00Z', seenAt: '2026-10-19T10:00:00Z' },
+  { host: 'node-a', reference: 'docker:28-dind', digest: null, sizeBytes: 400_000_000, pulledAt: null, seenAt: '2026-10-19T10:00:00Z' },
+]
+
+export const pulls: ImagePull[] = [
+  { id: 1, host: 'node-b', reference: 'docker:28-dind', status: 'queued', error: null, requestedBy: 'user', createdAt: '2026-10-19T10:00:00Z', finishedAt: null },
+  { id: 2, host: 'node-b', reference: 'ghcr.io/example/runner:1', status: 'failed', error: 'manifest unknown <x>', requestedBy: 'user', createdAt: '2026-10-19T09:00:00Z', finishedAt: '2026-10-19T09:01:00Z' },
+]
+
+export const references = ['docker:28-dind', 'ghcr.io/example/runner:1', 'ghcr.io/rojosinalma/octohatchery-runner:edge']
+
 export const events: Event[] = [
   { id: 1, actor: 'user', action: 'repo.adopt', target: 'acme/widgets', detail: { webhookId: 42 }, at: '2026-10-19T09:30:00Z' },
   { id: 2, actor: 'mcp:assistant', action: 'slots.set', target: 'generic@node-a', detail: { count: 4 }, at: '2026-10-19T09:31:00Z' },
@@ -161,9 +173,9 @@ export const githubRepos: GitHubRepoItem[] = [
   { fullName: 'acme/new-thing', isPrivate: true, defaultBranch: 'main', adopted: false },
 ]
 
-export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: RepoListItem[]; githubAuth?: 'app' | 'pat' | 'none'; github?: GitHubStatus; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
+export type FixtureSet = { hosts: Host[]; types: RunnerType[]; slots: Slot[]; repos: RepoListItem[]; images?: HostImage[]; pulls?: ImagePull[]; references?: string[]; githubAuth?: 'app' | 'pat' | 'none'; github?: GitHubStatus; jobs: Job[]; runners: Runner[]; events: Event[]; settings: Record<string, string>; logs: Record<number, JobLog> }
 
-export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings, logs }
+export const full: FixtureSet = { hosts, types, slots, repos, jobs, runners, events, settings, logs, images, pulls, references }
 export const empty: FixtureSet = { hosts: [], types: [], slots: [], repos: [], jobs: [], runners: [], events: [], settings: {}, logs: {} }
 
 const notFound = (message: string) => new ServiceError(message, 'not_found')
@@ -186,10 +198,11 @@ export const makeService = (store: { data: FixtureSet }) => ({
   adoptRepo: async () => store.data.repos[0]!,
   unadoptRepo: async () => {},
   applyRunsOn: async () => ({ ok: true, message: 'ok' }),
-  listJobs: async (filter?: { repo?: string; status?: string; q?: string; since?: string; running?: boolean; failed?: boolean }) =>
+  listJobs: async (filter?: { repo?: string; status?: string; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string }) =>
     store.data.jobs.filter(
       (j) =>
         (!filter?.repo || j.repo === filter.repo) &&
+        (!filter?.runner || store.data.runners.find((r) => r.id === j.runnerId)?.name === filter.runner) &&
         (!filter?.status || j.status === filter.status) &&
         (!filter?.q || `${j.name} ${j.repo}`.toLowerCase().includes(filter.q.toLowerCase())) &&
         (!filter?.since || j.queuedAt >= filter.since) &&
@@ -210,6 +223,8 @@ export const makeService = (store: { data: FixtureSet }) => ({
   },
   spawn: async () => store.data.runners[0]!,
   kill: async () => {},
+  listImages: async () => ({ references: store.data.references ?? [], hosts: store.data.hosts, images: store.data.images ?? [], pulls: store.data.pulls ?? [] }),
+  pullImage: async () => ({ ...pulls[0]!, reused: false }),
   listEvents: async () => store.data.events,
   getSettings: async () => store.data.settings,
   setSetting: async () => {},

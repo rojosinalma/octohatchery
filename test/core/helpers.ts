@@ -5,6 +5,7 @@ import { createFakeBackend, type FakeBackend } from '../../src/lib/backends/fake
 import { loadConfig, setConfig, type Config } from '../../src/lib/config'
 import { createFakeGitHub, type FakeGitHub } from '../../src/lib/github/auth/none'
 import { setGitHub } from '../../src/lib/github/auth'
+import { resetImagePulls } from '../../src/lib/images'
 import { configureJobLog } from '../../src/lib/joblog'
 import { resetGitHubCaches } from '../../src/lib/service'
 import { settings } from '../../src/lib/settings'
@@ -29,6 +30,7 @@ export async function fresh(env: Record<string, string> = {}): Promise<TestWorld
   await closeDb()
   settings.reset()
   resetGitHubCaches()
+  resetImagePulls()
   configureJobLog({ retryDelaysMs: [], flushMs: 10 })
   const config = loadConfig({ ...TEST_ENV, ...env })
   setConfig(config)

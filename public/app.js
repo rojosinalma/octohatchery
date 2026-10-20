@@ -100,7 +100,7 @@
     var es = new EventSource('/events/stream')
     es.onopen = function () { liveDot('running', 'connected') }
     es.onerror = function () { liveDot('degraded', 'reconnecting') }
-    ;['runner', 'job', 'slot', 'event'].forEach(function (name) { es.addEventListener(name, function () { scheduleLive(name) }) })
+    ;['runner', 'job', 'slot', 'event', 'image'].forEach(function (name) { es.addEventListener(name, function () { scheduleLive(name) }) })
   }
 
   /* ── Actions (delegated) ─────────────────────────────────────────────────── */
@@ -206,6 +206,36 @@
       busy(btn, true)
       return api('POST', '/api/runners/spawn', { type: btn.dataset.type, host: btn.dataset.host }).then(toast).then(function () { busy(btn, false); scheduleLive('slot') })
     },
+    /* Images: a queued pull stays busy until the `image` event re-renders the matrix; in the template dialog the button becomes a badge. */
+    'image-pull': function (btn) {
+      busy(btn, true)
+      return pullImage(btn.dataset.host, btn.dataset.reference).then(function (res) {
+        toast(res)
+        if (!res.ok) { busy(btn, false); return }
+        if (btn.closest('dialog')) {
+          var badge = document.createElement('span')
+          badge.className = 't-badge'
+          badge.dataset.tone = 'info'
+          badge.textContent = 'queued on ' + btn.dataset.host
+          btn.replaceWith(badge)
+        } else scheduleLive('image')
+      })
+    },
+    'image-pull-all': function (btn) {
+      var hosts = (btn.dataset.hosts || '').split(',').filter(Boolean)
+      if (!hosts.length) return
+      busy(btn, true)
+      return Promise.all(hosts.map(function (h) { return pullImage(h, btn.dataset.reference) })).then(function (results) {
+        var failed = results.filter(function (r) { return !r.ok })
+        if (failed.length) T.toast('danger', failed.map(function (r) { return r.message }).join('; '))
+        else T.toast('success', 'Pull of ' + btn.dataset.reference + ' queued on ' + hosts.join(', '))
+        busy(btn, false)
+        scheduleLive('image')
+      })
+    },
+  }
+  function pullImage(host, reference) {
+    return api('POST', '/api/hosts/' + encodeURIComponent(host) + '/images/pull', { reference: reference })
   }
 
   document.addEventListener('click', function (e) {
@@ -243,6 +273,7 @@
     f.elements.env.value = Object.keys(type.env || {}).map(function (k) { return k + '=' + type.env[k] }).join('\n')
     f.elements.secretEnv.value = (type.secretEnv || []).join(', ')
     $$('input, select, textarea', f).forEach(function (el) { T.sync(el) })
+    imageWarning(f)
   }
 
   /* ── Image picker: known images in a select, "Other…" reveals a text field; both write the hidden `image` ── */
@@ -254,6 +285,7 @@
     form.elements.image.value = value
     T.sync(pick)
     showOther(form, !known)
+    imageWarning(form)
   }
   function showOther(form, on) {
     var other = $('#tf-image-other', form)
@@ -271,9 +303,29 @@
         showOther(form, isOther)
         form.elements.image.value = isOther ? other.value.trim() : pick.value
         if (isOther) other.focus()
+        imageWarning(form)
       })
-      other.addEventListener('input', function () { form.elements.image.value = other.value.trim() })
+      other.addEventListener('input', function () { form.elements.image.value = other.value.trim(); imageWarning(form) })
+      form.elements.name.addEventListener('input', function () { imageWarning(form) })
     })
+  }
+  // The picked image is missing on a host that has slots for this template: say so and offer a pull per host.
+  function imageWarning(form) {
+    var alert = $('#tf-image-alert', form); if (!alert) return
+    var pick = $('#tf-image-pick', form), reference = form.elements.image.value
+    var opt = $$('option', pick).filter(function (o) { return o.value && o.value === reference })[0]
+    var missing = (opt && opt.dataset.missing || '').split(',').filter(Boolean)
+    var slotHosts = {}
+    try { slotHosts = JSON.parse(form.dataset.slotHosts || '{}') } catch (e) { /* no slots data */ }
+    var withSlots = slotHosts[form.elements.name.value.trim()] || []
+    var hosts = missing.filter(function (h) { return withSlots.indexOf(h) >= 0 })
+    alert.hidden = hosts.length === 0
+    if (!hosts.length) return
+    $('#tf-image-alert-text', alert).textContent = 'Not on ' + hosts.join(', ') + ', where this template has slots. The first runner there pulls it before starting, which delays that job.'
+    $('#tf-image-alert-actions', alert).innerHTML = hosts.map(function (h) {
+      return '<button class="t-btn" data-size="sm" type="button" data-action="image-pull" data-host="' + esc(h) + '" data-reference="' + esc(reference) + '">'
+        + '<svg class="t-icon" aria-hidden="true"><use href="/tailor/icons.svg#bi-arrow-repeat"/></svg> Pull on ' + esc(h) + '</button>'
+    }).join('')
   }
 
   /* ── Adopt dialog: the repos GitHub lets us see, filtered as you type, one click adopts ── */
@@ -351,6 +403,23 @@
       return api('PUT', '/api/runner-types/' + encodeURIComponent(name), payload).then(toast).then(function (res) {
         busy(submit, false)
         if (res.ok) { f.closest('dialog').close(''); swapMain() }
+      })
+    },
+    // Add image: one reference from the select, pulled on every online host that lacks it.
+    'image-add': function (f, submit) {
+      var pick = f.elements.reference
+      if (!pick) return
+      var opt = pick.options[pick.selectedIndex]
+      var hosts = (opt && opt.dataset.hosts || '').split(',').filter(Boolean)
+      if (!hosts.length) return
+      busy(submit, true)
+      return Promise.all(hosts.map(function (h) { return pullImage(h, pick.value) })).then(function (results) {
+        busy(submit, false)
+        var failed = results.filter(function (r) { return !r.ok })
+        if (failed.length) { T.toast('danger', failed.map(function (r) { return r.message }).join('; ')); return }
+        T.toast('success', 'Pull of ' + pick.value + ' queued on ' + hosts.join(', '))
+        f.closest('dialog').close('')
+        scheduleLive('image')
       })
     },
   }

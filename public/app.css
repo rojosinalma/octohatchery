@@ -398,3 +398,46 @@
 #tf-image-other:not([hidden]) {
   margin-top: var(--t-space-2);
 }
+
+/* Jobs toolbar: an active runner filter is a chip with its clear link; the link inherits the badge's colour. */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.filter-chip .chip-remove {
+  text-decoration: none;
+}
+
+/* A row reached by its anchor (`/hosts#node-a`, `/templates#deploy`) is highlighted until the next click. */
+.t-table tbody tr:target > td {
+  background: color-mix(in srgb, var(--t-accent) 18%, transparent);
+}
+
+/* Templates sub-pages: the tabs are links (each has its own URL); the page header sits right above them. */
+.templates-tabs {
+  margin-bottom: var(--t-space-3);
+}
+
+.templates-tabs .t-tab {
+  text-decoration: none;
+}
+
+/* Images matrix: badge, digest · size · age and the pull button on one line per cell. */
+.image-cell {
+  flex-wrap: nowrap;
+}
+
+.image-cell .t-badge .t-spinner {
+  width: 0.9em;
+  height: 0.9em;
+  border-width: 0.15em;
+  margin-right: 0.3em;
+  vertical-align: -0.1em;
+}
+
+/* Template dialog: the missing-image warning sits under the hint with its pull buttons on the right. */
+#tf-image-alert {
+  margin-top: var(--t-space-2);
+}

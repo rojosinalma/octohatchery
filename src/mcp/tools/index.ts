@@ -14,6 +14,7 @@ import { listRepos } from './list_repos'
 import { listRunnerTypes } from './list_runner_types'
 import { listRunners } from './list_runners'
 import { listSlots } from './list_slots'
+import { pullImage } from './pull_image'
 import { setSetting } from './set_setting'
 import { setSlots } from './set_slots'
 import { spawn } from './spawn'
@@ -39,6 +40,7 @@ export const tools: ToolDefinition[] = [
   listRunners,
   spawn,
   kill,
+  pullImage,
   listEvents,
   getSettings,
   setSetting,

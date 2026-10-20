@@ -11,6 +11,7 @@ import { JOB_STATUSES, JobsPage, JobsTable, type JobsFilter } from '../views/job
 import { JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
 import { RunnerTypesPage, SlotsMatrix } from '../views/runner-types'
+import { ImagesLive, ImagesPage } from '../views/images'
 import { HostsPage } from '../views/hosts'
 import { EventsPage, EventsTable } from '../views/events'
 import { SettingsPage, SettingsSide, otherKeys } from '../views/settings'
@@ -107,6 +108,7 @@ export const ui = new Elysia({ name: 'ui' })
         since,
         running: query.running === '1' || undefined,
         failed: query.failed === '1' || undefined,
+        runner: query.runner?.trim() || undefined,
       }
       const [jobs, runners, repos] = await Promise.all([
         service.listJobs({ ...filter, limit: 200 }),
@@ -126,6 +128,7 @@ export const ui = new Elysia({ name: 'ui' })
         since: t.Optional(t.String({ maxLength: 40 })),
         running: t.Optional(t.String({ maxLength: 1 })),
         failed: t.Optional(t.String({ maxLength: 1 })),
+        runner: t.Optional(t.String({ maxLength: 200 })),
         job: t.Optional(t.String()),
       }),
     },
@@ -154,9 +157,19 @@ export const ui = new Elysia({ name: 'ui' })
     async ({ query }) => {
       const [types, hosts, slots] = await Promise.all([service.listRunnerTypes(), service.listHosts(), service.listSlots()])
       if (query.partial) return <SlotsMatrix types={types} hosts={hosts} slots={slots} />
-      const settings = await service.getSettings().catch(() => ({}) as Record<string, string>)
+      const [settings, inventory] = await Promise.all([service.getSettings().catch(() => ({}) as Record<string, string>), service.listImages()])
       const imageDefault = settings['runner_image_default'] || SETTING_DEFAULTS['runner_image_default']!
-      return page('templates', 'Templates', <RunnerTypesPage types={types} hosts={hosts} slots={slots} imageDefault={imageDefault} />)
+      return page('templates', 'Templates', <RunnerTypesPage types={types} hosts={hosts} slots={slots} imageDefault={imageDefault} images={inventory.images} />)
+    },
+    { query: partialQuery },
+  )
+
+  .get(
+    '/templates/images',
+    async ({ query }) => {
+      const inventory = await service.listImages()
+      if (query.partial) return <ImagesLive {...inventory} />
+      return page('templates', 'Images', <ImagesPage {...inventory} />)
     },
     { query: partialQuery },
   )

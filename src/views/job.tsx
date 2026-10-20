@@ -93,9 +93,9 @@ export const JobPage = ({ job, runner, log }: JobData) => {
           <dd>
             {runner ? (
               <>
-                <span class="t-mono" safe>
+                <a class="t-mono" href={`/jobs?runner=${encodeURIComponent(runner.name)}`} data-tip="Jobs this runner handled" safe>
                   {runner.name}
-                </span>{' '}
+                </a>{' '}
                 <RunnerBadge state={runner.state} />
               </>
             ) : (
@@ -106,11 +106,11 @@ export const JobPage = ({ job, runner, log }: JobData) => {
           <dd>
             {runner ? (
               <>
-                <span class="t-mono" safe>
+                <a href={`/hosts#${encodeURIComponent(runner.host)}`} class="t-mono" data-tip="Host details" safe>
                   {runner.host}
-                </span>
+                </a>
                 {' / '}
-                <a href="/templates" class="t-mono" safe>
+                <a href={`/templates#${encodeURIComponent(runner.type)}`} class="t-mono" data-tip="Template" safe>
                   {runner.type}
                 </a>
               </>

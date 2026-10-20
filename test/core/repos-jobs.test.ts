@@ -42,7 +42,7 @@ describe('ensureWebhook', () => {
 })
 
 describe('listJobs filters', () => {
-  test('q, since, running and failed narrow the list', async () => {
+  test('q, since, running, failed and runner narrow the list', async () => {
     await fresh()
     await service.adoptRepo('acme/widgets', 'user')
     await addJob('acme/widgets', 1, 'Build image', '2026-10-01T10:00:00Z')
@@ -61,6 +61,8 @@ describe('listJobs filters', () => {
     expect(await names({ running: true })).toEqual(['Unit tests'])
     expect(await names({ failed: true })).toEqual(['Lint'])
     expect(await names({ failed: true, repo: 'acme/widgets' })).toEqual([])
+    expect(await names({ runner: 'generic-node-a-xyz' })).toEqual(['Unit tests'])
+    expect(await names({ runner: 'generic-node-a-xy' })).toEqual([])
     await expect(service.listJobs({ since: 'yesterday' })).rejects.toBeInstanceOf(ServiceError)
   })
 })

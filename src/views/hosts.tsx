@@ -51,7 +51,7 @@ const HostsTable = ({ hosts, slots }: HostsData) => {
           {hosts.map((h) => {
             const u = usage(h.name)
             return (
-              <tr data-name={h.name} data-cpus={String(h.cpus ?? -1)} data-memory={String(h.memoryMb ?? -1)} data-seen={h.lastSeenAt} data-tone={h.status === 'offline' ? 'danger' : undefined}>
+              <tr id={h.name} data-name={h.name} data-cpus={String(h.cpus ?? -1)} data-memory={String(h.memoryMb ?? -1)} data-seen={h.lastSeenAt} data-tone={h.status === 'offline' ? 'danger' : undefined}>
                 <td>
                   <span class="t-dot" data-status={h.status === 'online' ? (h.dockerOk ? 'running' : 'degraded') : 'stopped'} data-tip={h.status}></span>{' '}
                   <span class="t-mono" safe>
