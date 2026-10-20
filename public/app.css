@@ -101,7 +101,7 @@
 
 .slot-pills {
   display: flex;
-  gap: var(--t-space-1);
+  gap: var(--t-space-2);
   padding: var(--t-space-1) var(--t-space-2);
   background: color-mix(in srgb, var(--t-base) 50%, transparent);
   border-radius: var(--t-radius-sm);
@@ -110,11 +110,11 @@
 }
 
 .slot-pill {
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 1rem;
+  height: 1rem;
   background: color-mix(in srgb, var(--t-text) 14%, transparent);
   border: var(--t-border-w) solid color-mix(in srgb, var(--t-text) 35%, transparent);
-  border-radius: var(--t-radius-xs);
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
@@ -126,8 +126,8 @@
 /* The bar fallback (more than 12 slots): the empty track must stay visible on the card background. */
 .host-slots {
   display: grid;
-  grid-template-columns: 7rem 1fr;
-  column-gap: var(--t-space-4);
+  grid-template-columns: 9rem auto;
+  column-gap: var(--t-space-5);
   row-gap: var(--t-space-2);
   align-items: center;
 }
