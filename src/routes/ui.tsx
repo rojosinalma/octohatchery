@@ -148,9 +148,8 @@ export const ui = new Elysia({ name: 'ui' })
   .get(
     '/jobs',
     async ({ query }) => {
-      const view = await jobsView(query, JOBS_SCOPE)
-      if (query.partial) return <JobsLive {...view} />
-      const repos = await service.listRepos()
+      const [view, repos] = await Promise.all([jobsView(query, JOBS_SCOPE), service.listRepos()])
+      if (query.partial) return <JobsLive {...view} repos={repos} />
       return page('jobs', 'Jobs', <JobsPage {...view} repos={repos} />)
     },
     { query: t.Object({ partial: t.Optional(t.String()), job: t.Optional(t.String()), ...jobsQuerySchema(JOBS_SCOPE.prefix) }) },

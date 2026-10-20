@@ -526,6 +526,27 @@
   }
 
   /* ── Jobs filter: selects navigate on change, the search box on Enter (or after a pause) ── */
+  // A filter, page or page-size change inside a live block swaps that block only (URL updated in place);
+  // outside one, or when the partial fails, it is a plain navigation.
+  function goTo(url, from) {
+    var block = from && from.closest && from.closest('[data-live]')
+    if (!block) { location.assign(url); return }
+    var name = partialOf(block)
+    var u = new URL(url, location.href)
+    var q = new URLSearchParams(u.search); q.set('partial', name)
+    var keepFocus = from.matches && from.matches('input[type=search]')
+    refetch(u.pathname + '?' + q.toString()).then(function (html) {
+      var tpl = document.createElement('template'); tpl.innerHTML = html.trim()
+      var fresh = tpl.content.firstElementChild
+      var current = liveBlock(name)
+      if (!fresh || !current) { location.assign(url); return }
+      history.replaceState(null, '', u.pathname + u.search)
+      current.replaceWith(fresh)
+      T.upgrade(fresh)
+      wireSlots(fresh)
+      if (keepFocus) { var again = $('input[type=search][data-nav]', fresh); if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length) } }
+    }).catch(function () { location.assign(url) })
+  }
   function navWith(el) {
     var q = new URLSearchParams(location.search)
     var value = el.value.trim()
@@ -534,8 +555,19 @@
     if (el.dataset.navReset) q.delete(el.dataset.navReset)
     if (q.toString() === new URLSearchParams(location.search).toString()) return
     var s = q.toString()
-    location.assign(location.pathname + (s ? '?' + s : ''))
+    goTo(location.pathname + (s ? '?' + s : ''), el)
   }
+  // Pager and quick-filter links inside a live block behave the same way.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href]')
+    if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || a.target) return
+    var block = a.closest('[data-live]')
+    if (!block || !a.closest('.t-pagination, .t-btn-group[data-role=filter], .jobs-pager, .jobs-chip')) return
+    var u = new URL(a.href, location.href)
+    if (u.pathname !== location.pathname) return
+    e.preventDefault()
+    goTo(u.pathname + u.search, a)
+  })
   document.addEventListener('change', function (e) {
     var el = e.target.closest('[data-nav]')
     if (el && !el.dataset.navOn) navWith(el)
