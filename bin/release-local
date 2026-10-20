@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Build the production image from this checkout and push it to a registry.
+#   bin/release-local [tag] [registry]
+# Defaults: tag = the current git describe (or `edge`), registry = $LOCAL_REGISTRY from .env.
+# Used for the nodes that run from an image instead of a bind mount. CI publishes to ghcr.io on its own.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+fail() { echo "release-local: $*" >&2; exit 1; }
+
+registry="${2:-${LOCAL_REGISTRY:-$(grep -E '^LOCAL_REGISTRY=' .env 2>/dev/null | cut -d= -f2- || true)}}"
+[ -n "$registry" ] || fail "no registry: pass one or set LOCAL_REGISTRY in .env"
+tag="${1:-$(git describe --tags --always --dirty 2>/dev/null || echo edge)}"
+image="$registry/octohatchery"
+
+echo "release-local: building $image:$tag (target prod)"
+docker build --target prod -t "$image:$tag" -t "$image:edge" .
+docker push "$image:$tag"
+docker push "$image:edge"
+echo "release-local: pushed $image:$tag and $image:edge"

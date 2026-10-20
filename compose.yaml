@@ -22,6 +22,10 @@ services:
         target: /var/run/docker.sock
         bind:
           create_host_path: false
+    # The image runs as an unprivileged user; this grants it the host's docker socket group.
+    # DOCKER_GID = `stat -c %g /var/run/docker.sock` on this host.
+    group_add:
+      - "${DOCKER_GID:-999}"
     mem_limit: 512m
     cpus: 1
     depends_on:
