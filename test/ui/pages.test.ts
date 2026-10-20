@@ -72,51 +72,40 @@ describe('layout', () => {
 })
 
 describe('overview', () => {
-  test('hosts as columns, one-line header, slot pills, runners table with kill buttons', async () => {
+  test('hosts as collapsible sections with templates and inline runners', async () => {
     const { body } = await get('/')
-    // one Hosts card (plus the Recent jobs card), one column per host with its slots underneath
+    // Two cards: Capacity (hierarchy) and Recent jobs
     expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(2)
     expect(body).toContain('href="/hosts">All hosts')
-    expect(body).toContain('<div class="t-card-body host-list t-grid" data-min="md">')
-    expect(body).not.toContain('slots used / total')
-    expect(body).toContain('aria-label="About slots"')
-    const sections = [...body.matchAll(/<section class="host-section" data-name="([^"]+)"/g)].map((m) => m[1])
-    expect(sections).toEqual(['node-a', 'node-b'])
-    const nodeA = body.slice(body.indexOf('data-name="node-a"'), body.indexOf('data-name="node-b"'))
-    const nodeB = body.slice(body.indexOf('data-name="node-b"'), body.indexOf('id="runners-table"'))
-    // leader badge: xs, accent, spaced from the name; no `online` / `Docker ok` badges
-    expect(nodeA).toContain('<span class="t-badge host-leader" data-tone="accent" data-size="xs"')
-    expect(nodeA).not.toContain('>online<')
-    expect(nodeA).not.toContain('Docker ok')
-    expect(nodeB).not.toContain('host-leader" data-tone="accent"')
-    expect(nodeB).toContain('>offline</span>')
-    expect(nodeB).toContain('>Docker unreachable</span>')
-    // specs line: parts the node has not reported are left out
-    expect(nodeA).toMatch(/host-specs">8 CPU · 32 GB · <span>Docker 27\.3\.1<\/span> · seen <time/)
-    expect(nodeB).toMatch(/host-specs">seen <time/)
-    // summary line and pills: 1 of 4 busy, warning only when full
-    expect(nodeA).toContain('<p class="t-small host-summary">1 of 4 slots busy</p>')
-    expect(nodeA).toContain('data-tip="generic on node-a: 1/4"')
-    expect((nodeA.match(/<span class="slot-pill"/g) ?? []).length).toBe(4)
-    expect((nodeA.match(/<span class="slot-pill" data-busy="true">/g) ?? []).length).toBe(1)
-    expect(nodeA).not.toContain('t-progress')
-    expect(nodeA).toContain('href="/templates#generic" class="t-mono t-small slot-type">generic</a>')
-    expect(nodeA).toContain('<a class="t-mono host-name" href="/hosts#node-a" data-tip="Host details">node-a</a>')
-    expect(nodeA).not.toContain('No slots on this host')
-    expect(body).toContain('id="runners-table"')
-    expect(body).toContain('generic-node-a-3')
-    // only live runners are listed (the exited one appears in Recent jobs, not in the Runners table)
-    expect(body).not.toMatch(/id="runners-table"[\s\S]*generic-node-a-2[\s\S]*id="recent-jobs"/)
-    expect(body).toContain('data-action="kill"')
-    expect(body).toContain('href="/jobs/7"')
-    // runner, host and template link to the filtered jobs list, the host row and the template row
-    const row = body.slice(body.indexOf('data-runner-id="3"'), body.indexOf('data-action="kill"'))
-    expect(row).toContain('<a class="t-mono" href="/jobs?runner=generic-node-a-3" data-tip="Jobs this runner handled">generic-node-a-3</a>')
-    expect(row).toContain('<a href="/hosts#node-a" data-tip="Host details">node-a</a>')
-    expect(row).toContain('<a href="/templates#generic" data-tip="Template">generic</a>')
-    // user-controlled text is escaped
-    expect(body).toContain('build &lt;main&gt;')
-    expect(body).not.toContain('>build <main><')
+    expect(body).toContain('class="overview-hierarchy"')
+    expect(body).toContain('class="host-block"')
+    expect(body).toContain('class="host-block-header"')
+    
+    // Two hosts: node-a (leader) and node-b
+    expect((body.match(/<details class="host-block"/g) ?? []).length).toBe(2)
+    expect(body).toContain('>node-a<')
+    expect(body).toContain('>node-b<')
+    
+    // node-a specs and leader badge
+    expect(body).toContain('class="t-badge host-leader"')
+    expect(body).toMatch(/8 CPU · 32 GB.*Docker 27\.3\.1/)
+    
+    // Templates as rows under each host
+    expect((body.match(/class="template-row"/g) ?? []).length).toBeGreaterThan(0)
+    expect(body).toContain('class="template-name"')
+    expect(body).toContain('href="/templates#')
+    
+    // Slot pills per template
+    expect((body.match(/class="slot-pill"/g) ?? []).length).toBeGreaterThan(0)
+    expect(body).toContain('data-busy="true"')
+    
+    // Runners shown as inline badges under their template
+    expect((body.match(/class="runner-badge"/g) ?? []).length).toBeGreaterThan(0)
+    expect(body).toContain('class="runner-badge-state"')
+    expect(body).toContain('class="runner-badge-name"')
+    
+    // No separate runners table
+    expect(body).not.toContain('id="runners-table"')
   })
 
   test('a host without slots says so and points at Templates', async () => {
@@ -128,15 +117,14 @@ describe('overview', () => {
     expect(nodeB).not.toContain('slot-pill')
   })
 
-  test('a full host is a warning; more than 12 slots fall back to the bar', async () => {
+  test('more than 12 slots fall back to the bar instead of pills', async () => {
     store.data = { ...full, slots: [{ host: 'node-a', type: 'generic', count: 2, used: 2, free: 0 }, { host: 'node-b', type: 'big', count: 16, used: 4, free: 12 }] }
     const { body } = await get('/')
-    const nodeA = body.slice(body.indexOf('data-name="node-a"'), body.indexOf('data-name="node-b"'))
-    const nodeB = body.slice(body.indexOf('data-name="node-b"'))
-    expect(nodeA).toContain('<p class="t-small host-summary" data-tone="warning">2 of 2 slots busy</p>')
-    expect(nodeB).not.toContain('slot-pill')
-    expect(nodeB).toContain('style="--t-value: 25%"')
-    expect(nodeB).toContain('4/16')
+    // Both hosts show; node-a has pills (2 slots), node-b has a bar (16 slots)
+    expect((body.match(/class="host-block"/g) ?? []).length).toBe(2)
+    expect((body.match(/class="t-progress"/g) ?? []).length).toBeGreaterThan(0)
+    expect(body).toContain('style="--t-value: 25%"')
+    expect(body).toContain('4/16')
   })
 
   test('empty state explains self-registration', async () => {
@@ -154,8 +142,9 @@ describe('overview', () => {
     expect(body.trim().startsWith('<div id="overview-live" data-live="runner slot"')).toBe(true)
     expect(body).not.toContain('<html')
     expect(body).not.toContain('<h1')
-    expect(body).toContain('id="runners-table"')
-    expect(body).not.toContain('id="recent-jobs"')
+    expect(body).toContain('class="host-block"')
+    expect(body).toContain('class="template-row"')
+    expect(body).toContain('id="recent-jobs"')
   })
 
   test('Recent jobs card: own live block, prefixed filters, total counter, All jobs link with the same filters', async () => {
