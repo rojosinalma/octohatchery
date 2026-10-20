@@ -6,6 +6,9 @@ import { handleWebhook, verifySignature } from '../lib/webhook'
 
 const logger = log('http')
 
+/** A workflow_job payload is a few KB; GitHub caps deliveries at 25 MB. Anything above this is not GitHub. */
+const MAX_BODY_BYTES = 1024 * 1024
+
 /**
  * `POST /webhooks/github`: the only unauthenticated route. The body is read raw so the
  * HMAC (X-Hub-Signature-256) is checked over the exact bytes GitHub signed.
@@ -13,7 +16,20 @@ const logger = log('http')
 export const webhooks = new Elysia({ name: 'webhooks' }).post(
   '/webhooks/github',
   async ({ request, set }) => {
+    const declared = Number(request.headers.get('content-length') ?? 0)
+    if (declared > MAX_BODY_BYTES) {
+      metrics.webhooks.inc({ outcome: 'too_large' })
+      const { body, status } = jsonErr('payload too large', 'invalid', 413)
+      set.status = status
+      return body
+    }
     const raw = await request.text()
+    if (raw.length > MAX_BODY_BYTES) {
+      metrics.webhooks.inc({ outcome: 'too_large' })
+      const { body, status } = jsonErr('payload too large', 'invalid', 413)
+      set.status = status
+      return body
+    }
     const signature = request.headers.get('x-hub-signature-256') ?? undefined
     if (!(await verifySignature(raw, signature))) {
       metrics.webhooks.inc({ outcome: 'bad_signature' })
