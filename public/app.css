@@ -422,6 +422,128 @@
   display: inline-flex;
 }
 
+/* ##[command] lines: the marker is stripped and the command reads in accent mono. */
+.log-line[data-cmd] .log-text {
+  color: var(--t-accent);
+  font-weight: 600;
+}
+
+/* Outcome line under the title: "succeeded 12 min ago in 2m 20s"; it takes the row after title + lead,
+   before the actions, which stay on the first row. */
+.job-outcome {
+  order: 1;
+  flex: 1 1 100%;
+  margin: calc(-1 * var(--t-space-2)) 0 0 calc(2rem + var(--t-space-3));
+  font-size: var(--t-text-sm);
+}
+
+/* Steps view: one <details> row per step, GitHub style; the body is the terminal pane of that step. */
+.log-steps {
+  max-height: calc(100vh - 22rem);
+  min-height: 12rem;
+  overflow: auto;
+  border: var(--t-border-w) solid var(--t-border);
+  border-radius: var(--t-radius-xl);
+  background: var(--t-inset);
+}
+
+.log-step + .log-step {
+  border-top: var(--t-border-w) solid var(--t-border);
+}
+
+.log-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  padding: var(--t-space-2) var(--t-space-3);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: var(--t-text-sm);
+  line-height: 1.4;
+}
+
+.log-step-head::-webkit-details-marker {
+  display: none;
+}
+
+.log-step-head:hover {
+  background: color-mix(in srgb, var(--t-accent) 8%, transparent);
+}
+
+.log-step-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--t-muted);
+  transition: transform 0.12s ease;
+}
+
+.log-step[open] > .log-step-head .log-step-chevron {
+  transform: rotate(90deg);
+}
+
+.log-step-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.log-step-icon[data-tone="success"] {
+  color: var(--t-success);
+}
+
+.log-step-icon[data-tone="danger"] {
+  color: var(--t-danger);
+}
+
+.log-step-icon[data-tone="muted"] {
+  color: var(--t-muted);
+}
+
+.log-step-icon.t-spinner {
+  --t-tone: var(--t-accent);
+  margin: 0 0.1rem;
+}
+
+.log-step-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.log-step-count {
+  flex: none;
+}
+
+.log-step-duration {
+  flex: none;
+  min-width: 5ch;
+  text-align: right;
+  font-family: var(--t-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The step body is the same pane the flat view uses, minus its own frame: it sits inside the steps frame. */
+.log-step-body {
+  border: 0;
+  border-top: var(--t-border-w) solid var(--t-border);
+  border-radius: 0;
+  padding: var(--t-space-2) var(--t-space-3) var(--t-space-2) var(--t-space-4);
+  background: color-mix(in srgb, var(--t-canvas) 40%, var(--t-inset));
+}
+
+.log-step-body:empty {
+  display: none;
+}
+
+/* The gutter inside a step is mm:ss, 6 characters wide. */
+.log-step-body .log-time {
+  width: 7ch;
+}
+
 .log-empty {
   min-height: 12rem;
 }

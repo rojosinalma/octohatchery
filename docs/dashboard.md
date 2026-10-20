@@ -11,7 +11,7 @@ so what you can click you can also script.
 |---|---|---|
 | `/` | Overview | See which hosts are online, how many slots each template has left per host, and what every runner is working on right now. Kill a runner. |
 | `/jobs` | Jobs | Queue and history. Filter by repo (select) and status (button group); both are query parameters, so a filtered view has a URL. Open the run on GitHub, or the job name for its log. |
-| `/jobs/:id` | Job | One job: runner, host, template, labels, timings, and its log — live while the job runs, GitHub's final log afterwards. Follow, copy. |
+| `/jobs/:id` | Job | One job: runner, host, template, labels, timings, and its log as a list of steps — live while the job runs, GitHub's final log afterwards. Follow, copy, raw view. |
 | `/repos` | Repos | Adopt a repo from the list GitHub lets the node see. Per adopted repo: copy the `runs-on` snippet for a template, open a pull request or commit that changes the workflows, or unadopt. |
 | `/templates` | Templates | Create and edit templates (image, labels, CPUs, memory, mounts, environment, secret names). Set slots per host in a matrix; spawn a runner by hand. |
 | `/hosts` | Hosts | Every node with what it reports about itself: slots, CPUs, memory, OS, Docker, versions, last heartbeat. How a host joins. |
@@ -75,22 +75,36 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 ### Job
 
 - Header: job name, repo (links to the filtered Jobs list), status or conclusion badge, "Run on
-  GitHub". Facts: runner name and state, host and type, labels, queued / started / finished with
-  the duration.
-- Log: one line per row and the time of day in the gutter (the full timestamp is on the element).
-  While the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>` and appends
-  each `line` batch; at most 5000 lines stay in the page, older ones drop off the top.
-  **Follow** keeps the newest lines in view and switches itself off when you scroll up (and on
-  again at the bottom). **Copy** puts every line in view on the clipboard, group markers included,
-  and reports the count.
-- Groups: `##[group]<title>` … `##[endgroup]` blocks (and `##[section]Starting:` /
-  `##[section]Finishing:` step markers when a log has them) fold into collapsible sections whose
-  header shows the title, the number of lines and the time the block took. Marker lines are hidden
-  in the grouped view; lines outside a group stay flat. Groups are one level deep: a new group
-  closes the one before it. `##[error]` lines are red and open their group by default,
-  `##[warning]` lines are orange. While the job runs, the group receiving lines stays open and
-  earlier groups fold as they close. **Expand all** / **Collapse all** act on every group;
-  **Raw** (`?raw=1`) shows every line as stored, **Grouped** folds them again.
+  GitHub", and under the title one line with the outcome: `succeeded 12 min ago in 2m 20s`,
+  `failed …`, `running … for 1m 5s`. Facts: runner name and state, host and type, labels,
+  queued / started / finished with the duration.
+- Steps: the log reads like GitHub's. One row per workflow step, in order, each with a chevron, a
+  round status icon (green check = succeeded, red cross = failed, grey slash = cancelled or
+  skipped, grey dash = not started, spinner = running), the step name, the number of lines and
+  how long the step took. Every row starts collapsed except a failed step and the running one; a
+  click opens that step's lines. Steps and their times come from GitHub: the `workflow_job`
+  webhook sends them while the job runs, and when it ends the orchestrator fetches the job once
+  more for the final timestamps. A log line belongs to the step that was running at its timestamp;
+  lines before the first step and after the last one go to the first and the last step. A job
+  without step data yet shows one row, "Log", with everything in it. **Expand all** opens every
+  step and every group inside; **Collapse all** closes the steps.
+- Inside a step: the gutter shows `mm:ss` since the job started (the absolute time on hover),
+  blank lines are dropped, a run of progress lines (`Received 1234 of 5678 (21%)…`, `45%…`) keeps
+  only its last line, `##[command]` lines show the command in accent monospace with the marker
+  stripped, `##[error]` lines are red, `##[warning]` lines are orange. `##[group]<title>` …
+  `##[endgroup]` blocks (and `##[section]Starting:` / `##[section]Finishing:` markers when a log
+  has them) fold into a second level of collapsible groups whose header shows the title, the
+  number of lines and the time the block took; a group with an error opens by default. Groups are
+  one level deep: a new group closes the one before it.
+- Live: while the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>` and
+  appends each `line` batch to the step running at the line's time (the group receiving lines
+  stays open, earlier groups fold as they close); at most 5000 lines stay in the page, older ones
+  drop off the top. When GitHub reports a step change (`job` event) the steps block is re-rendered
+  from `GET /jobs/:id?partial=log`, keeping which steps you opened or closed. **Follow** keeps the
+  newest lines in view and switches itself off when you scroll up (and on again at the bottom).
+  **Copy** puts every line in view on the clipboard, group markers included, and reports the count.
+  **Raw** (`?raw=1`) shows every line as stored — no steps, no groups, blank lines kept, time of
+  day in the gutter; **Steps** goes back.
 - Source badge: `runner (live)` while the runner prints, `GitHub` once the job finished and GitHub's
   log replaced the live lines (the page reloads the view and says so in a toast), `runner` when
   GitHub did not hand out the log within two minutes, `none` when nothing was collected. A

@@ -4,7 +4,7 @@ import { config } from './config'
 import { github } from './github/auth'
 import { log } from './log'
 import { settings } from './settings'
-import { appendLogLines, deleteLogLines, jobById, logCursor, updateJob, type JobRow, type RunnerRow } from './store'
+import { appendLogLines, deleteLogLines, jobById, jobsWithoutSteps, logCursor, updateJob, type JobRow, type RunnerRow } from './store'
 
 // Job log follower: one responsibility — follow a runner container's output, store it in batches,
 // announce each batch on the bus, and when the container exits replace it with GitHub's final log.
@@ -31,6 +31,7 @@ export function configureJobLog(opts: { retryDelaysMs?: number[]; flushMs?: numb
   retryDelays = opts.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
   flushMs = opts.flushMs ?? FLUSH_MS
   active.clear()
+  backfilled.clear()
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -128,8 +129,47 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
   await finalise(job)
 }
 
+/**
+ * Stores the steps GitHub reports for `job` (authoritative timestamps, the webhook's copy may be older or missing).
+ * A failure is logged and swallowed: steps are a reading aid, never a reason to lose the log. Returns true when stored.
+ */
+export async function storeSteps(job: Pick<JobRow, 'id' | 'repo' | 'githubJobId'>): Promise<boolean> {
+  try {
+    const details = await github().getJob(job.repo, job.githubJobId)
+    if (!details.steps.length) return false
+    await updateJob(job.id, { steps: details.steps })
+    logger.debug(`job ${job.id} (${job.repo}#${job.githubJobId}): stored ${details.steps.length} steps`)
+    return true
+  } catch (err) {
+    logger.warn(`job ${job.id} (${job.repo}#${job.githubJobId}): steps not fetched`, err instanceof Error ? err.message : String(err))
+    return false
+  }
+}
+
+/** Jobs this process already asked GitHub about (bounded by the rows the retention window holds). */
+const backfilled = new Set<number>()
+
+/**
+ * Finished jobs with a GitHub log but no steps (rows from before steps were stored, or whose fetch failed): at most
+ * `max` GitHub calls per pass, each job once per process. Every node runs it; a second node finding the same row
+ * writes the same steps, so no coordination is needed.
+ */
+export async function backfillSteps(max = 5): Promise<number> {
+  let n = 0
+  let calls = 0
+  for (const job of await jobsWithoutSteps(max + backfilled.size)) {
+    if (backfilled.has(job.id) || calls >= max) continue
+    backfilled.add(job.id)
+    calls++
+    if (await storeSteps(job)) n++
+  }
+  if (n) logger.info(`backfilled steps for ${n} job(s)`)
+  return n
+}
+
 /** Replaces the live lines with GitHub's log; after the retry budget keeps them and marks the source `runner`. */
 export async function finalise(job: JobRow): Promise<void> {
+  await storeSteps(job)
   for (let attempt = 0; ; attempt++) {
     try {
       const text = await github().getJobLog(job.repo, job.githubJobId)

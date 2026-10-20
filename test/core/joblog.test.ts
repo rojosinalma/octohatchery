@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { fresh, TEST_HOST } from './helpers'
-import { configureJobLog, ensureFollower, finalise, isFollowing, parseGitHubLog, settled, TRUNCATED_NOTICE } from '../../src/lib/joblog'
+import { backfillSteps, configureJobLog, ensureFollower, finalise, isFollowing, parseGitHubLog, settled, TRUNCATED_NOTICE } from '../../src/lib/joblog'
 import { parseTimestampedLine } from '../../src/lib/backends/docker'
 import { claim, reap, tick } from '../../src/lib/scheduler'
 import { service } from '../../src/lib/service'
@@ -104,6 +104,48 @@ describe('job log follower', () => {
     ])
     expect(done).toEqual([{ jobId, lines: [], done: true, replaced: true }])
     expect(w.github.calls.filter((c) => c.method === 'getJobLog').length).toBeGreaterThanOrEqual(2)
+    // the finaliser asked GitHub for the job once and stored its steps (authoritative timestamps)
+    expect(w.github.calls.filter((c) => c.method === 'getJob')).toEqual([{ method: 'getJob', args: ['acme/app', 42] }])
+    expect((await service.getJob(jobId)).steps.map((s) => s.name)).toEqual(['Set up job', 'Run tests'])
+  })
+
+  test('a failed steps fetch is not fatal: the log is still finalised with empty steps', async () => {
+    const w = await fresh()
+    configureJobLog({ retryDelaysMs: [20], flushMs: 10 })
+    w.github.failOn.set('getJob', 'Resource not accessible by integration')
+    const { runner, feed, jobId } = await spawnOne(w, 43)
+    feed.push('live')
+    w.github.jobLogs.set('acme/app#43', '2026-01-01T00:00:01.0000000Z Done')
+    w.docker.exit(runner.containerId!)
+    await settled()
+    const log = await service.getJobLog(jobId)
+    expect(log.source).toBe('github')
+    expect((await service.getJob(jobId)).steps).toEqual([])
+  })
+
+  test('backfillSteps fills completed jobs with a GitHub log and no steps, at most `max` per pass, and skips the rest', async () => {
+    const w = await fresh()
+    for (const [id, source, status] of [
+      [1, 'github', 'completed'],
+      [2, 'github', 'completed'],
+      [3, 'runner', 'completed'],
+      [4, null, 'in_progress'],
+    ] as const) {
+      await w.db.run(sql`insert into jobs (repo, github_job_id, run_id, name, labels, status, html_url, queued_at, completed_at, log_source)
+        values ('acme/app', ${id}, 1, 'j', '[]', ${status}, '', '2026-01-01T00:00:00Z', ${status === 'completed' ? `2026-01-01T00:0${id}:00Z` : null}, ${source})`)
+    }
+    configureJobLog()
+    w.github.failOn.set('getJob', 'rate limited')
+    expect(await backfillSteps(1)).toBe(0) // job 2 (newest) tried and failed: not asked again by this process
+    w.github.failOn.delete('getJob')
+    expect(await backfillSteps(1)).toBe(1)
+    expect(await backfillSteps(5)).toBe(0)
+    expect(jobById(2).then((j) => j!.steps)).resolves.toEqual([])
+    configureJobLog() // a new process asks again
+    expect(await backfillSteps(5)).toBe(1)
+    const filled = await Promise.all([1, 2, 3, 4].map((id) => jobById(id)))
+    expect(filled.map((j) => j!.steps.length)).toEqual([2, 2, 0, 0])
+    expect(w.github.calls.filter((c) => c.method === 'getJob')).toHaveLength(3)
   })
 
   test('the cap stops storage, marks the job truncated and appends one notice line', async () => {

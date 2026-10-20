@@ -78,6 +78,7 @@ export const jobs = sqliteTable(
     logSource: text('log_source'),
     logBytes: integer('log_bytes').notNull().default(0),
     logTruncated: integer('log_truncated', { mode: 'boolean' }).notNull().default(false),
+    steps: text('steps').notNull().default('[]'),
   },
   (t) => [index('jobs_status_queued').on(t.status, t.queuedAt), index('jobs_repo').on(t.repo)],
 )

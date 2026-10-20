@@ -87,6 +87,27 @@ describe('webhook', () => {
     expect((await runnerById(runner!.id))?.state).toBe('exited')
   })
 
+  test('in_progress and completed store the steps of the payload, sorted by number; a payload without steps keeps them', async () => {
+    await fresh()
+    const app = new Elysia().use(webhooks)
+    await service.adoptRepo('acme/app', 'user')
+    await deliver(app, 'workflow_job', payload('queued', 10))
+    expect((await jobByGitHubId(10))?.steps).toEqual([])
+    const steps = [
+      { name: 'Build', status: 'in_progress', conclusion: null, number: 2, started_at: '2026-01-01T00:00:10Z', completed_at: null },
+      { name: 'Set up job', status: 'completed', conclusion: 'success', number: 1, started_at: '2026-01-01T00:00:00Z', completed_at: '2026-01-01T00:00:10Z' },
+    ]
+    await deliver(app, 'workflow_job', payload('in_progress', 10, { started_at: '2026-01-01T00:00:00Z', steps }))
+    expect((await jobByGitHubId(10))?.steps).toEqual([
+      { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:10Z' },
+      { number: 2, name: 'Build', status: 'in_progress', conclusion: null, startedAt: '2026-01-01T00:00:10Z', completedAt: null },
+    ])
+    await deliver(app, 'workflow_job', payload('completed', 10, { conclusion: 'success', completed_at: '2026-01-01T00:01:00Z' }))
+    expect((await jobByGitHubId(10))?.steps).toHaveLength(2)
+    await deliver(app, 'workflow_job', payload('completed', 10, { conclusion: 'success', completed_at: '2026-01-01T00:01:00Z', steps: [{ ...steps[0], status: 'completed', conclusion: 'success', completed_at: '2026-01-01T00:01:00Z' }] }))
+    expect((await jobByGitHubId(10))?.steps).toMatchObject([{ number: 2, conclusion: 'success', completedAt: '2026-01-01T00:01:00Z' }])
+  })
+
   test('ping answers pong, other events are skipped, malformed payloads are 400', async () => {
     await fresh()
     const app = new Elysia().use(webhooks)

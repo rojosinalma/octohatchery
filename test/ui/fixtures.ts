@@ -53,6 +53,10 @@ export const jobs: Job[] = [
     logSource: null,
     logBytes: 120,
     logTruncated: false,
+    steps: [
+      { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-10-19T10:00:30Z', completedAt: '2026-10-19T10:00:40Z' },
+      { number: 2, name: 'Build', status: 'in_progress', conclusion: null, startedAt: '2026-10-19T10:00:40Z', completedAt: null },
+    ],
   },
   {
     id: 8,
@@ -71,6 +75,11 @@ export const jobs: Job[] = [
     logSource: 'github',
     logBytes: 2048,
     logTruncated: true,
+    steps: [
+      { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-10-19T08:00:10Z', completedAt: '2026-10-19T08:00:20Z' },
+      { number: 2, name: 'Run tests', status: 'completed', conclusion: 'failure', startedAt: '2026-10-19T08:00:20Z', completedAt: '2026-10-19T08:05:00Z' },
+      { number: 3, name: 'Complete job', status: 'completed', conclusion: 'success', startedAt: '2026-10-19T08:05:00Z', completedAt: '2026-10-19T08:05:10Z' },
+    ],
   },
 ]
 

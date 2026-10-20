@@ -129,7 +129,7 @@ export async function insertJobIfNew(j: NewJob, d: Db = db()): Promise<JobRow | 
   return job
 }
 
-export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries' | 'logSource' | 'logBytes' | 'logTruncated'>>
+export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries' | 'logSource' | 'logBytes' | 'logTruncated' | 'steps'>>
 
 /** `silent` skips the bus notification (log bookkeeping that changes nothing a dashboard table shows). */
 export async function updateJob(id: number, patch: JobPatch, d: Db = db(), opts: { silent?: boolean } = {}): Promise<JobRow | undefined> {
@@ -143,12 +143,23 @@ export async function updateJob(id: number, patch: JobPatch, d: Db = db(), opts:
   if (patch.logSource !== undefined) sets.push(sql`log_source = ${patch.logSource}`)
   if (patch.logBytes !== undefined) sets.push(sql`log_bytes = ${patch.logBytes}`)
   if (patch.logTruncated !== undefined) sets.push(sql`log_truncated = ${patch.logTruncated}`)
+  if (patch.steps !== undefined) sets.push(sql`steps = ${JSON.stringify(patch.steps)}`)
   if (!sets.length) return jobById(id, d)
   const [row] = await d.all(sql`update jobs set ${sql.join(sets, sql`, `)} where id = ${id} returning *`)
   if (!row) return undefined
   const job = toJob(row)
   if (!opts.silent) bus.emit('job', job)
   return job
+}
+
+/**
+ * Completed jobs whose final log is stored but whose `steps` are still empty, oldest first. Jobs that ended without
+ * a runner here never get a GitHub log, so they are left alone; a job GitHub reports no steps for is retried each
+ * pass until the retention purge takes it (bounded by `limit`).
+ */
+export async function jobsWithoutSteps(limit: number, d: Db = db()): Promise<JobRow[]> {
+  const rows = await d.all(sql`select * from jobs where status = 'completed' and log_source = 'github' and steps = '[]' order by completed_at desc limit ${limit}`)
+  return rows.map(toJob)
 }
 
 // job logs

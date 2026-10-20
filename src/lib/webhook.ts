@@ -6,8 +6,25 @@ import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
 import { insertJobIfNew, jobByGitHubId, repoByName, runnerById, updateJob, updateRunner } from './store'
+import type { JobStep } from './types'
 
 const logger = log('http')
+
+/** `workflow_job.steps[]` as GitHub sends it; unknown shapes in the list are dropped, not rejected. */
+export const StepPayload = z.object({
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable().optional(),
+  number: z.number(),
+  started_at: z.string().nullable().optional(),
+  completed_at: z.string().nullable().optional(),
+})
+export type StepPayload = z.infer<typeof StepPayload>
+
+export const toSteps = (steps: StepPayload[] | undefined): JobStep[] =>
+  (steps ?? [])
+    .map((s) => ({ number: s.number, name: s.name, status: s.status, conclusion: s.conclusion ?? null, startedAt: s.started_at ?? null, completedAt: s.completed_at ?? null }))
+    .sort((a, b) => a.number - b.number)
 
 export const WorkflowJobPayload = z.object({
   action: z.enum(['queued', 'in_progress', 'completed', 'waiting']),
@@ -23,6 +40,7 @@ export const WorkflowJobPayload = z.object({
     created_at: z.string().optional(),
     started_at: z.string().nullable().optional(),
     completed_at: z.string().nullable().optional(),
+    steps: z.array(StepPayload).optional(),
   }),
   repository: z.object({ full_name: z.string() }),
 })
@@ -103,7 +121,7 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
     case 'in_progress': {
       const job = await jobByGitHubId(wj.id)
       if (!job) return { status: 200, message: 'job unknown, ignored' }
-      await updateJob(job.id, { status: 'in_progress', startedAt: wj.started_at ?? new Date().toISOString() })
+      await updateJob(job.id, { status: 'in_progress', startedAt: wj.started_at ?? new Date().toISOString(), steps: toSteps(wj.steps) })
       if (job.runnerId !== null) await updateRunner(job.runnerId, { state: 'busy' })
       await recordEvent('webhook', 'job.started', target, { runner: wj.runner_name ?? null })
       return { status: 200, message: 'job in progress' }
@@ -112,7 +130,7 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
       const job = await jobByGitHubId(wj.id)
       if (!job) return { status: 200, message: 'job unknown, ignored' }
       const completedAt = wj.completed_at ?? new Date().toISOString()
-      await updateJob(job.id, { status: 'completed', conclusion: wj.conclusion ?? null, completedAt })
+      await updateJob(job.id, { status: 'completed', conclusion: wj.conclusion ?? null, completedAt, ...(wj.steps ? { steps: toSteps(wj.steps) } : {}) })
       if (job.runnerId !== null) {
         const runner = await runnerById(job.runnerId)
         if (runner && (runner.state === 'busy' || runner.state === 'idle')) await updateRunner(runner.id, { state: 'exited', exitedAt: completedAt })
