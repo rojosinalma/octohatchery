@@ -3,11 +3,13 @@ import pkg from '../../package.json'
 import { db } from '../db'
 import { toEvent, toJob, toRepo, toRunner, toRunnerType } from '../db/rows'
 import { backend } from './backends'
+import { bus } from './bus'
 import { config } from './config'
 import { recordEvent } from './events'
 import { github } from './github/auth'
 import { buildStatus, RUNS_ON_PERMISSIONS, unknownStatus, type GitHubStatus } from './github/permissions'
 import { githubMessage } from './github/rest'
+import { wantedImages } from './images'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { rewriteRunsOn, runsOnSnippet } from './runs-on'
@@ -25,6 +27,8 @@ import {
   type GitHubRepoItem,
   type HealthSnapshot,
   type Host,
+  type ImageInventory,
+  type ImagePull,
   type Job,
   type JobLog,
   type JobStatus,
@@ -41,7 +45,9 @@ import {
 
 const logger = log('service')
 
-export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; limit?: number }
+export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string; limit?: number }
+/** Same shape `runner_image_default` is validated with: `registry/name[:tag][@sha256:…]`. */
+const IMAGE_RE = /^[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/
 const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]*$/
 const MOUNT_RE = /^[^:]+:\/[^:]*(?::ro|:rw)?$/
@@ -390,7 +396,8 @@ export const service = {
 
   /**
    * Jobs newest first. `q` is a case-insensitive substring over job name, repo and runner name; `since` keeps jobs
-   * queued at or after that ISO time; `running` = claimed or in progress; `failed` = failure, timed out or cancelled.
+   * queued at or after that ISO time; `running` = claimed or in progress; `failed` = failure, timed out or cancelled;
+   * `runner` keeps the jobs of one runner by its exact name.
    */
   async listJobs(filter: JobsFilter = {}): Promise<Job[]> {
     const where = [sql`1 = 1`]
@@ -403,6 +410,7 @@ export const service = {
     }
     if (filter.running) where.push(sql`j.status in ('claimed', 'in_progress')`)
     if (filter.failed) where.push(sql`j.conclusion in ('failure', 'timed_out', 'cancelled')`)
+    if (filter.runner) where.push(sql`r.name = ${filter.runner}`)
     if (filter.q) {
       const needle = `%${filter.q.trim().toLowerCase().replace(/[%_\\]/g, '\\$&')}%`
       where.push(sql`(lower(j.name) like ${needle} escape '\\' or lower(j.repo) like ${needle} escape '\\' or lower(coalesce(r.name, '')) like ${needle} escape '\\')`)
@@ -479,6 +487,32 @@ export const service = {
     await recordEvent(actor, 'runner.kill', runner.name, { host: runner.host, type: runner.type })
   },
 
+  /** The image matrix: wanted references, hosts, what each host holds and the newest pull per cell. */
+  async listImages(): Promise<ImageInventory> {
+    const [references, hosts, images, pulls] = await Promise.all([wantedImages(), store.listHosts(), store.listHostImages(), store.latestImagePulls()])
+    return { references, hosts, images, pulls }
+  },
+
+  /**
+   * Queues a pull of `reference` on `host`; that host's node runs it on its next scheduler tick. Only references the
+   * instance wants (a template's image, the default, the dind sidecar) can be pulled. A pull already queued or running
+   * for the same cell is returned instead of a second one.
+   */
+  async pullImage(input: { host: string; reference: string }, actor: Actor): Promise<ImagePull & { reused: boolean }> {
+    const host = await requireHost(input.host)
+    const reference = input.reference.trim()
+    if (!IMAGE_RE.test(reference)) throw new ServiceError('reference must be an image reference like registry/name:tag')
+    const wanted = await wantedImages()
+    if (!wanted.includes(reference)) throw new ServiceError(`"${reference}" is not used by any template; images are pulled only for templates, the default image and the dind sidecar`, 'invalid')
+    if (host.status !== 'online') throw new ServiceError(`host "${host.name}" is offline`, 'unavailable')
+    const existing = await store.activeImagePull(host.id, reference)
+    if (existing) return { ...existing, reused: true }
+    const pull = await store.insertImagePull({ hostId: host.id, reference, requestedBy: actor })
+    bus.emit('image', { host: host.name, reference, status: pull.status })
+    await recordEvent(actor, 'image.pull', `${reference} on ${host.name}`, { pullId: pull.id })
+    return { ...pull, reused: false }
+  },
+
   async listEvents(filter: { limit?: number } = {}): Promise<Event[]> {
     const rows = await db().all(sql`select * from events order by id desc limit ${limitOf(filter.limit)}`)
     return rows.map(toEvent)
@@ -495,7 +529,7 @@ export const service = {
     } else if (key === 'buildkit_host') {
       if (!/^(tcp|unix):\/\/.+/.test(value)) throw new ServiceError('buildkit_host must be a tcp:// or unix:// address')
     } else if (key === 'runner_image_default') {
-      if (!/^[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$/.test(value)) throw new ServiceError('runner_image_default must be an image reference like registry/name:tag')
+      if (!IMAGE_RE.test(value)) throw new ServiceError('runner_image_default must be an image reference like registry/name:tag')
     } else if (key.startsWith('ui_')) {
       if (!/^[a-z0-9-]{1,40}$/.test(value)) throw new ServiceError(`${key} must be a short lowercase identifier`)
     } else if (!/^\d+$/.test(value)) {

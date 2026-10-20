@@ -36,8 +36,11 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   the template name and one pill per slot, filled when a runner occupies it; the row's tooltip
   gives used / total. A template with more than 12 slots on a host shows a bar and the count
   instead. A host without slots says so and links to Templates.
-- Runners: only live runners (`spawning`, `idle`, `busy`). Repo and job link into the jobs
-  screen; `Kill` asks for confirmation, then calls `DELETE /api/runners/:id`.
+- Runners: only live runners (`spawning`, `idle`, `busy`). Every cell links somewhere: the runner
+  name to the jobs list filtered on that runner (`/jobs?runner=<name>`), the host to its row on
+  the Hosts screen (`/hosts#<name>`), the template to its row under Templates
+  (`/templates#<name>`), repo to the jobs list filtered on the repo, job to the job page. `Kill`
+  asks for confirmation, then calls `DELETE /api/runners/:id`.
 - Empty state: "No hosts yet". A node registers itself on boot, so the first host appears as
   soon as one instance starts with access to a Docker socket.
 
@@ -50,7 +53,9 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   a search box (`?q=` matches job name, repo and runner name, case-insensitive; Enter or a short
   pause navigates, `/` focuses it) and quick filters on the right: Running now (`?running=1`),
   Failed (`?failed=1`: failure, timed out or cancelled), Last 24 h and This week (`?since=<ISO>`).
-  A pressed quick filter clears itself on the next click. Unknown values are ignored.
+  A pressed quick filter clears itself on the next click. Unknown values are ignored. A runner
+  filter (`?runner=<name>`, reached from the Overview or a job page) has no select of its own: it
+  shows as a chip in the toolbar with a × that clears it and keeps the other filters.
 - Finished jobs show their conclusion (`success`, `failure`, …) instead of `completed`; a
   failed row is tinted.
 - Duration is computed from `startedAt` to `completedAt` (or now).
@@ -104,6 +109,9 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Templates
 
+Two tabs under the page title: **Templates** (`/templates`) and **Images** (`/templates/images`).
+Each tab is its own URL; the Templates entry in the navbar stays active on both.
+
 - The table lists every template with its labels (`self-hosted` and the template name are always
   added), image, caps, Docker access badge (`none`, `host socket`, `dind`), mount and env counts,
   and the names of secret environment variables.
@@ -126,8 +134,31 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   saved cell) re-fetch `GET /templates?partial=slots` and swap the block in place, so the
   used / free counts follow the runners. A refresh waits while a slot field has focus and runs
   when the field is left, so a number being typed is never overwritten.
+- Image select: every option says where the image is missing (`… · missing on tiny`), from the
+  inventory the hosts report. When the picked image is missing on a host that has slots for this
+  template, a warning appears under the field with one **Pull on <host>** button per host; the
+  button queues the pull (`POST /api/hosts/:name/images/pull`), shows a spinner, and turns into a
+  `queued on <host>` badge with a toast. A template without slots gets no warning: nothing starts
+  there yet.
 
-### Hosts
+### Templates → Images
+
+- One row per image the instance wants: the image of every template, the default runner image
+  (`runner_image_default`) and the Docker-in-Docker sidecar (`docker:28-dind`). One column per
+  host. Rows are never typed in: a reference is listed because a template (or the default) uses
+  it, and disappears when nothing does.
+- Each cell is one of `present` (green badge with the full digest as tooltip, then short digest ·
+  size · when the image was built), `missing` (red; after a failed pull also a `last pull failed`
+  badge with the engine's error as tooltip) or `pulling` / `queued` (spinner). Every cell has an
+  icon-only **Pull now** button, busy while a pull is queued or running and disabled for an
+  offline host; the row has **Pull on all hosts** for every online host.
+- **Add image** opens a dialog with a select of the listed images that are missing on at least one
+  online host; Pull queues it on every host that lacks it. When nothing is missing the dialog says so.
+  To list a new image, create or edit a template that uses it.
+- Live: `image` events from `/events/stream` re-fetch `GET /templates/images?partial=1` and swap the
+  table in place, so a cell moves from `queued` to `pulling` to `present` while you watch. The
+  inventory itself comes from each node's heartbeat (`host_images`), so an image pulled by hand
+  on a host shows up within one heartbeat too.
 
 - One row per node: status dot, name and `leader` badge, slots used / total on that host (links
   to Templates), CPUs, memory in GB, OS, Docker reachability, Docker version, app version and the
@@ -170,8 +201,8 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
 
 ## Live updates
 
-`app.js` opens an `EventSource` on `/events/stream`. The server sends `runner`, `job`, `slot`
-and `event` events whenever a row changes. A page that has a live block (`[data-live]`) listens
+`app.js` opens an `EventSource` on `/events/stream`. The server sends `runner`, `job`, `slot`,
+`event` and `image` events whenever a row changes. A page that has a live block (`[data-live]`) listens
 to the events named in that attribute and, 300 ms after the last one, fetches the current URL with
 `?partial=1`. In partial mode a page returns only its live block:
 
@@ -179,6 +210,8 @@ to the events named in that attribute and, 300 ms after the last one, fetches th
 |---|---|---|
 | `/` | `#overview-live` (hosts, slots, runners) | `runner`, `slot` |
 | `/jobs` | `#jobs-live` (the filtered table) | `job` |
+| `/templates` (`?partial=slots`) | `#slots-live` (the slots matrix) | `runner`, `slot` |
+| `/templates/images` | `#images-live` (the image matrix) | `image` |
 | `/events` | `#events-live` | `event` |
 
 The block is replaced in place and re-wired; nothing else on the page moves. The dot in the top bar

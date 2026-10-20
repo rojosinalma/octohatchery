@@ -1,4 +1,4 @@
-import { RUNNER_DOCKER_OPTIONS, type Event, type Host, type Job, type JobStatus, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerState, type RunnerType } from '../lib/types'
+import { RUNNER_DOCKER_OPTIONS, type Event, type Host, type HostImage, type ImagePull, type ImagePullStatus, type Job, type JobStatus, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerState, type RunnerType } from '../lib/types'
 import type { Row } from './driver'
 
 // Row → domain mappers. SQLite returns booleans as 0/1 and JSON as text; Postgres returns booleans natively.
@@ -128,5 +128,30 @@ export function toEvent(r: Row): Event {
     target: str(r.target),
     detail: json<Record<string, unknown>>(r.detail, {}),
     at: str(r.at),
+  }
+}
+
+/** Joined with `hosts` for the name: `select i.*, h.name as host …`. */
+export function toHostImage(r: Row): HostImage {
+  return {
+    host: str(r.host),
+    reference: str(r.reference),
+    digest: strOrNull(r.digest),
+    sizeBytes: numOrNull(r.size_bytes),
+    pulledAt: strOrNull(r.pulled_at),
+    seenAt: str(r.seen_at),
+  }
+}
+
+export function toImagePull(r: Row): ImagePull {
+  return {
+    id: num(r.id),
+    host: str(r.host),
+    reference: str(r.reference),
+    status: str(r.status) as ImagePullStatus,
+    error: strOrNull(r.error),
+    requestedBy: str(r.requested_by),
+    createdAt: str(r.created_at),
+    finishedAt: strOrNull(r.finished_at),
   }
 }

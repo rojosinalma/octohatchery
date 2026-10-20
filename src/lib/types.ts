@@ -74,6 +74,14 @@ export type Runner = {
   createdAt: string
   exitedAt: string | null
 }
+/** An image present on a host's engine, as last seen by that node's heartbeat. */
+export type HostImage = { host: string; reference: string; digest: string | null; sizeBytes: number | null; pulledAt: string | null; seenAt: string }
+export type ImagePullStatus = 'queued' | 'running' | 'done' | 'failed'
+export const IMAGE_PULL_ACTIVE: readonly ImagePullStatus[] = ['queued', 'running']
+/** A pull request for one image on one host; the node that owns the host runs it. */
+export type ImagePull = { id: number; host: string; reference: string; status: ImagePullStatus; error: string | null; requestedBy: string; createdAt: string; finishedAt: string | null }
+/** The whole image picture: every reference the orchestrator wants, what each host has, and the latest pull per cell. */
+export type ImageInventory = { references: string[]; hosts: Host[]; images: HostImage[]; pulls: ImagePull[] }
 export type Event = { id: number; actor: string; action: string; target: string; detail: Record<string, unknown>; at: string }
 export type HealthSnapshot = {
   ok: boolean

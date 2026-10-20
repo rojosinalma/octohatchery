@@ -25,4 +25,4 @@ export function setBackend(next: ContainerBackend | undefined): void {
   current = next
 }
 
-export type { ContainerBackend, ContainerInfo, SpawnInput } from './types'
+export type { ContainerBackend, ContainerInfo, ImageInfo, SpawnInput } from './types'

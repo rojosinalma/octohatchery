@@ -1,8 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm'
 import { db, type Db } from '../db'
-import { toHost, toJob, toLogLine, toRepo, toRunner, toRunnerType } from '../db/rows'
+import { toHost, toHostImage, toImagePull, toJob, toLogLine, toRepo, toRunner, toRunnerType } from '../db/rows'
+import type { ImageInfo } from './backends/types'
 import { bus } from './bus'
-import type { Host, HostSpecs, Job, JobStatus, LogLine, Repo, RepoListItem, Runner, RunnerState, RunnerType, Slot } from './types'
+import { IMAGE_PULL_ACTIVE, type Host, type HostImage, type HostSpecs, type ImagePull, type Job, type JobStatus, type LogLine, type Repo, type RepoListItem, type Runner, type RunnerState, type RunnerType, type Slot } from './types'
 
 // Shared queries used by the service, scheduler, sweep and webhook handlers.
 
@@ -237,4 +238,105 @@ export async function countJobs(status: JobStatus, d: Db = db()): Promise<number
 export async function countRunners(state: RunnerState, d: Db = db()): Promise<number> {
   const [row] = await d.all<{ n: number | string }>(sql`select count(*) as n from runners where state = ${state}`)
   return Number(row?.n ?? 0)
+}
+
+// host images
+
+/** Every (host, reference) row joined with the host name, ordered for the matrix. */
+export async function listHostImages(d: Db = db()): Promise<HostImage[]> {
+  const rows = await d.all(sql`select i.*, h.name as host from host_images i join hosts h on h.id = i.host_id order by i.reference, h.name`)
+  return rows.map(toHostImage)
+}
+
+/**
+ * Replaces what the heartbeat knows about one host: `wanted` references that are present get upserted with the
+ * engine's digest, size and creation time (`pulled_at`); rows for references no longer present (or no longer wanted)
+ * are deleted. Returns true when the stored set changed, so the caller can announce it.
+ */
+export async function syncHostImages(hostName: string, present: ImageInfo[], wanted: readonly string[], d: Db = db()): Promise<boolean> {
+  const host = await hostByName(hostName, d)
+  if (!host) return false
+  const before = (await d.all<{ reference: string; digest: unknown }>(sql`select reference, digest from host_images where host_id = ${host.id}`)).map((r) => `${r.reference}@${r.digest ?? ''}`).sort()
+  const byRef = new Map(present.map((i) => [i.reference, i]))
+  const keep = wanted.filter((ref) => byRef.has(ref))
+  const seenAt = now()
+  for (const ref of keep) {
+    const i = byRef.get(ref)!
+    await d.run(sql`
+      insert into host_images (host_id, reference, digest, size_bytes, pulled_at, seen_at)
+      values (${host.id}, ${ref}, ${i.digest}, ${i.sizeBytes}, ${i.createdAt}, ${seenAt})
+      on conflict (host_id, reference) do update set digest = excluded.digest, size_bytes = excluded.size_bytes,
+        pulled_at = excluded.pulled_at, seen_at = excluded.seen_at`)
+  }
+  if (keep.length) await d.run(sql`delete from host_images where host_id = ${host.id} and reference not in (${inList(keep)})`)
+  else await d.run(sql`delete from host_images where host_id = ${host.id}`)
+  const after = keep.map((ref) => `${ref}@${byRef.get(ref)!.digest ?? ''}`).sort()
+  return before.join('\n') !== after.join('\n')
+}
+
+// image pulls
+
+export async function insertImagePull(input: { hostId: number; reference: string; requestedBy: string }, d: Db = db()): Promise<ImagePull> {
+  const [row] = await d.all(sql`
+    insert into image_pulls (host_id, reference, status, requested_by, created_at)
+    values (${input.hostId}, ${input.reference}, 'queued', ${input.requestedBy}, ${now()})
+    returning *`)
+  return (await imagePullById(num(row!.id), d))!
+}
+
+export async function imagePullById(id: number, d: Db = db()): Promise<ImagePull | undefined> {
+  const [row] = await d.all(sql`select p.*, h.name as host from image_pulls p join hosts h on h.id = p.host_id where p.id = ${id}`)
+  return row ? toImagePull(row) : undefined
+}
+
+/** A queued or running pull for this (host, reference), if any: a second request reuses it. */
+export async function activeImagePull(hostId: number, reference: string, d: Db = db()): Promise<ImagePull | undefined> {
+  const [row] = await d.all(sql`
+    select p.*, h.name as host from image_pulls p join hosts h on h.id = p.host_id
+    where p.host_id = ${hostId} and p.reference = ${reference} and p.status in (${inList(IMAGE_PULL_ACTIVE)}) order by p.id limit 1`)
+  return row ? toImagePull(row) : undefined
+}
+
+/** The newest pull per (host, reference): the matrix shows a queued/running one as pulling and a failed one as the last error. */
+export async function latestImagePulls(d: Db = db()): Promise<ImagePull[]> {
+  const rows = await d.all(sql`
+    select p.*, h.name as host from image_pulls p join hosts h on h.id = p.host_id
+    where p.id in (select max(id) from image_pulls group by host_id, reference) order by p.reference, h.name`)
+  return rows.map(toImagePull)
+}
+
+/** Marks the oldest queued pull for this host `running` and returns it; one at a time per node. */
+export async function claimImagePull(hostName: string, d: Db = db()): Promise<ImagePull | undefined> {
+  return d.transaction(async (tx) => {
+    const host = await hostByName(hostName, tx)
+    if (!host) return undefined
+    const [running] = await tx.all(sql`select id from image_pulls where host_id = ${host.id} and status = 'running' limit 1`)
+    if (running) return undefined
+    const [next] = await tx.all(sql`select id from image_pulls where host_id = ${host.id} and status = 'queued' order by id limit 1`)
+    if (!next) return undefined
+    const [row] = await tx.all(sql`update image_pulls set status = 'running' where id = ${next.id} and status = 'queued' returning id`)
+    return row ? imagePullById(num(row.id), tx) : undefined
+  })
+}
+
+export async function finishImagePull(id: number, outcome: { status: 'done' | 'failed'; error?: string }, d: Db = db()): Promise<ImagePull | undefined> {
+  await d.run(sql`update image_pulls set status = ${outcome.status}, error = ${outcome.error ?? null}, finished_at = ${now()} where id = ${id}`)
+  return imagePullById(id, d)
+}
+
+/** Pulls left `running` by a node that died mid-pull are failed with a reason on its next start. */
+export async function failStrandedImagePulls(hostName: string, reason: string, d: Db = db()): Promise<ImagePull[]> {
+  const host = await hostByName(hostName, d)
+  if (!host) return []
+  const rows = await d.all(sql`update image_pulls set status = 'failed', error = ${reason}, finished_at = ${now()} where host_id = ${host.id} and status = 'running' returning id`)
+  const out: ImagePull[] = []
+  for (const r of rows) {
+    const p = await imagePullById(num(r.id), d)
+    if (p) out.push(p)
+  }
+  return out
+}
+
+function num(v: unknown): number {
+  return typeof v === 'number' ? v : Number(v)
 }

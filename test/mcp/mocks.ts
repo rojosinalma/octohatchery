@@ -40,6 +40,7 @@ export const service = {
   listRunners: ok([]),
   spawn: ok({ id: 9, name: 'r', host: 'node-a', type: 'generic', state: 'spawning' }),
   kill: ok(undefined),
+  pullImage: mock(async (input: unknown) => ({ id: 1, ...(input as object), status: 'queued' })),
   listEvents: ok([]),
   getSettings: ok({ poll_interval_s: '300' }),
   setSetting: ok(undefined),

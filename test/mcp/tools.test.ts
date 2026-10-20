@@ -27,6 +27,7 @@ const cases: Record<string, { good: unknown; bad: unknown }> = {
   list_runners: { good: { state: 'busy' }, bad: { limit: 0 } },
   spawn: { good: { type: 'generic', host: 'node-a' }, bad: { type: 'generic' } },
   kill: { good: { runner_id: 3 }, bad: { runner_id: 'three' } },
+  pull_image: { good: { host: 'node-a', reference: 'docker:28-dind' }, bad: { host: 'node-a' } },
   list_events: { good: { limit: 5 }, bad: { limit: 10_000 } },
   get_settings: { good: {}, bad: null },
   set_setting: { good: { key: 'log_level', value: 'debug' }, bad: { key: '', value: 'x' } },

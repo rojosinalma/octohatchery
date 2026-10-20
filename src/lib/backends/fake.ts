@@ -1,4 +1,4 @@
-import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, SidecarInput, SpawnInput } from './types'
+import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, ImageInfo, SidecarInput, SpawnInput } from './types'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL } from './types'
 
 /** A hand-driven log feed: `push` lines, `end` when the container exits. */
@@ -41,6 +41,10 @@ export type FakeBackend = ContainerBackend & {
   /** Sidecars by id; removed together with their runner by `removeByRunnerId`. */
   sidecars: Map<string, ContainerInfo & { input: SidecarInput }>
   up: boolean
+  /** Images the fake engine holds, by reference; `pull` adds one (or fails when its reference is in `pullFails`). */
+  images: Map<string, ImageInfo>
+  pullFails: Map<string, string>
+  pulls: string[]
   exit(containerId: string, code?: number): void
   /** Log feed per container; `logs()` drains it. Created on demand so tests can push before or after following. */
   feed(containerId: string): FakeLogFeed
@@ -53,12 +57,16 @@ export function createFakeBackend(): FakeBackend {
   const spawns: SpawnInput[] = []
   const sidecars = new Map<string, ContainerInfo & { input: SidecarInput }>()
   const feeds = new Map<string, FakeLogFeed>()
+  const images = new Map<string, ImageInfo>()
   let n = 0
   const fake: FakeBackend = {
     kind: 'fake',
     containers,
     spawns,
     sidecars,
+    images,
+    pullFails: new Map(),
+    pulls: [],
     up: true,
     exit(id, code = 0) {
       const c = containers.get(id)
@@ -135,6 +143,16 @@ export function createFakeBackend(): FakeBackend {
     },
     logs(id) {
       return fake.feed(id)
+    },
+    async listImages() {
+      if (!fake.up) throw new Error('fake engine is down')
+      return [...images.values()]
+    },
+    async pull(reference) {
+      fake.pulls.push(reference)
+      const fail = fake.pullFails.get(reference)
+      if (fail) throw new Error(fail)
+      images.set(reference, { reference, digest: `sha256:${reference.replace(/[^a-z0-9]/gi, '').padEnd(64, '0').slice(0, 64)}`, sizeBytes: 1_000_000, createdAt: new Date().toISOString() })
     },
   }
   return fake

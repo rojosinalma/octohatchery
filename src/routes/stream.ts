@@ -2,7 +2,7 @@ import { Elysia } from 'elysia'
 import { bus, type BusEvent } from '../lib/bus'
 import { sseResponse, streamClients } from './sse'
 
-const EVENTS: readonly BusEvent[] = ['runner', 'job', 'event', 'slot']
+const EVENTS: readonly BusEvent[] = ['runner', 'job', 'event', 'slot', 'image']
 
 export { streamClients }
 

@@ -133,3 +133,36 @@ export const settings = pgTable('settings', {
   value: text('value').notNull(),
   updatedAt: text('updated_at').notNull(),
 })
+
+export const hostImages = pgTable(
+  'host_images',
+  {
+    id: serial('id').primaryKey(),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => hosts.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    digest: text('digest'),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }),
+    pulledAt: text('pulled_at'),
+    seenAt: text('seen_at').notNull(),
+  },
+  (t) => [uniqueIndex('host_images_host_reference').on(t.hostId, t.reference)],
+)
+
+export const imagePulls = pgTable(
+  'image_pulls',
+  {
+    id: serial('id').primaryKey(),
+    hostId: integer('host_id')
+      .notNull()
+      .references(() => hosts.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    status: text('status').notNull().default('queued'),
+    error: text('error'),
+    requestedBy: text('requested_by').notNull(),
+    createdAt: text('created_at').notNull(),
+    finishedAt: text('finished_at'),
+  },
+  (t) => [index('image_pulls_host_status').on(t.hostId, t.status)],
+)

@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { PassThrough } from 'node:stream'
 import { config } from '../config'
 import { log } from '../log'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine } from './types'
+import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo } from './types'
 
 const logger = log('docker')
 const PIDS_LIMIT = 1024
@@ -114,6 +114,15 @@ function isNotFound(err: unknown): boolean {
   return (err as { statusCode?: number }).statusCode === 404
 }
 
+async function pullImage(docker: Docker, image: string): Promise<void> {
+  logger.info(`pull ${image}`)
+  const stream = await docker.pull(image)
+  await new Promise<void>((resolve, reject) => {
+    docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()))
+  })
+  logger.info(`pulled ${image}`)
+}
+
 async function pullIfMissing(docker: Docker, image: string): Promise<void> {
   try {
     await docker.getImage(image).inspect()
@@ -121,11 +130,21 @@ async function pullIfMissing(docker: Docker, image: string): Promise<void> {
   } catch (err) {
     if (!isNotFound(err)) throw err
   }
-  logger.info(`pull ${image}`)
-  const stream = await docker.pull(image)
-  await new Promise<void>((resolve, reject) => {
-    docker.modem.followProgress(stream, (err: Error | null) => (err ? reject(err) : resolve()))
-  })
+  await pullImage(docker, image)
+}
+
+/** `docker image ls` as one entry per tag: the digest is the first RepoDigest, size and creation time from the summary. */
+export function imagesFromSummaries(list: { RepoTags?: string[] | null; RepoDigests?: string[] | null; Size?: number; Created?: number }[]): ImageInfo[] {
+  const out: ImageInfo[] = []
+  for (const img of list) {
+    const tags = (img.RepoTags ?? []).filter((t) => t && t !== '<none>:<none>')
+    if (!tags.length) continue
+    const digest = (img.RepoDigests ?? []).map((d) => d.slice(d.indexOf('@') + 1)).find((d) => d.startsWith('sha256:')) ?? null
+    const sizeBytes = typeof img.Size === 'number' && img.Size >= 0 ? img.Size : null
+    const createdAt = typeof img.Created === 'number' && img.Created > 0 ? new Date(img.Created * 1000).toISOString() : null
+    for (const reference of tags) out.push({ reference, digest, sizeBytes, createdAt })
+  }
+  return out
 }
 
 export const dockerBackend: BackendAdapter = {
@@ -253,6 +272,12 @@ export const dockerBackend: BackendAdapter = {
       logs(containerId, opts = {}) {
         logger.debug(`follow logs ${containerId.slice(0, 12)}${opts.since ? ` since ${opts.since}` : ''}`)
         return followLogs(docker, containerId, opts.since)
+      },
+      async listImages() {
+        return imagesFromSummaries(await docker.listImages())
+      },
+      async pull(reference) {
+        await pullImage(docker, reference)
       },
       async listOwned() {
         const list = await docker.listContainers({ all: true, filters: { label: [`${RUNNER_LABEL}=true`] } })

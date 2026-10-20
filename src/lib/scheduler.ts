@@ -5,6 +5,7 @@ import { backend } from './backends'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL } from './backends/types'
 import { config } from './config'
 import { recordEvent } from './events'
+import { startImagePull } from './images'
 import { ensureFollower } from './joblog'
 import { matchesLabels } from './labels'
 import { log } from './log'
@@ -115,6 +116,7 @@ export async function tick(): Promise<void> {
     await reap()
     await startPending()
     await claim()
+    await startImagePull()
   } catch (err) {
     logger.error('tick failed', err instanceof Error ? err : String(err))
   } finally {

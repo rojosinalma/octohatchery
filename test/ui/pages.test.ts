@@ -100,7 +100,8 @@ describe('overview', () => {
     expect((nodeA.match(/<span class="slot-pill"/g) ?? []).length).toBe(4)
     expect((nodeA.match(/<span class="slot-pill" data-busy="true">/g) ?? []).length).toBe(1)
     expect(nodeA).not.toContain('t-progress')
-    expect(nodeA).toContain('href="/templates" class="t-mono t-small slot-type">generic</a>')
+    expect(nodeA).toContain('href="/templates#generic" class="t-mono t-small slot-type">generic</a>')
+    expect(nodeA).toContain('<a class="t-mono host-name" href="/hosts#node-a" data-tip="Host details">node-a</a>')
     expect(nodeA).not.toContain('No slots on this host')
     expect(body).toContain('id="runners-table"')
     expect(body).toContain('generic-node-a-3')
@@ -108,6 +109,11 @@ describe('overview', () => {
     expect(body).not.toContain('generic-node-a-2')
     expect(body).toContain('data-action="kill"')
     expect(body).toContain('href="/jobs/7"')
+    // runner, host and template link to the filtered jobs list, the host row and the template row
+    const row = body.slice(body.indexOf('data-runner-id="3"'), body.indexOf('data-action="kill"'))
+    expect(row).toContain('<a class="t-mono" href="/jobs?runner=generic-node-a-3" data-tip="Jobs this runner handled">generic-node-a-3</a>')
+    expect(row).toContain('<a href="/hosts#node-a" data-tip="Host details">node-a</a>')
+    expect(row).toContain('<a href="/templates#generic" data-tip="Template">generic</a>')
     // user-controlled text is escaped
     expect(body).toContain('build &lt;main&gt;')
     expect(body).not.toContain('>build <main><')
@@ -219,6 +225,17 @@ describe('jobs', () => {
     const { body } = await get('/jobs')
     expect(body).toContain('href="/jobs/7"')
     expect(body).toContain('href="/jobs/8"')
+  })
+
+  test('?runner= filters the list and shows a chip with a clear link that keeps the other params', async () => {
+    const { body } = await get('/jobs?runner=generic-node-a-3&status=in_progress')
+    expect(body).toContain('data-job-id="7"')
+    expect(body).not.toContain('data-job-id="8"')
+    expect(body).toContain('<span class="t-badge filter-chip" data-tone="accent" data-variant="outline" id="jobs-runner-chip">runner: <span class="t-mono">generic-node-a-3</span>')
+    expect(body).toContain('<a class="chip-remove" href="/jobs?status=in_progress" aria-label="Clear runner filter generic-node-a-3" data-tip="Clear runner filter">×</a>')
+    expect(body).toMatch(/href="\/jobs\?status=in_progress&running=1&runner=generic-node-a-3" aria-pressed="false">Running now/)
+    expect((await get('/jobs')).body).not.toContain('id="jobs-runner-chip"')
+    expect((await get('/jobs?runner=nobody')).body).toContain('No jobs match this filter')
   })
 })
 
@@ -388,6 +405,7 @@ describe('hosts', () => {
   test('table with specs, leader badge, slots per host and the add-host dialog', async () => {
     const { body } = await get('/hosts')
     expect(body).toContain('id="hosts-table"')
+    expect(body).toContain('<tr id="node-a" data-name="node-a"')
     const heads = [...body.matchAll(/<th[^>]*>(?:<button>)?([A-Za-z ]+?)\s*(?:<span class="t-sort-icon">)?<\//g)].map((m) => m[1]!.trim())
     expect(heads).toEqual(['Host', 'Slots', 'CPUs', 'Memory', 'OS', 'Docker', 'Docker version', 'App version', 'Last seen'])
     expect(body).toContain('<span class="t-badge host-leader" data-tone="accent" data-size="xs"')
@@ -430,6 +448,7 @@ describe('templates', () => {
   test('templates table, icon-only actions, edit dialog form, slots matrix with spawn buttons', async () => {
     const { body } = await get('/templates')
     expect(body).toContain('id="types-table"')
+    expect(body).toContain('<tr id="generic" data-name="generic">')
     expect(body).toContain('What a runner is made of, and how many may run per host.')
     expect(body).toContain('New template')
     expect(body).not.toMatch(/runner types?/i)
@@ -459,9 +478,9 @@ describe('templates', () => {
     // the matrix is a live block refreshed on runner / slot events
     expect(body).toContain('<div id="slots-live" data-live="runner slot" class="t-table-wrap">')
     // image: a select of the default plus every image in use, "Other…" last, the real value in a hidden field
-    expect(body).toContain('<form id="type-form" data-action="type-save" data-image-default="ghcr.io/rojosinalma/octohatchery-runner:edge">')
+    expect(body).toContain('<form id="type-form" data-action="type-save" data-image-default="ghcr.io/rojosinalma/octohatchery-runner:edge" data-slot-hosts=')
     expect(body).toContain('<select class="t-select" id="tf-image-pick"')
-    expect(body).toMatch(/<option value="ghcr.io\/rojosinalma\/octohatchery-runner:edge" selected>ghcr.io\/rojosinalma\/octohatchery-runner:edge<\/option><option value="ghcr.io\/example\/runner:1">ghcr.io\/example\/runner:1<\/option><option value="">Other…<\/option>/)
+    expect(body).toMatch(/<option value="ghcr.io\/rojosinalma\/octohatchery-runner:edge" selected data-missing="[^"]*">ghcr.io\/rojosinalma\/octohatchery-runner:edge[^<]*<\/option><option value="ghcr.io\/example\/runner:1" data-missing="[^"]*">ghcr.io\/example\/runner:1[^<]*<\/option><option value="">Other…<\/option>/)
     expect(body).toContain('<input class="t-input" id="tf-image-other" placeholder="registry/name:tag" aria-label="Other image" autocomplete="off" hidden/>')
     expect(body).toContain('<input type="hidden" id="tf-image" name="image" value="ghcr.io/rojosinalma/octohatchery-runner:edge"/>')
     expect(body).not.toContain('placeholder="ghcr.io/rojosinalma/octohatchery-runner:latest"')
@@ -471,7 +490,7 @@ describe('templates', () => {
     store.data = { ...full, settings: { ...full.settings, runner_image_default: 'registry.example/runner:2' } }
     const { body } = await get('/templates')
     expect(body).toContain('data-image-default="registry.example/runner:2"')
-    expect(body).toMatch(/<option value="registry.example\/runner:2" selected>/)
+    expect(body).toMatch(/<option value="registry.example\/runner:2" selected data-missing="node-a,node-b">/)
   })
 
   test('?partial=slots returns the matrix alone', async () => {
@@ -488,6 +507,94 @@ describe('templates', () => {
     const { body } = await get('/templates')
     expect(body).toContain('No templates')
     expect(body).toContain('No hosts yet')
+  })
+
+  test('tabs link the two sub-pages; the image select marks hosts missing an image and carries the slot hosts', async () => {
+    const { body } = await get('/templates')
+    expect(body).toContain('<div class="t-tabs templates-tabs" data-variant="underline"><div class="t-tabs-list" role="tablist" aria-label="Templates sections">')
+    expect(body).toMatch(/<a class="t-tab" role="tab" href="\/templates" id="tab-templates" aria-selected="true" tabindex="0">/)
+    expect(body).toMatch(/<a class="t-tab" role="tab" href="\/templates\/images" id="tab-images" aria-selected="false" tabindex="-1">/)
+    // the default is on no host, the template image is missing on node-b
+    expect(body).toContain('<option value="ghcr.io/rojosinalma/octohatchery-runner:edge" selected data-missing="node-a,node-b">ghcr.io/rojosinalma/octohatchery-runner:edge · missing on node-a, node-b</option>')
+    expect(body).toContain('<option value="ghcr.io/example/runner:1" data-missing="node-b">ghcr.io/example/runner:1 · missing on node-b</option>')
+    expect(body).toContain('data-slot-hosts="{&#34;generic&#34;:[&#34;node-a&#34;,&#34;node-b&#34;]}"')
+    expect(body).toContain('<div class="t-alert" data-tone="warning" role="status" id="tf-image-alert" hidden>')
+    expect(body).toContain('id="tf-image-alert-actions"')
+  })
+})
+
+describe('images', () => {
+  test('matrix: one row per wanted reference, one column per host, present / missing / pulling cells with pull buttons', async () => {
+    const { res, body } = await get('/templates/images')
+    expect(res.status).toBe(200)
+    expect(body).toContain('<title>Images · OctoHatchery</title>')
+    expect(body).toContain('<h1 class="t-page-title">Templates</h1>')
+    expect(body).toMatch(/href="\/templates" aria-current="page"/)
+    expect(body).toMatch(/<a class="t-tab" role="tab" href="\/templates\/images" id="tab-images" aria-selected="true" tabindex="0">/)
+    expect(body).toContain('<div id="images-live" data-live="image" class="t-table-wrap">')
+    expect(body).toContain('id="images-table"')
+    const heads = [...body.matchAll(/<th[^>]*>(?:<button>)?([A-Za-z ]+?)\s*(?:<span class="t-sort-icon">)?<\//g)].map((m) => m[1]!.trim())
+    expect(heads).toEqual(['Image', 'Actions'])
+    expect(body).toContain('<a href="/hosts#node-a" data-tip="Host details">node-a</a>')
+    const rows = [...body.matchAll(/<tr data-reference="([^"]+)" data-missing="(\d)">/g)].map((m) => [m[1], m[2]])
+    expect(rows).toEqual([
+      ['docker:28-dind', '1'],
+      ['ghcr.io/example/runner:1', '1'],
+      ['ghcr.io/rojosinalma/octohatchery-runner:edge', '2'],
+    ])
+    const runner = body.slice(body.indexOf('data-reference="ghcr.io/example/runner:1"'), body.indexOf('data-reference="ghcr.io/rojosinalma'))
+    // present on node-a: badge with the digest as tip, short digest · size · pulled time, a pull button
+    expect(runner).toContain('<td data-host="node-a" data-state="present">')
+    expect(runner).toContain('<span class="t-badge" data-tone="success" data-tip="sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef">present</span>')
+    expect(runner).toMatch(/<span class="t-mono">0123456789ab<\/span> · 1\.2 GB<span data-tip="[^"]+"> · built <time class="t-time" data-relative datetime="2026-10-18T09:00:00Z">/)
+    expect(runner).toContain('data-tip="Pull now on node-a" aria-label="Pull ghcr.io/example/runner:1 on node-a" data-action="image-pull" data-host="node-a" data-reference="ghcr.io/example/runner:1">')
+    // missing on node-b after a failed pull: danger badges, the error as tip (escaped), button disabled because the host is offline
+    expect(runner).toContain('<td data-host="node-b" data-state="missing">')
+    expect(runner).toContain('>missing</span>')
+    expect(runner).toContain('data-tip="manifest unknown <x>">last pull failed</span>')
+    expect(runner).toMatch(/data-tip="node-b is offline"[^>]*data-host="node-b"[^>]*disabled/)
+    // row action: pull on every online host
+    expect(runner).toContain('data-action="image-pull-all" data-reference="ghcr.io/example/runner:1" data-hosts="node-a"')
+    // queued on node-b: pulling state, busy button
+    const dind = body.slice(body.indexOf('data-reference="docker:28-dind"'), body.indexOf('data-reference="ghcr.io/example/runner:1"'))
+    expect(dind).toContain('<td data-host="node-b" data-state="pulling">')
+    expect(dind).toContain('<span class="t-spinner" data-size="sm" aria-hidden="true"></span> queued</span>')
+    expect(dind).toMatch(/data-action="image-pull" data-host="node-b" data-reference="docker:28-dind" aria-busy="true" disabled/)
+    // present without digest: no mono digest, size still shown
+    expect(dind).toContain('<td data-host="node-a" data-state="present">')
+    expect(dind).toContain('data-tip="digest unknown"')
+    expect(dind).toContain('· 381 MB')
+    expect(body).not.toMatch(/\stitle="/)
+  })
+
+  test('add-image dialog offers only references missing on an online host; no free text', async () => {
+    const { body } = await get('/templates/images')
+    expect(body).toContain('data-dialog-open="add-image-dlg"')
+    expect(body).toContain('<form id="add-image-form" data-action="image-add">')
+    expect(body).not.toMatch(/add-image-dlg[\s\S]*<input class="t-input"/)
+    // node-b is offline, so only the default (missing on node-a) qualifies
+    expect(body).toContain('<select class="t-select" id="add-image-pick" name="reference" required><option value="ghcr.io/rojosinalma/octohatchery-runner:edge" data-hosts="node-a">ghcr.io/rojosinalma/octohatchery-runner:edge · missing on node-a</option></select>')
+    expect(body).toContain('create or edit a template')
+  })
+
+  test('add-image dialog with nothing missing says so', async () => {
+    store.data = { ...full, images: [...full.images!, { host: 'node-a', reference: 'ghcr.io/rojosinalma/octohatchery-runner:edge', digest: null, sizeBytes: null, pulledAt: null, seenAt: 'x' }] }
+    const { body } = await get('/templates/images')
+    expect(body).toContain('id="add-image-none"')
+    expect(body).not.toContain('id="add-image-pick"')
+  })
+
+  test('partial and empty states', async () => {
+    const { body } = await get('/templates/images?partial=1')
+    expect(body.trim().startsWith('<div id="images-live" data-live="image"')).toBe(true)
+    expect(body).not.toContain('<html')
+    store.data = empty
+    const e = (await get('/templates/images')).body
+    expect(e).toContain('No hosts yet')
+    store.data = { ...full, references: [] }
+    const n = (await get('/templates/images')).body
+    expect(n).toContain('No images yet')
+    expect(n).toContain('Images appear here from templates')
   })
 })
 

@@ -37,6 +37,13 @@ export const gb = (mb: number) => {
   return g < 10 ? g.toFixed(1) : String(Math.round(g))
 }
 
+/** Bytes as a short size: `812 MB`, `1.2 GB`. */
+export const bytes = (n: number) => {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(n >= 10 * 1024 ** 3 ? 0 : 1)} GB`
+  if (n >= 1024 ** 2) return `${Math.round(n / 1024 ** 2)} MB`
+  return `${Math.max(1, Math.round(n / 1024))} KB`
+}
+
 export const Empty = ({ icon, title, text, children }: PropsWithChildren<{ icon: string; title: string; text: string }>) => (
   <div class="t-empty">
     <span class="t-icon t-empty-icon">

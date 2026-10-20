@@ -1,7 +1,7 @@
 import type { Job, JobStatus, Repo } from '../lib/types'
 import { Empty, Icon, JobBadge, RelTime } from './parts'
 
-export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean }
+export type JobsFilter = { repo?: string; status?: JobStatus; q?: string; since?: string; running?: boolean; failed?: boolean; runner?: string }
 /** Runner id → runner name, for the Runner column (jobs store the id only). */
 export type RunnerNames = Record<number, string>
 export type JobsData = { jobs: Job[]; repos: Repo[]; filter: JobsFilter; runnerNames: RunnerNames }
@@ -26,11 +26,12 @@ const query = (f: JobsFilter) => {
   if (f.since) q.set('since', f.since)
   if (f.running) q.set('running', '1')
   if (f.failed) q.set('failed', '1')
+  if (f.runner) q.set('runner', f.runner)
   const s = q.toString()
   return s ? `?${s}` : ''
 }
 
-const isFiltered = (f: JobsFilter) => Boolean(f.repo || f.status || f.q || f.since || f.running || f.failed)
+const isFiltered = (f: JobsFilter) => Boolean(f.repo || f.status || f.q || f.since || f.running || f.failed || f.runner)
 
 const duration = (job: Job) => {
   if (!job.startedAt) return null
@@ -185,6 +186,17 @@ export const JobsPage = ({ jobs, repos, filter, runnerNames }: JobsData) => {
           ))}
         </select>
         <input class="t-input" data-size="sm" data-width="auto" type="search" id="jobs-search" name="q" data-nav="q" data-nav-on="enter" placeholder="Search jobs…" aria-label="Search jobs" value={filter.q ?? ''} autocomplete="off" />
+        {filter.runner ? (
+          <span class="t-badge filter-chip" data-tone="accent" data-variant="outline" id="jobs-runner-chip">
+            runner:{' '}
+            <span class="t-mono" safe>
+              {filter.runner}
+            </span>
+            <a class="chip-remove" href={`/jobs${query({ ...filter, runner: undefined })}`} aria-label={`Clear runner filter ${filter.runner}`} data-tip="Clear runner filter">
+              ×
+            </a>
+          </span>
+        ) : null}
         <span class="t-toolbar-spacer"></span>
         <div class="t-btn-group" role="group" data-role="filter" aria-label="Quick filters">
           <a class="t-btn" data-size="sm" href={toggle({ running: true }, Boolean(filter.running))} aria-pressed={filter.running ? 'true' : 'false'}>
