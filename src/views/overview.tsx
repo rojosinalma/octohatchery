@@ -102,6 +102,7 @@ const SlotBar = ({ slot }: { slot: Slot }) => {
   const tone = slot.count === 0 ? 'neutral' : slot.free === 0 ? 'warning' : 'success'
   return (
     <div class="slot-bar">
+      <span class="t-small t-mono" data-tip={`${slot.free} free`}>{`${slot.used}/${slot.count}`}</span>
       <div
         class="t-progress"
         data-size="sm"
@@ -113,7 +114,6 @@ const SlotBar = ({ slot }: { slot: Slot }) => {
       >
         <div class="t-progress-bar" data-tone={tone} style={`--t-value: ${pct}%`}></div>
       </div>
-      <span class="t-small t-mono" data-tip={`${slot.free} free`}>{`${slot.used}/${slot.count}`}</span>
     </div>
   )
 }

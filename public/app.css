@@ -35,12 +35,12 @@
   min-width: 8rem;
 }
 
-.slot-bar .t-progress {
-  flex: 0 0 6rem;
+.slot-bar .t-small {
+  min-width: 3.5ch;
 }
 
-.slot-bar .t-small {
-  min-width: 3ch;
+.slot-bar .t-progress {
+  flex: 0 0 6rem;
 }
 
 .slot-cell .t-input {
@@ -55,14 +55,17 @@
   margin-left: var(--t-space-2);
 }
 
-/* Appearance section hosts the skin/palette selects; keep them side by side. */
-#appearance .t-pickers {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--t-space-2);
-}
-
 /* The runs-on dialog shows one snippet per type; keep the code line readable. */
 #runs-on-dlg .t-code-pre {
   white-space: pre-wrap;
+}
+
+/* Skin and palette selects in the Appearance row: side by side, each wide enough for its longest option. */
+.t-setting-control > .t-pickers {
+  gap: var(--t-space-2);
+}
+
+.t-setting-control > .t-pickers > .t-select-wrap {
+  flex: 1 1 10rem;
+  display: block;
 }

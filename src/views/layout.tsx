@@ -62,7 +62,6 @@ export const Layout = ({ title, active, tailorHead, version, theme = {}, side, r
               </li>
             ))}
           </ul>
-          <span class="t-navbar-sep"></span>
           <div class="t-navbar-end">
             <span class="t-dot" data-status="muted" id="live-dot" data-tip="Live updates: connecting"></span>
           </div>

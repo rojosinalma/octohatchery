@@ -27,6 +27,20 @@ export const SETTING_GROUPS: Group[] = [
         default: '300',
       },
       {
+        key: 'scheduler_tick_s',
+        label: 'Scheduler tick',
+        help: 'How often each node looks for queued jobs it can claim and reaps finished runners.',
+        control: { kind: 'duration' },
+        default: '5',
+      },
+      {
+        key: 'heartbeat_s',
+        label: 'Host heartbeat',
+        help: 'How often a node reports itself alive. A host silent for three heartbeats shows as offline.',
+        control: { kind: 'duration' },
+        default: '15',
+      },
+      {
         key: 'stale_runner_minutes',
         label: 'Stale runner timeout',
         help: 'A runner that has no job after this long is removed and deregistered.',
@@ -244,12 +258,25 @@ export const SettingsPage = ({ settings, version }: SettingsData) => {
             )}
           </div>
         </section>
-      </div>
       <section class="t-section" id="appearance">
         <h2 class="t-section-title">Appearance</h2>
-        <div class="t-section-body t-stack" data-gap="2">
-          <p class="t-muted t-small">Skin and palette are stored as settings and shared by every browser that opens this dashboard. The sun/moon toggle in the footer switches the mode.</p>
-          <div data-tailor-pickers="skin palette"></div>
+        <div class="t-section-body">
+          <div class="t-setting" data-key="ui_theme">
+            <div class="t-setting-label">
+              <span id="theme-label">Skin and palette</span>
+              <span class="t-help" data-tone="info">
+                <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About skin and palette">
+                  i
+                </button>
+                <div class="t-help-box" hidden>
+                  <p>Stored as settings and shared by every browser that opens this dashboard. The sun/moon toggle in the footer switches between dark and light.</p>
+                </div>
+              </span>
+            </div>
+            <div class="t-setting-control" aria-labelledby="theme-label">
+              <div data-tailor-pickers="skin palette"></div>
+            </div>
+          </div>
         </div>
       </section>
       <section class="t-section" id="about">
@@ -269,6 +296,7 @@ export const SettingsPage = ({ settings, version }: SettingsData) => {
           </dl>
         </div>
       </section>
+      </div>
     </>
   )
 }
