@@ -243,7 +243,7 @@ export const RunnersTable = ({ runners }: { runners: Runner[] }) => {
 }
 
 /** The live block: re-fetched whole by `app.js` on `runner` / `slot` events (`GET /?partial=1`). */
-export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
+export const OverviewLive = ({ hosts, slots, runners, recent }: OverviewData & { recent?: RecentJobsData }) => {
   if (hosts.length === 0) {
     return (
       <div id="overview-live" data-live="runner slot">
@@ -251,18 +251,19 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
       </div>
     )
   }
+
   return (
-    <div id="overview-live" data-live="runner slot" class="t-stack" data-gap="4">
-      <section class="t-card" aria-labelledby="overview-hosts-title">
+    <div id="overview-live" data-live="runner slot">
+      <section class="t-card" aria-labelledby="overview-title">
         <div class="t-card-header">
-          <h2 class="t-card-title" id="overview-hosts-title">
-            <Icon id="bi-hdd-rack" /> Hosts <span class="t-counter">{String(hosts.length)}</span>{' '}
+          <h2 class="t-card-title" id="overview-title">
+            <Icon id="bi-hdd-rack" /> Capacity <span class="t-counter">{String(hosts.length)} hosts</span>{' '}
             <span class="t-help" data-tone="info">
-              <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About slots">
+              <button class="t-help-btn" type="button" aria-expanded="false" aria-label="About capacity">
                 i
               </button>
               <div class="t-help-box" hidden>
-                <p>A slot is one runner of a template allowed on a host at a time. Each pill is one slot; a filled pill is busy. Set slots under Templates.</p>
+                <p>Each row is a host and its runner templates. Runners appear inline under the template they belong to. Set slots and templates under Templates.</p>
               </div>
             </span>
           </h2>
@@ -272,23 +273,82 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
             </a>
           </div>
         </div>
-        <div class="t-card-body host-list t-grid" data-min="md">
-          {hosts.map((h) => (
-            <HostSection host={h} slots={slots} />
+        <div class="t-card-body overview-hierarchy">
+          {hosts.map((host) => (
+            <HostBlock host={host} slots={slots.filter((s) => s.host === host.name && s.count > 0)} runners={runners.filter((r) => r.host === host.name)} />
           ))}
         </div>
       </section>
-      <section class="t-section">
-        <h2 class="t-section-title">
-          Runners <span class="t-counter">{String(runners.filter((r) => LIVE_STATES.has(r.state)).length)}</span>
-        </h2>
-        <div class="t-section-body">
-          <RunnersTable runners={runners} />
-        </div>
-      </section>
+      {recent && <RecentJobs {...recent} />}
     </div>
   )
 }
+
+const HostBlock = ({ host, slots, runners }: { host: Host; slots: Slot[]; runners: Runner[] }) => {
+  const liveRunners = runners.filter((r) => LIVE_STATES.has(r.state))
+  const byType: Map<string, Runner[]> = new Map()
+  liveRunners.forEach((r) => {
+    const type = r.type || 'unknown'
+    if (!byType.has(type)) byType.set(type, [])
+    byType.get(type)!.push(r)
+  })
+
+  return (
+    <details class="host-block" open>
+      <summary class="host-block-header">
+        <Icon id="bi-chevron-right" size="sm" />
+        <span class="host-name">
+          {host.name}
+          {host.isLeader && <LeaderBadge />}
+        </span>
+        <HostSpecs host={host} />
+      </summary>
+      <div class="host-block-templates">
+        {slots.sort((a, b) => a.type.localeCompare(b.type)).map((slot) => (
+          <TemplateRow slot={slot} runners={byType.get(slot.type) || []} />
+        ))}
+      </div>
+    </details>
+  )
+}
+
+const TemplateRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => (
+  <div class="template-row">
+    <a href={`/templates#${encodeURIComponent(slot.type)}`} class="template-name" safe>
+      {slot.type}
+    </a>
+    <div class="template-slots">
+      {slot.count > PILL_MAX ? (
+        <SlotBar slot={slot} />
+      ) : (
+        <span class="slot-pills" role="img" aria-label={`${slot.type}: ${slot.used}/${slot.count} slots used`}>
+          {Array.from({ length: slot.count }, (_, i) => (
+            <span class="slot-pill" data-busy={i < slot.used ? 'true' : undefined} data-tip={i < slot.used ? 'busy' : 'free'}></span>
+          ))}
+        </span>
+      )}
+    </div>
+    {runners.length > 0 && (
+      <div class="template-runners">
+        {runners.map((r) => (
+          <RunnerBadgeInline runner={r} />
+        ))}
+      </div>
+    )}
+  </div>
+)
+
+const RunnerBadgeInline = ({ runner }: { runner: Runner }) => (
+  <a href={`/jobs?runner=${encodeURIComponent(runner.name)}`} class="runner-badge" data-state={runner.state} data-tip={`${runner.name} · ${runner.state}`}>
+    <span class="runner-badge-state">
+      {runner.state === 'busy' && <Icon id="bi-play-circle-fill" size="xs" />}
+      {runner.state === 'idle' && <Icon id="bi-circle-fill" size="xs" />}
+      {runner.state === 'spawning' && <span class="t-spinner" style="--t-spinner-size: 0.7rem"></span>}
+    </span>
+    <span class="runner-badge-name">{runner.jobId ? runner.repo?.split('/')[1] || String(runner.jobId).slice(0, 8) : 'idle'}</span>
+  </a>
+)
+
 
 /**
  * The "Recent jobs" card: the Jobs toolbar and table under the `j_` param prefix so its filters and paging never
@@ -318,12 +378,9 @@ export const OverviewPage = ({ recent, ...data }: OverviewData & { recent: Recen
   <>
     <header class="t-page-header">
       <h1 class="t-page-title">Overview</h1>
-      <span class="t-page-lead">Hosts, slots, the runners working right now and the latest jobs.</span>
+      <span class="t-page-lead">Hosts, templates, active runners and recent jobs all in one view.</span>
     </header>
-    <div class="t-stack" data-gap="4">
-      <OverviewLive {...data} />
-      <RecentJobs {...recent} />
-    </div>
+    <OverviewLive {...data} recent={recent} />
   </>
 )
 
