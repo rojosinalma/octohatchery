@@ -12,6 +12,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   buildkit_host: 'tcp://octohatchery-buildkitd:1234',
   scheduler_tick_s: '5',
   heartbeat_s: '15',
+  ui_skin: 'bootstrap',
+  ui_palette: 'gruvbox',
+  ui_mode: 'auto',
 }
 
 const TTL_MS = 5_000
