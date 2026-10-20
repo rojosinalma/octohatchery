@@ -42,6 +42,15 @@ export type RepoListItem = Repo & { jobCount: number }
 /** Outcome of `ensureWebhook`: a repo hook was created or repaired, or the GitHub App delivers the events. */
 export type WebhookOutcome = { repo: Repo; covered: 'hook' | 'app'; created: boolean }
 export type JobStatus = 'queued' | 'claimed' | 'in_progress' | 'completed' | 'ignored'
+/** One workflow step as GitHub reports it (`workflow_job.steps[]`); timestamps are ISO strings or null until known. */
+export type JobStep = {
+  number: number
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | string
+  conclusion: 'success' | 'failure' | 'cancelled' | 'skipped' | string | null
+  startedAt: string | null
+  completedAt: string | null
+}
 export type Job = {
   id: number
   repo: string
@@ -60,6 +69,8 @@ export type Job = {
   logSource: LogSource
   logBytes: number
   logTruncated: boolean
+  /** Steps as last reported by GitHub (webhook payload or the job API); empty until the job starts. */
+  steps: JobStep[]
 }
 export type LogSource = 'runner' | 'github' | null
 export type LogLine = { seq: number; at: string; line: string }

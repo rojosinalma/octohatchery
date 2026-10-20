@@ -9,7 +9,7 @@ import { Layout, type NavKey, type Theme } from '../views/layout'
 import { OverviewLive, OverviewPage, RecentJobs } from '../views/overview'
 import { JOB_STATUSES, JobsLive, JobsPage, type JobsFilter } from '../views/jobs'
 import { JOBS_SCOPE, RECENT_SCOPE, type JobsScope, type JobsView } from '../views/jobs-table'
-import { JobPage, LOG_DOM_LINES } from '../views/job'
+import { JobLive, JobPage, LOG_DOM_LINES } from '../views/job'
 import { ReposPage } from '../views/repos'
 import { RunnerTypesPage, SlotsMatrix } from '../views/runner-types'
 import { ImagesLive, ImagesPage } from '../views/images'
@@ -163,9 +163,10 @@ export const ui = new Elysia({ name: 'ui' })
         job.runnerId === null ? Promise.resolve(null) : service.getRunner(job.runnerId).catch(() => null),
         service.getJobLog(params.id, { tail: LOG_DOM_LINES }),
       ])
+      if (query.partial === 'log') return <JobLive job={job} log={log} />
       return page('jobs', job.name, <JobPage job={job} runner={runner} log={log} raw={query.raw === '1'} />)
     },
-    { params: t.Object({ id: t.Integer({ minimum: 1 }) }), query: t.Object({ raw: t.Optional(t.String({ maxLength: 1 })) }) },
+    { params: t.Object({ id: t.Integer({ minimum: 1 }) }), query: t.Object({ raw: t.Optional(t.String({ maxLength: 1 })), partial: t.Optional(t.String()) }) },
   )
 
   .get('/repos', async () => {

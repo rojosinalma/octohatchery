@@ -333,12 +333,24 @@ describe('job page', () => {
     expect(body).toContain('data-action="log-follow" aria-pressed="true"')
     expect(body).toContain('data-action="log-copy"')
     expect(body).toContain('class="log-text">##[group]Run &lt;script&gt;alert(1)&lt;/script&gt;<')
-    expect(body).toContain('class="log-time">10:00:32<')
+    // mm:ss since the job started, the absolute stamp on hover
+    expect(body).toContain('class="log-time" data-tip="2026-10-19T10:00:32.000000000Z">00:02<')
     expect(body).toContain('id="log-truncated" hidden')
-    expect(body).toContain('<div class="t-code-pre log-view" id="log-view"')
+    expect(body).toContain('<div class="log-steps" id="log-view"')
+    // outcome line under the title and one row per step: the finished one closed, the running one open with a spinner
+    expect(body).toContain('<p class="job-outcome t-muted" id="job-outcome"><span>running</span> <time class="t-time" data-relative datetime="2026-10-19T10:00:30Z">')
+    expect(body).toMatch(/<details class="log-step" data-number="1" data-status="completed" data-conclusion="success" data-started="2026-10-19T10:00:30Z" data-completed="2026-10-19T10:00:40Z" data-count="1"><summary class="log-step-head"><span class="log-step-chevron" aria-hidden="true"><svg[^>]*><use href="\/tailor\/icons.svg#bi-chevron-right"><\/use><\/svg><\/span><span class="log-step-icon" data-tone="success" role="img" aria-label="succeeded" data-tip="Succeeded"><svg[^>]*><use href="\/tailor\/icons.svg#bi-check-circle-fill">/)
+    expect(body).toContain('<span class="log-step-name">Set up job</span><span class="log-step-count t-muted t-small">1 lines</span><span class="log-step-duration t-muted" data-tip="2026-10-19T10:00:30Z → 2026-10-19T10:00:40Z">10s</span>')
+    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="in_progress" data-started="2026-10-19T10:00:40Z" data-count="0"><summary class="log-step-head">.*?<span class="t-spinner log-step-icon" data-size="sm" data-tone="accent" role="img" aria-label="running"/)
     // the unterminated group is open (still receiving lines), its marker line hidden, its title escaped
     expect(body).toContain('<details class="log-group" open data-first="2026-10-19T10:00:32.000000000Z" data-count="0"><summary class="log-summary">')
     expect(body).toContain('<span class="log-group-title">Run &lt;script&gt;alert(1)&lt;/script&gt;</span><span class="log-group-meta t-muted">0 lines · 0 s</span>')
+    // the `job` partial carries lead, outcome and the steps view for the browser to swap by id
+    const live = (await get('/jobs/7?partial=log')).body
+    expect(live.startsWith('<div id="job-live"><span class="t-page-lead" id="job-lead">')).toBe(true)
+    expect(live).toContain('<p class="job-outcome t-muted" id="job-outcome">')
+    expect(live).toContain('<div class="log-steps" id="log-view"')
+    expect(live).not.toContain('<html')
     expect(body).toMatch(/<span class="log-line" data-seq="2"[^>]*data-marker="" hidden>/)
     expect(body).toContain('data-action="log-expand"')
     expect(body).toContain('data-action="log-collapse"')
@@ -352,24 +364,61 @@ describe('job page', () => {
     const text = ['Set up job', '##[group]Run build', 'ok', '##[endgroup]', '##[group]Run tests', '##[error]boom', '##[endgroup]', '##[warning]slow', 'done']
     store.data = { ...full, logs: { 8: { ...full.logs[8]!, lines: text.map((line, i) => ({ seq: i + 1, at: at(String(10 + i)), line })) } } }
     const { body } = await get('/jobs/8')
-    expect(body).toMatch(/<details class="log-group" data-closed="" data-first="[^"]+" data-count="1"><summary class="log-summary"><span class="log-time">08:00:11<\/span><span class="log-chevron" aria-hidden="true"><\/span><span class="log-group-title">Run build<\/span><span class="log-group-meta t-muted">1 lines · 2 s<\/span><\/summary>/)
+    // the fixture's lines (08:00:10–18) all fall in the first step's window; the failed step opens, the others are closed
+    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="5">/)
+    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="completed" data-conclusion="failure"[^>]*data-count="0">/)
+    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="0">/)
+    expect(body).toContain('<p class="job-outcome t-muted" id="job-outcome"><span>failed</span> <time class="t-time" data-relative datetime="2026-10-19T08:05:10Z">19 Oct 2026, 08:05 UTC</time> in <span class="t-mono">5m 0s</span></p>')
+    expect(body).toMatch(/<details class="log-group" data-closed="" data-first="[^"]+" data-count="1"><summary class="log-summary"><span class="log-time" data-tip="2026-10-19T08:00:11Z">00:01<\/span><span class="log-chevron" aria-hidden="true"><\/span><span class="log-group-title">Run build<\/span><span class="log-group-meta t-muted">1 lines · 2 s<\/span><\/summary>/)
     expect(body).toMatch(/<details class="log-group" open data-tone="danger" data-closed=""[^>]*><summary class="log-summary">/)
     expect(body).toMatch(/<span class="log-line" data-seq="6"[^>]*data-tone="danger">/)
     expect(body).toMatch(/<span class="log-line" data-seq="8"[^>]*data-tone="warning">/)
-    expect(body).toMatch(/<span class="log-line" data-seq="9" data-at="[^"]+"><span class="log-time">08:00:18<\/span><span class="log-text">done<\/span>/)
+    expect(body).toMatch(/<span class="log-line" data-seq="9" data-at="[^"]+"><span class="log-time" data-tip="[^"]+">00:08<\/span><span class="log-text">done<\/span>/)
     expect((body.match(/<details class="log-group"/g) ?? []).length).toBe(2)
     // every stored line is in the DOM (markers hidden), so Copy keeps the markers
     expect((body.match(/<span class="log-line"/g) ?? []).length).toBe(9)
     expect((body.match(/data-marker="" hidden/g) ?? []).length).toBe(4)
   })
 
-  test('?raw=1 renders the flat view with a Grouped link and no group buttons', async () => {
+  test('steps view: blank lines dropped, progress runs collapsed, commands styled, lines placed by step window', async () => {
+    const lines = [
+      ['2026-10-19T08:00:05Z', 'before the first step'],
+      ['2026-10-19T08:00:12Z', '##[command]/usr/bin/git version'],
+      ['2026-10-19T08:00:13Z', ''],
+      ['2026-10-19T08:00:14Z', 'Received 0 of 100 (0.0%), 0.0 MBs/sec'],
+      ['2026-10-19T08:00:15Z', 'Received 100 of 100 (100.0%), 1.0 MBs/sec'],
+      ['2026-10-19T08:00:20Z', 'first of step 2'],
+      ['2026-10-19T08:04:00Z', '##[error]boom'],
+      ['2026-10-19T08:05:00Z', 'complete job'],
+      ['2026-10-19T08:09:00Z', 'after the last step'],
+    ].map(([at, line], i) => ({ seq: i + 1, at: at!, line: line! }))
+    store.data = { ...full, logs: { 8: { ...full.logs[8]!, lines } } }
+    const { body } = await get('/jobs/8')
+    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="3">/)
+    expect(body).toMatch(/<details class="log-step" open data-number="2"[^>]*data-count="2">/)
+    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="2">/)
+    expect(body).toContain('<span class="log-line" data-seq="2" data-at="2026-10-19T08:00:12Z" data-cmd=""><span class="log-time" data-tip="2026-10-19T08:00:12Z">00:02</span><span class="log-text">/usr/bin/git version</span>')
+    expect(body).not.toContain('data-seq="3"')
+    expect(body).not.toContain('data-seq="4"')
+    expect(body).toContain('data-seq="5"')
+    expect(body).toContain('<span class="log-step-count t-muted t-small">3 lines</span>')
+    expect((body.match(/<span class="log-line"/g) ?? []).length).toBe(7)
+    // no steps known yet: one pseudo-step "Log" holds everything and takes the job's state
+    store.data = { ...full, jobs: full.jobs.map((j) => (j.id === 8 ? { ...j, steps: [] } : j)), logs: { 8: { ...full.logs[8]!, lines } } }
+    const pseudo = (await get('/jobs/8')).body
+    expect(pseudo).toMatch(/<details class="log-step" open data-number="0" data-status="completed" data-conclusion="failure" data-started="2026-10-19T08:00:10Z" data-completed="2026-10-19T08:05:10Z" data-count="7"><summary class="log-step-head">.*?<span class="log-step-name">Log<\/span>/)
+    expect((pseudo.match(/<details class="log-step"/g) ?? []).length).toBe(1)
+  })
+
+  test('?raw=1 renders the flat view with a Steps link and no step buttons', async () => {
     const { body } = await get('/jobs/7?raw=1')
     expect(body).toContain('id="log" data-job-id="7" data-last-seq="2" data-live="log" data-complete="false" data-raw="true"')
     expect(body).not.toContain('<details')
     expect(body).toMatch(/<span class="log-line" data-seq="2" data-at="[^"]+"><span class="log-time">10:00:32<\/span><span class="log-text">##\[group\]Run/)
     expect(body).not.toContain('data-action="log-expand"')
-    expect(body).toContain('href="/jobs/7" data-tip="Fold the groups again">')
+    expect(body).toContain('href="/jobs/7" data-tip="Back to the steps view">')
+    expect(body).toContain('class="log-time">10:00:32<')
+    expect(body).not.toContain('log-step')
     expect((await get('/jobs/7?raw=yes')).res.status).toBe(400)
   })
 

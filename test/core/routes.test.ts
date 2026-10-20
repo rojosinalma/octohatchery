@@ -169,7 +169,7 @@ describe('job log api', () => {
     const app = await seeded()
     let r = await call(app, 'GET', '/api/jobs/1')
     expect(r.status).toBe(200)
-    expect(r.json.job).toMatchObject({ id: 1, name: 'done', logSource: 'github', logTruncated: true, logBytes: 12 })
+    expect(r.json.job).toMatchObject({ id: 1, name: 'done', logSource: 'github', logTruncated: true, logBytes: 12, steps: [] })
     expect(r.json.job).not.toHaveProperty('retries')
 
     r = await call(app, 'GET', '/api/jobs/1/log')

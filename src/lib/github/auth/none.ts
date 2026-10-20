@@ -1,5 +1,5 @@
 import type { Octokit } from '@octokit/rest'
-import type { GitHubAuthAdapter, GitHubClient, QueuedJob } from '../types'
+import type { GitHubAuthAdapter, GitHubClient, JobDetails, QueuedJob } from '../types'
 
 /** In-memory stand-in for tests: deterministic answers, records every call, never talks to GitHub. */
 export type FakeGitHub = GitHubClient & {
@@ -9,6 +9,8 @@ export type FakeGitHub = GitHubClient & {
   deletedRunners: number[]
   /** `repo#githubJobId` → log text; a missing entry answers 404 like GitHub does before the log is ready. */
   jobLogs: Map<string, string>
+  /** `repo#githubJobId` → job details; a missing entry answers a deterministic two-step job built from the log's timestamps. */
+  jobDetails: Map<string, JobDetails>
   /** Branches created by `createBranch` and not yet deleted (`repo:name`). */
   branches: Set<string>
   /** Method name → error message; the next call to that method throws it with `status: 403`. */
@@ -23,6 +25,7 @@ export function createFakeGitHub(): FakeGitHub {
   const files = new Map<string, string>()
   const deletedRunners: number[] = []
   const jobLogs = new Map<string, string>()
+  const jobDetails = new Map<string, JobDetails>()
   const branches = new Set<string>()
   const failOn = new Map<string, string>()
   const pulls = new Map<string, { url: string; state: string }>()
@@ -36,6 +39,7 @@ export function createFakeGitHub(): FakeGitHub {
     files,
     deletedRunners,
     jobLogs,
+    jobDetails,
     branches,
     failOn,
     granted,
@@ -108,10 +112,29 @@ export function createFakeGitHub(): FakeGitHub {
       if (text === undefined) throw Object.assign(new Error(`Not Found: log for job ${githubJobId}`), { status: 404 })
       return text
     },
+    async getJob(repo, githubJobId) {
+      rec('getJob', repo, githubJobId)
+      if (failOn.has('getJob')) throw Object.assign(new Error(failOn.get('getJob')), { status: 403 })
+      return jobDetails.get(`${repo}#${githubJobId}`) ?? fakeJobDetails()
+    },
     async listWorkflowFiles(repo) {
       rec('listWorkflowFiles', repo)
       return [...files.keys()].filter((k) => k.startsWith(`${repo}:.github/workflows/`)).map((k) => k.slice(repo.length + 1))
     },
+  }
+}
+
+/** Two finished steps a minute apart: enough for the steps view and the finaliser tests to assert against. */
+export function fakeJobDetails(): JobDetails {
+  return {
+    status: 'completed',
+    conclusion: 'success',
+    startedAt: '2026-01-01T00:00:00Z',
+    completedAt: '2026-01-01T00:02:00Z',
+    steps: [
+      { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:00Z' },
+      { number: 2, name: 'Run tests', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:01:00Z', completedAt: '2026-01-01T00:02:00Z' },
+    ],
   }
 }
 

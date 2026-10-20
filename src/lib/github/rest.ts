@@ -1,6 +1,6 @@
 import type { Octokit } from '@octokit/rest'
 import { log } from '../log'
-import { splitRepo, type FileContents, type GitHubClient, type QueuedJob, type RepoInfo } from './types'
+import { splitRepo, type FileContents, type GitHubClient, type JobDetails, type QueuedJob, type RepoInfo } from './types'
 
 const logger = log('github')
 
@@ -171,6 +171,22 @@ export function restClient(
       if (data instanceof ArrayBuffer) return new TextDecoder().decode(data)
       if (data && typeof data === 'object' && 'byteLength' in data) return Buffer.from(data as Uint8Array).toString('utf8')
       throw new Error(`job ${githubJobId} log: unexpected response body (${typeof data})`)
+    },
+
+    async getJob(fullName, githubJobId): Promise<JobDetails> {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      const res = await call(`GET ${fullName} job ${githubJobId}`, () => o.rest.actions.getJobForWorkflowRun({ owner, repo, job_id: githubJobId }))
+      const j = res.data
+      return {
+        status: j.status,
+        conclusion: j.conclusion ?? null,
+        startedAt: j.started_at ?? null,
+        completedAt: j.completed_at ?? null,
+        steps: (j.steps ?? [])
+          .map((s) => ({ number: s.number, name: s.name, status: s.status, conclusion: s.conclusion ?? null, startedAt: s.started_at ?? null, completedAt: s.completed_at ?? null }))
+          .sort((a, b) => a.number - b.number),
+      }
     },
 
     async listWorkflowFiles(fullName, ref) {

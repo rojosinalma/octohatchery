@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `steps` text DEFAULT '[]' NOT NULL;

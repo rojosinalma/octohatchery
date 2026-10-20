@@ -109,7 +109,9 @@
     var es = new EventSource('/events/stream')
     es.onopen = function () { liveDot('running', 'connected') }
     es.onerror = function () { liveDot('degraded', 'reconnecting') }
-    ;['runner', 'job', 'slot', 'event', 'image'].forEach(function (name) { es.addEventListener(name, function () { scheduleLive(name) }) })
+    ;['runner', 'job', 'slot', 'event', 'image'].forEach(function (name) {
+      es.addEventListener(name, function (e) { scheduleLive(name); document.dispatchEvent(new CustomEvent('live:' + name, { detail: e.data })) })
+    })
   }
 
   /* ── Actions (delegated) ─────────────────────────────────────────────────── */
@@ -612,11 +614,13 @@
     })
   }
 
-  /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy, folded groups ─ */
+  /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy, steps + folded groups ─ */
   var LOG_DOM_LINES = 5000
   // Group markers, the same rules as src/views/log-groups.ts: `##[group]`/`##[section]Starting:` open a group
   // (closing the one before), `##[endgroup]`/`##[section]Finishing:` close it, `##[error]`/`##[warning]` tone a line.
   var LOG_OPEN_RE = /^##\[(?:group\]|section\]Starting: )(.*)$/, LOG_CLOSE_RE = /^##\[(?:endgroup\]|section\]Finishing: )/, LOG_TONE_RE = /^##\[(error|warning)\]/
+  // Steps view rules, the same as src/views/log-steps.ts: commands, progress runs, blank lines, mm:ss gutter.
+  var LOG_CMD_RE = /^(?:##)?\[command\](.*)$/, LOG_PROGRESS_RE = /^(?:Received \d+ of \d+|\d{1,3}(?:\.\d+)?%(?:\s|$)|.*\b\d{1,3}(?:\.\d+)?% \(\d+\/\d+\))/
   function classifyLine(raw) {
     var text = plainText(raw), m = LOG_OPEN_RE.exec(text)
     if (m) return { kind: 'open', title: m[1].trim() || 'group' }
@@ -627,6 +631,13 @@
   }
   function clock(at) { var m = /T(\d{2}:\d{2}:\d{2})/.exec(at); return m ? m[1] : at }
   function spanMs(a, b) { var x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? 0 : Math.max(0, y - x) }
+  function pad2(n) { return (n < 10 ? '0' : '') + n }
+  function elapsed(at, base) {
+    var a = Date.parse(at), b = Date.parse(base || '')
+    var s = isNaN(a) || isNaN(b) ? 0 : Math.max(0, Math.floor((a - b) / 1000))
+    var mm = pad2(Math.floor((s % 3600) / 60)), ss = pad2(s % 60)
+    return s >= 3600 ? Math.floor(s / 3600) + ':' + mm + ':' + ss : mm + ':' + ss
+  }
   function fmtDuration(ms) {
     var s = Math.round(ms / 1000)
     if (s < 60) return s + ' s'
@@ -636,7 +647,7 @@
   function wireJobLog() {
     var section = $('#log')
     if (!section) return
-    var view = $('#log-view'), empty = $('#log-empty'), count = $('#log-count')
+    var empty = $('#log-empty'), count = $('#log-count')
     var followBtn = $('[data-action="log-follow"]', section), copyBtn = $('[data-action="log-copy"]', section)
     var expandBtn = $('[data-action="log-expand"]', section), collapseBtn = $('[data-action="log-collapse"]', section)
     var sourceBadge = $('#log-source'), truncatedBadge = $('#log-truncated')
@@ -644,15 +655,23 @@
     var raw = section.dataset.raw === 'true'
     var following = followBtn.getAttribute('aria-pressed') === 'true'
     var es = null
-    // The group still receiving lines (the server left it without data-closed), and the line count across groups.
-    var open = null, lineCount = $$('.log-line', view).length
-    var last = view.lastElementChild
-    if (!raw && last && last.matches('details.log-group:not([data-closed])')) open = last
+    var view = $('#log-view')
+    // Steps view state: the job's start (gutter base), the group still receiving lines per step body, the line
+    // count across the view, the last progress line of the current run (replaced by the next one).
+    var base = view.dataset.started || null
+    var openGroups = {}, lineCount = $$('.log-line', view).length, lastProgress = null
+    if (!raw) $$('details.log-step', view).forEach(function (st) {
+      var body = $('.log-step-body', st), last = body && body.lastElementChild
+      if (last && last.matches('details.log-group:not([data-closed])')) openGroups[st.dataset.number] = last
+    })
 
     function setFollow(on) {
       following = on
       followBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
       if (on) view.scrollTop = view.scrollHeight
+    }
+    function timeCell(at) {
+      return raw ? '<span class="log-time">' + esc(clock(at)) + '</span>' : '<span class="log-time" data-tip="' + esc(at) + '">' + esc(elapsed(at, base)) + '</span>'
     }
     function lineNode(l, tone, marker) {
       var span = document.createElement('span')
@@ -661,14 +680,16 @@
       span.dataset.at = l.at
       if (tone) span.dataset.tone = tone
       if (marker) { span.dataset.marker = ''; span.hidden = true }
-      span.innerHTML = '<span class="log-time">' + esc(clock(l.at)) + '</span><span class="log-text">' + esc(plainText(l.line)) + '</span>\n'
+      var text = plainText(l.line), cmd = raw ? null : LOG_CMD_RE.exec(text)
+      if (cmd) { span.dataset.cmd = ''; text = cmd[1] }
+      span.innerHTML = timeCell(l.at) + '<span class="log-text">' + esc(text) + '</span>\n'
       return span
     }
     function groupNode(l, title) {
       var d = document.createElement('details')
       d.className = 'log-group'
       d.open = true
-      d.innerHTML = '<summary class="log-summary"><span class="log-time">' + esc(clock(l.at)) + '</span><span class="log-chevron" aria-hidden="true"></span>'
+      d.innerHTML = '<summary class="log-summary">' + timeCell(l.at) + '<span class="log-chevron" aria-hidden="true"></span>'
         + '<span class="log-group-title">' + esc(title) + '</span><span class="log-group-meta t-muted"></span></summary>'
       d.dataset.first = l.at
       d.dataset.count = '0'
@@ -678,42 +699,74 @@
       var n = Number(g.dataset.count || 0)
       $('.log-group-meta', g).textContent = n + ' lines · ' + fmtDuration(spanMs(g.dataset.first, at))
     }
-    function closeGroup() {
-      if (!open) return
-      open.dataset.closed = ''
-      // Earlier groups fold as they close; one holding an error stays open.
-      if (open.dataset.tone !== 'danger') open.open = false
-      open = null
+    // The step a streamed line belongs to: the last one started at or before its stamp, else the running step,
+    // else the last step. A page without step rows (raw) has none.
+    function stepFor(at) {
+      var steps = $$('details.log-step', view)
+      if (!steps.length) return null
+      var t = Date.parse(at), pick = null
+      if (!isNaN(t)) steps.forEach(function (st) { var s = Date.parse(st.dataset.started || ''); if (!isNaN(s) && s <= t) pick = st })
+      if (!pick) steps.forEach(function (st) { if (st.dataset.status === 'in_progress') pick = st })
+      return pick || steps[steps.length - 1]
     }
-    function place(node, target) { (target || view).appendChild(node); lineCount++ }
+    function bumpStep(st) {
+      if (!st) return
+      st.dataset.count = String(Number(st.dataset.count || 0) + 1)
+      $('.log-step-count', st).textContent = st.dataset.count + ' lines'
+    }
+    function closeGroup(key) {
+      var g = openGroups[key]
+      if (!g) return
+      g.dataset.closed = ''
+      // Earlier groups fold as they close; one holding an error stays open.
+      if (g.dataset.tone !== 'danger') g.open = false
+      delete openGroups[key]
+    }
+    function place(node, target) { target.appendChild(node); lineCount++ }
     function appendOne(l) {
-      if (raw) { var m0 = classifyLine(l.line); place(lineNode(l, m0.kind === 'line' ? m0.tone : undefined)); return }
       var m = classifyLine(l.line)
+      if (raw) { place(lineNode(l, m.kind === 'line' ? m.tone : undefined), view); return }
+      var text = plainText(l.line)
+      if (text.trim() === '') return
+      var st = stepFor(l.at)
+      // A close marker belongs to the step whose group is still open, whatever its stamp says.
+      if (m.kind === 'close') Object.keys(openGroups).forEach(function (k) { var g = openGroups[k].closest('details.log-step'); if (g) st = g })
+      var body = st ? $('.log-step-body', st) : view, key = st ? st.dataset.number : '-'
+      var open = openGroups[key], into = open || body
+      if (m.kind === 'line' && LOG_PROGRESS_RE.test(text.trim())) {
+        if (lastProgress && lastProgress.parentNode === into) { lastProgress.replaceWith(lineNode(l, m.tone)); lastProgress = $('[data-seq="' + l.seq + '"]', into); return }
+        place(lineNode(l, m.tone), into); lastProgress = into.lastElementChild
+        if (open) { open.dataset.count = String(Number(open.dataset.count || 0) + 1); updateMeta(open, l.at) }
+        bumpStep(st)
+        return
+      }
+      lastProgress = null
       if (m.kind === 'open') {
-        closeGroup()
-        open = groupNode(l, m.title)
-        view.appendChild(open)
-        place(lineNode(l, undefined, true), open)
-        updateMeta(open, l.at)
+        closeGroup(key)
+        var g = groupNode(l, m.title)
+        body.appendChild(g)
+        openGroups[key] = g
+        place(lineNode(l, undefined, true), g)
+        updateMeta(g, l.at)
       } else if (m.kind === 'close') {
-        if (open) { place(lineNode(l, undefined, true), open); updateMeta(open, l.at); closeGroup() }
-        else place(lineNode(l, undefined, true))
+        if (open) { place(lineNode(l, undefined, true), open); updateMeta(open, l.at); closeGroup(key) }
+        else place(lineNode(l, undefined, true), body)
       } else if (open) {
         place(lineNode(l, m.tone), open)
         open.dataset.count = String(Number(open.dataset.count || 0) + 1)
         if (m.tone === 'danger' || (m.tone === 'warning' && !open.dataset.tone)) { open.dataset.tone = m.tone; if (m.tone === 'danger') open.open = true }
         updateMeta(open, l.at)
-      } else place(lineNode(l, m.tone))
+        bumpStep(st)
+      } else { place(lineNode(l, m.tone), body); bumpStep(st) }
     }
-    // Drop the oldest lines past the cap; a group left without lines goes with them.
+    // Drop the oldest lines past the cap; a group left without lines goes with them (step rows stay).
     function trim() {
       while (lineCount > LOG_DOM_LINES) {
-        var first = view.firstElementChild
+        var first = $('.log-line', view)
         if (!first) break
-        if (first.matches('.log-line')) { first.remove(); lineCount--; continue }
-        var inner = $('.log-line', first)
-        if (inner) { inner.remove(); lineCount-- }
-        if (!$('.log-line', first)) { if (first === open) open = null; first.remove() }
+        var group = first.closest('details.log-group')
+        first.remove(); lineCount--
+        if (group && !$('.log-line', group)) { Object.keys(openGroups).forEach(function (k) { if (openGroups[k] === group) delete openGroups[k] }); group.remove() }
       }
     }
     function append(lines) {
@@ -725,7 +778,11 @@
       count.textContent = lineCount + ' lines'
       if (following) view.scrollTop = view.scrollHeight
     }
-    function reset() { view.textContent = ''; lastSeq = 0; open = null; lineCount = 0 }
+    function reset() {
+      lastSeq = 0; openGroups = {}; lineCount = 0; lastProgress = null
+      if (raw) view.textContent = ''
+      else $$('details.log-step', view).forEach(function (st) { $('.log-step-body', st).textContent = ''; st.dataset.count = '0'; $('.log-step-count', st).textContent = '0 lines' })
+    }
     function finish(info) {
       section.removeAttribute('data-live')
       section.dataset.complete = 'true'
@@ -746,17 +803,65 @@
         sourceBadge.textContent = lineCount ? 'source: runner' : 'source: none'
       }
       if (info.replaced) {
-        // GitHub's log replaced the live lines: reload the view from the start.
-        api('GET', '/api/jobs/' + jobId + '/log?limit=' + LOG_DOM_LINES).then(function (res) {
-          if (!res.ok) return
-          reset()
-          append(res.lines)
-          closeGroup()
-          view.scrollTop = 0
-          T.toast('info', 'Log replaced with the final one from GitHub')
-        })
+        // GitHub's log replaced the live lines: the server re-renders the steps with the final lines and timestamps.
+        if (raw) {
+          api('GET', '/api/jobs/' + jobId + '/log?limit=' + LOG_DOM_LINES).then(function (res) {
+            if (!res.ok) return
+            reset(); append(res.lines); view.scrollTop = 0
+            T.toast('info', 'Log replaced with the final one from GitHub')
+          })
+        } else rerender().then(function () { view.scrollTop = 0; T.toast('info', 'Log replaced with the final one from GitHub') })
       }
     }
+    // A `job` event (status, steps, conclusion changed): swap lead, outcome line and the steps view from the server,
+    // keeping which steps the user opened or closed, then catch up on lines the stream delivered meanwhile.
+    var rerendering = null
+    function rerender() {
+      if (raw) return Promise.resolve()
+      if (rerendering) return rerendering
+      rerendering = refetch('/jobs/' + jobId + '?partial=log').then(function (html) {
+        var tpl = document.createElement('template'); tpl.innerHTML = html.trim()
+        var fresh = tpl.content.firstElementChild
+        if (!fresh) return
+        var opened = {}
+        $$('details.log-step', view).forEach(function (st) { opened[st.dataset.number] = st.open })
+        ;['job-lead', 'job-outcome'].forEach(function (id) {
+          var a = $('#' + id), b = $('#' + id, fresh)
+          if (a && b) { a.replaceWith(b); T.upgrade(b) }
+        })
+        var nextView = $('#log-view', fresh)
+        if (!nextView) return
+        $$('details.log-step', nextView).forEach(function (st) { if (opened[st.dataset.number] !== undefined) st.open = opened[st.dataset.number] })
+        view.replaceWith(nextView)
+        view = nextView
+        T.upgrade(view)
+        base = view.dataset.started || null
+        openGroups = {}; lastProgress = null
+        $$('details.log-step', view).forEach(function (st) {
+          var body = $('.log-step-body', st), last = body && body.lastElementChild
+          if (last && last.matches('details.log-group:not([data-closed])')) openGroups[st.dataset.number] = last
+        })
+        lineCount = $$('.log-line', view).length
+        count.textContent = lineCount + ' lines'
+        var rendered = Number(view.dataset.lastSeq || 0)
+        if (rendered < lastSeq) {
+          // lines the stream handed us after the server rendered: fetch and append them
+          var missed = lastSeq; lastSeq = rendered
+          return api('GET', '/api/jobs/' + jobId + '/log?after=' + rendered + '&limit=' + LOG_DOM_LINES).then(function (res) { if (res.ok) append(res.lines); else lastSeq = missed })
+        }
+        if (following) view.scrollTop = view.scrollHeight
+      }).catch(function () { /* next event retries */ }).then(function () { rerendering = null })
+      return rerendering
+    }
+    var jobTimer = null
+    document.addEventListener('live:job', function (e) {
+      if (raw) return
+      var changed = null
+      try { changed = JSON.parse(e.detail || 'null') } catch (err) { /* opaque: refresh anyway */ }
+      if (changed && String(changed.id) !== String(jobId)) return
+      clearTimeout(jobTimer)
+      jobTimer = setTimeout(rerender, 300)
+    })
     function connectLog() {
       if (!window.EventSource || section.dataset.complete === 'true') return
       es = new EventSource('/api/jobs/' + jobId + '/log/stream?after=' + lastSeq)
@@ -770,11 +875,12 @@
       es.onerror = function () { /* the browser reconnects; `after` is re-read on the next open */ es.close(); es = null; setTimeout(connectLog, 3000) }
     }
     // Scrolling up turns follow off; scrolling to the bottom turns it on again.
-    view.addEventListener('scroll', function () {
+    section.addEventListener('scroll', function (e) {
+      if (e.target !== view) return
       var atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 8
       if (!atBottom && following) setFollow(false)
       else if (atBottom && !following && !followBtn.disabled) setFollow(true)
-    }, { passive: true })
+    }, { passive: true, capture: true })
     followBtn.addEventListener('click', function () { setFollow(!following) })
     // Copy takes every stored line in view, the hidden group markers included, as plain text.
     copyBtn.addEventListener('click', function () {
@@ -785,8 +891,8 @@
         function () { T.toast('success', 'Copied ' + nodes.length + ' lines') },
         function (err) { T.toast('danger', 'Copy failed: ' + err.message) })
     })
-    if (expandBtn) expandBtn.addEventListener('click', function () { $$('details.log-group', view).forEach(function (d) { d.open = true }) })
-    if (collapseBtn) collapseBtn.addEventListener('click', function () { $$('details.log-group', view).forEach(function (d) { d.open = false }) })
+    if (expandBtn) expandBtn.addEventListener('click', function () { $$('details.log-step, details.log-group', view).forEach(function (d) { d.open = true }) })
+    if (collapseBtn) collapseBtn.addEventListener('click', function () { $$('details.log-step', view).forEach(function (d) { d.open = false }) })
     if (following) view.scrollTop = view.scrollHeight
     connectLog()
   }

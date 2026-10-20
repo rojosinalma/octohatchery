@@ -1,4 +1,5 @@
 import type { Octokit } from '@octokit/rest'
+import type { JobStep } from '../types'
 import type { PermissionReport } from './permissions'
 
 export type QueuedJob = { githubJobId: number; runId: number; name: string; labels: string[]; htmlUrl: string; queuedAt: string }
@@ -6,6 +7,8 @@ export type JitConfig = { runnerId: number; encodedJitConfig: string }
 export type RepoInfo = { fullName: string; isPrivate: boolean; defaultBranch: string }
 export type FileContents = { content: string; sha: string }
 export type WebhookResult = { id: number; created: boolean }
+/** `GET /repos/{o}/{r}/actions/jobs/{id}`: the fields the orchestrator stores. */
+export type JobDetails = { status: string; conclusion: string | null; startedAt: string | null; completedAt: string | null; steps: JobStep[] }
 
 /** Everything the app asks of GitHub, behind one interface so `app` and `pat` (and `none` in tests) are interchangeable. */
 export type GitHubClient = {
@@ -37,6 +40,8 @@ export type GitHubClient = {
   listWorkflowFiles(repo: string, ref?: string): Promise<string[]>
   /** Plain-text log of a finished job (follows GitHub's redirect). Throws with `status: 404` while the log is not ready. */
   getJobLog(repo: string, githubJobId: number): Promise<string>
+  /** Status, conclusion and steps (with GitHub's timestamps) of one job. */
+  getJob(repo: string, githubJobId: number): Promise<JobDetails>
 }
 
 export type GitHubAuthAdapter = {

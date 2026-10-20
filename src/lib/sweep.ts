@@ -7,6 +7,7 @@ import { config } from './config'
 import { recordEvent } from './events'
 import { github } from './github/auth'
 import { reportImages } from './images'
+import { backfillSteps } from './joblog'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
@@ -145,6 +146,7 @@ export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number
 /** One leader pass; polling honours its own interval. Never throws. */
 export async function sweepOnce(): Promise<void> {
   try {
+    await backfillSteps()
     if (!(await electLeader())) return
     await removeStaleRunners()
     await purgeRetention()
