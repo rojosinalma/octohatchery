@@ -1,6 +1,6 @@
 import type { Host, Repo, Runner, Slot } from '../lib/types'
 import { JobsPager, JobsTable, JobsToolbar, RECENT_SCOPE, jobsQuery, JOBS_SCOPE, type JobsView } from './jobs-table'
-import { Empty, Icon, RelTime, RunnerBadge, gb } from './parts'
+import { Empty, Icon, RelTime, gb } from './parts'
 
 export type OverviewData = { hosts: Host[]; slots: Slot[]; runners: Runner[] }
 export type RecentJobsData = JobsView & { repos: Repo[] }
@@ -44,87 +44,82 @@ const HostSpecs = ({ host }: { host: Host }) => {
   )
 }
 
-/** One runner in a slot seat: busy tile, spawning, idle, or free. */
-const RunnerSeat = ({ runner }: { runner?: Runner }) => {
-  if (!runner) {
-    return (
-      <div class="runner-seat runner-seat-free" data-tip="Free slot">
-        <span class="t-muted t-small">free</span>
-      </div>
-    )
-  }
+/** Short label for what a runner in a slot is doing: the job (and repo) when busy, else its state. */
+const seatLabel = (r: Runner) => (r.state === 'spawning' ? 'starting' : r.state === 'idle' ? 'waiting for a job' : (r.jobName ?? (r.jobId ? `job #${r.jobId}` : 'busy')))
 
-  const isBusy = runner.state === 'busy'
-  const isSpawning = runner.state === 'spawning'
-  const jobDisplay = runner.repo ? runner.repo.split('/')[1] : runner.jobId ? String(runner.jobId).slice(0, 6) : '—'
-
+/**
+ * A slot held by a runner: the circle stays the slot (filled, tone by state) and the capsule around it grows to the
+ * left with the job it runs and a kill button, so each runner sits visibly in its own slot.
+ */
+const SeatRunner = ({ runner }: { runner: Runner }) => {
+  const repo = runner.repo ? runner.repo.slice(runner.repo.indexOf('/') + 1) : null
+  const tip = [runner.name, runner.jobName, runner.repo].filter(Boolean).join(' · ')
   return (
-    <a
-      href={`/jobs?runner=${encodeURIComponent(runner.name)}`}
-      class="runner-seat"
-      data-state={runner.state}
-      data-tip={`${runner.name} · ${runner.state}${isBusy && runner.jobName ? ` · ${runner.jobName}` : ''}`}
-    >
-      <span class="runner-seat-state">
-        {isBusy && <Icon id="bi-play-circle-fill" size="xs" />}
-        {runner.state === 'idle' && <Icon id="bi-circle-fill" size="xs" />}
-        {isSpawning && <span class="t-spinner" style="--t-spinner-size: 0.7rem"></span>}
-      </span>
-      <span class="runner-seat-info">
-        {isBusy ? (
-          <span class="runner-seat-job">{jobDisplay}</span>
-        ) : (
-          <span class="runner-seat-state-text">{runner.state}</span>
-        )}
-      </span>
-    </a>
+    <span class="slot-seat" data-state={runner.state} data-runner-id={String(runner.id)}>
+      <button
+        class="t-btn slot-seat-kill"
+        data-size="xs"
+        data-variant="ghost"
+        data-tone="danger"
+        data-icon="only"
+        data-tip="Kill runner"
+        aria-label={`Kill runner ${runner.name}`}
+        data-action="kill"
+        data-id={String(runner.id)}
+        data-name={runner.name}
+        data-job={runner.jobName ?? ''}
+      >
+        <Icon id="bi-x-lg" size="xs" />
+      </button>
+      <a class="slot-seat-label" href={runner.jobId ? `/jobs/${runner.jobId}` : `/jobs?runner=${encodeURIComponent(runner.name)}`} data-tip={tip}>
+        <span class="slot-seat-job" safe>
+          {seatLabel(runner)}
+        </span>
+        {runner.state === 'busy' && repo ? (
+          <span class="slot-seat-repo t-muted" safe>
+            {repo}
+          </span>
+        ) : null}
+      </a>
+      <span class="slot-pill" data-busy="true" data-state={runner.state}></span>
+    </span>
   )
 }
 
-/** One row per template with its slots shown as seats (busy runners, free, etc). */
+/**
+ * One row per template with slots on this host: the name on the left, the slots as circles on the right edge.
+ * Runners come first so the row grows to the left; free circles stay at the right end.
+ */
 const SlotRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => {
-  const runnersBySlot = new Map<number, Runner>()
-  // Runners are listed in creation order; assume they fill slots 0..used-1
-  runners.slice(0, slot.used).forEach((r, i) => {
-    runnersBySlot.set(i, r)
-  })
-
+  const seated = runners.filter((r) => r.host === slot.host && r.type === slot.type && LIVE_STATES.has(r.state)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  // A claimed slot whose runner is not listed yet still reads as busy.
+  const claimed = Math.max(0, slot.used - seated.length)
+  const free = Math.max(0, slot.count - seated.length - claimed)
   return (
     <div class="slot-row" data-type={slot.type}>
-      <a href={`/templates#${encodeURIComponent(slot.type)}`} class="slot-type" safe>
+      <a href={`/templates#${encodeURIComponent(slot.type)}`} class="t-mono t-small slot-type" data-tip="Template" safe>
         {slot.type}
       </a>
-      <div class="slot-seats">
+      <span class="slot-pills" role="group" aria-label={`${slot.type} on ${slot.host}: ${slot.used} of ${slot.count} slots used`}>
+        {seated.map((r) => (
+          <SeatRunner runner={r} />
+        ))}
         {slot.count > PILL_MAX ? (
-          <>
-            <SlotBar slot={slot} />
-            {Array.from({ length: slot.used }, (_, i) => (
-              <RunnerSeat runner={runnersBySlot.get(i)} />
-            ))}
-            {slot.free > 0 && <span class="slot-free-count t-muted t-small">+{slot.free} free</span>}
-          </>
+          <SlotBar slot={slot} />
         ) : (
           <>
-            {Array.from({ length: slot.count }, (_, i) => (
-              runnersBySlot.get(i) ? (
-                <RunnerSeat runner={runnersBySlot.get(i)} />
-              ) : (
-                <span class="slot-pill" data-tip="Free slot"></span>
-              )
+            {Array.from({ length: claimed }, () => (
+              <span class="slot-pill" data-busy="true" data-tip="Claimed, runner starting"></span>
+            ))}
+            {Array.from({ length: free }, () => (
+              <span class="slot-pill" data-tip="Free slot"></span>
             ))}
           </>
         )}
-      </div>
+      </span>
     </div>
   )
 }
-
-/** Progress bar for 12+ slots. */
-const SlotBar = ({ slot }: { slot: Slot }) => (
-  <div class="t-progress" role="progressbar" aria-valuenow={slot.used} aria-valuemin={0} aria-valuemax={slot.count} style={`--t-value: ${Math.round((slot.used * 100) / slot.count)}%`} data-tip={`${slot.used}/${slot.count} slots busy`}>
-    <div class="t-progress-bar"></div>
-  </div>
-)
 
 /** One host column: a one-line header, the slot summary, then one row per template with slots here. */
 const HostSection = ({ host, slots, runners }: { host: Host; slots: Slot[]; runners: Runner[] }) => {
@@ -145,25 +140,52 @@ const HostSection = ({ host, slots, runners }: { host: Host; slots: Slot[]; runn
             offline
           </span>
         ) : null}
-        {host.dockerOk === false ? (
-          <span class="t-badge" data-tone="danger" data-size="xs">
+        {host.dockerOk ? null : (
+          <span class="t-badge" data-tone="danger" data-size="xs" data-tip="This node cannot reach its container engine">
             Docker unreachable
           </span>
-        ) : null}
+        )}
+        <span class="t-toolbar-spacer"></span>
         <HostSpecs host={host} />
       </header>
+      <p class="t-small host-summary" data-tone={total > 0 && used === total ? 'warning' : undefined}>
+        {total === 0 ? (
+          <>
+            No slots on this host. <a href="/templates">Set some under Templates</a>
+          </>
+        ) : (
+          `${used} of ${total} slots busy`
+        )}
+      </p>
       {mine.length > 0 ? (
-        <div class="host-templates">
-          {mine.map((slot) => (
-            <SlotRow slot={slot} runners={runners.filter((r) => r.host === host.name && r.type === slot.type)} />
+        <div class="host-slots" aria-label={`Slots on ${host.name}`}>
+          {mine.map((s) => (
+            <SlotRow slot={s} runners={runners} />
           ))}
         </div>
-      ) : (
-        <p class="t-small t-muted">
-          No slots on this host. <a href="/templates">Set some under Templates</a>
-        </p>
-      )}
+      ) : null}
     </section>
+  )
+}
+
+const SlotBar = ({ slot }: { slot: Slot }) => {
+  const pct = slot.count > 0 ? Math.round((slot.used / slot.count) * 100) : 0
+  const tone = slot.count === 0 ? 'neutral' : slot.free === 0 ? 'warning' : 'success'
+  return (
+    <div class="slot-bar">
+      <span class="t-small t-mono" data-tip={`${slot.free} free`}>{`${slot.used}/${slot.count}`}</span>
+      <div
+        class="t-progress"
+        data-size="sm"
+        role="progressbar"
+        aria-valuenow={String(slot.used)}
+        aria-valuemin="0"
+        aria-valuemax={String(slot.count)}
+        aria-label={`${slot.type} on ${slot.host}: ${slot.used} of ${slot.count} slots used`}
+      >
+        <div class="t-progress-bar" data-tone={tone} style={`--t-value: ${pct}%`}></div>
+      </div>
+    </div>
   )
 }
 
@@ -177,7 +199,7 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
     )
   }
   return (
-    <div id="overview-live" data-live="runner slot" class="t-stack" data-gap="4">
+    <div id="overview-live" data-live="runner slot">
       <section class="t-card" aria-labelledby="overview-hosts-title">
         <div class="t-card-header">
           <h2 class="t-card-title" id="overview-hosts-title">
@@ -187,7 +209,7 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
                 i
               </button>
               <div class="t-help-box" hidden>
-                <p>Each column is a host and its templates. Runners appear as tiles in their slots. Set slots under Templates.</p>
+                <p>A slot is one runner of a template allowed on a host at a time. Each circle is one slot. A runner in a slot shows the job it works on; the × kills it. Set slots under Templates.</p>
               </div>
             </span>
           </h2>
@@ -237,9 +259,10 @@ export const OverviewPage = ({ recent, ...data }: OverviewData & { recent: Recen
       <h1 class="t-page-title">Overview</h1>
       <span class="t-page-lead">Hosts, slots, the runners working right now and the latest jobs.</span>
     </header>
-    <div class="t-stack" data-gap="5">
+    <div class="t-stack overview-stack" data-gap="5">
       <OverviewLive {...data} />
       <RecentJobs {...recent} />
     </div>
   </>
 )
+
