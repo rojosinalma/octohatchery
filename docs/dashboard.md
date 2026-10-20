@@ -9,7 +9,7 @@ so what you can click you can also script.
 
 | Path | Screen | Fast task |
 |---|---|---|
-| `/` | Overview | See which hosts are online, how many slots each template has left per host, and what every runner is working on right now. Kill a runner. |
+| `/` | Overview | See which hosts are online, each template's slots per host with the runner in each one and what it works on, and the latest jobs. Kill a runner. |
 | `/jobs` | Jobs | Queue and history. Filter by repo (select) and status (button group); both are query parameters, so a filtered view has a URL. Open the run on GitHub, or the job name for its log. |
 | `/jobs/:id` | Job | One job: runner, host, template, labels, timings, and its log as a list of steps — live while the job runs, GitHub's final log afterwards. Follow, copy, raw view. |
 | `/repos` | Repos | Adopt a repo from the list GitHub lets the node see. Per adopted repo: copy the `runs-on` snippet for a template, open a pull request or commit that changes the workflows, or unadopt. |
@@ -33,14 +33,18 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   that is the case, and on the right the specs the node reported (`8 CPU · 32 GB · Docker 27.3.1
   · seen just now`; parts not reported yet are left out). Under it a summary line, `1 of 4 slots
   busy` (orange when every slot is taken), then one row per template that has slots on that host:
-  the template name and one pill per slot, filled when a runner occupies it; the row's tooltip
-  gives used / total. A template with more than 12 slots on a host shows a bar and the count
-  instead. A host without slots says so and links to Templates.
-- Runners: only live runners (`spawning`, `idle`, `busy`). Every cell links somewhere: the runner
-  name to the jobs list filtered on that runner (`/jobs?runner=<name>`), the host to its row on
-  the Hosts screen (`/hosts#<name>`), the template to its row under Templates
-  (`/templates#<name>`), repo to the jobs list filtered on the repo, job to the job page. `Kill`
-  asks for confirmation, then calls `DELETE /api/runners/:id`.
+  the template name on the left and one circle per slot on the right edge of the column. A slot
+  held by a runner shows that runner: the filled circle ends a capsule that grows to the left with
+  the job it works on and its repo (`waiting for a job` when idle, `starting` while it spawns;
+  green, blue and orange), links to the job page (or to `/jobs?runner=<name>` before it has a job),
+  and carries a × that kills the runner after a confirmation (`DELETE /api/runners/:id`). Free
+  circles stay at the right end; a claimed slot whose runner is not listed yet is a filled circle
+  alone. A template with more than 12 slots on a host shows its runners, then a bar and the count.
+  A host without slots says so and links to Templates. There is no separate Runners table: every
+  live runner (`spawning`, `idle`, `busy`) sits in its slot.
+- The page fits the window: the Hosts card keeps its height, Recent jobs takes the rest and its
+  table scrolls inside the card with a sticky header row. On a short window the card keeps a
+  minimum height and the page scrolls.
 - Empty state: "No hosts yet". A node registers itself on boot, so the first host appears as
   soon as one instance starts with access to a Docker socket.
 - Recent jobs: the Jobs table in a card, newest first, ten rows per page, with the same toolbar
@@ -70,7 +74,7 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 - Finished jobs show their conclusion (`success`, `failure`, …) instead of `completed`; a
   failed row is tinted.
 - Duration is computed from `startedAt` to `completedAt` (or now).
-- The job name links to `/jobs/:id`; so does the job column of the Runners table on the Overview.
+- The job name links to `/jobs/:id`; so does a busy runner's capsule in its slot on the Overview.
 
 ### Job
 
