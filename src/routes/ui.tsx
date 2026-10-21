@@ -3,6 +3,7 @@ import { html } from '@elysiajs/html'
 import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
 import { SETTING_DEFAULTS } from '../lib/settings'
+import { switcher } from '../lib/octoforge/siblings'
 import { STATUS_BY_CODE, validationMessage } from '../lib/json'
 import { JOBS_PER_MAX, JOBS_PER_PAGE, ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
@@ -36,14 +37,15 @@ const version = async () => {
 const theme = (settings: Record<string, string>): Theme => ({ skin: settings['ui_skin'], palette: settings['ui_palette'], mode: settings['ui_mode'] })
 
 const page = async (active: NavKey, title: string, body: JSX.Element, side?: JSX.Element) => {
-  const [v, settings, github] = await Promise.all([
+  const [v, settings, github, siblings] = await Promise.all([
     version(),
     service.getSettings().catch(() => ({}) as Record<string, string>),
     // The banner must never block a page: an unreachable GitHub renders no banner.
     service.githubStatus().catch(() => undefined),
+    switcher().catch(() => undefined),
   ])
   return (
-    <Layout title={title} active={active} tailorHead={tailorHead} version={v} theme={theme(settings)} side={side} github={github}>
+    <Layout title={title} active={active} tailorHead={tailorHead} version={v} theme={theme(settings)} side={side} github={github} siblings={siblings}>
       {body}
     </Layout>
   )

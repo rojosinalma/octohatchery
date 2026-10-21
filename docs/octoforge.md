@@ -42,9 +42,37 @@ token gets 401. Answers use the usual `{ok, message, ...data}` shape.
 | `DELETE /api/octoforge/github` | Drops the handed-over credential; the node goes back to its `.env` values. |
 | `POST /api/octoforge/database/adopt` | Moves OctoHatchery's data into a shared database (see [Database](#database)). |
 | `DELETE /api/octoforge/database` | Drops the adopted database setting; the next start uses `DATABASE_URL` again. |
+| `PUT /api/octoforge/siblings` | Stores the sibling list and shows the member switcher (see [Member switcher](#member-switcher)). |
+| `DELETE /api/octoforge/siblings` | Removes the sibling list; the switcher disappears. |
 
 Each change is recorded as an audit event with actor `octoforge` (`github.delivered`, `github.dropped`,
-`database.adopted`, `database.dropped`), without any secret.
+`database.adopted`, `database.dropped`, `siblings.updated`, `siblings.cleared`), without any secret.
+
+## Member switcher
+
+Octoforge sends every member the list of its siblings, so you can move between the tools without
+bookmarks. OctoHatchery shows it as a grid button at the right of the navbar: Octoforge first, then
+every member with its icon. The entry for OctoHatchery itself is marked "this app".
+
+`PUT /api/octoforge/siblings` takes:
+
+```json
+{
+  "forge": { "title": "Octoforge", "url": "https://forge.example.com", "icon": "https://forge.example.com/favicon.svg" },
+  "members": [
+    { "name": "octohatchery", "title": "OctoHatchery", "url": "https://hatchery.example.com", "icon": "https://hatchery.example.com/favicon.svg" }
+  ],
+  "updated_at": "2026-10-21T12:00:00Z"
+}
+```
+
+- Every `url` and `icon` must be an absolute `http` or `https` URL; `name` is lower case; at most 50
+  members. Anything else is refused with 400 and nothing is stored.
+- The list is stored in the `settings` table under `octoforge_siblings`, hidden from the settings API
+  like the other `octoforge_*` keys. Every node of a cluster reads it from there, so one call is enough.
+- Octoforge sends the list again every hour. A resend that only changes `updated_at` is stored but
+  writes no audit event.
+- Without `OCTOFORGE_TOKEN` there is no switcher, even when a list is still stored.
 
 ## GitHub credentials
 

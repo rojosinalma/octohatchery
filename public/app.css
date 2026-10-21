@@ -313,6 +313,32 @@
   height: 1.4em;
 }
 
+/* Octoforge member switcher in the navbar: app icons at text size, this app marked. */
+.member-switcher .t-menu-list {
+  min-width: 12rem;
+}
+
+.member-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.member-switcher .t-menu-item[aria-current="page"] {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--t-accent) var(--t-tint-weak), transparent);
+}
+
+.member-switcher .t-menu-item {
+  flex-wrap: nowrap;
+}
+
+.member-switcher .t-menu-kbd {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .slot-bar {
   display: flex;
   align-items: center;

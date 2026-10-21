@@ -108,6 +108,8 @@ describe('octoforge routes', () => {
       ['DELETE', '/api/octoforge/github'],
       ['POST', '/api/octoforge/database/adopt'],
       ['DELETE', '/api/octoforge/database'],
+      ['PUT', '/api/octoforge/siblings'],
+      ['DELETE', '/api/octoforge/siblings'],
       ['GET', '/api/octoforge/nothing'],
     ] as const) {
       const r = await call(a, method, path, method === 'PUT' ? { mode: 'pat', token: PAT } : undefined, AUTH)

@@ -8,6 +8,7 @@ import { githubCredential } from '../lib/github/credential'
 import { jsonErr, jsonOk } from '../lib/json'
 import { adoptDatabase, databaseStatus, dropAdoptedDatabase } from '../lib/octoforge/database'
 import { deliverGitHub, dropGitHub, GitHubUnreachable } from '../lib/octoforge/github'
+import { dropSiblings, SiblingList, storeSiblings } from '../lib/octoforge/siblings'
 import { apiErrors } from './api'
 
 const ACTOR = 'octoforge'
@@ -111,4 +112,16 @@ export const octoforge = new Elysia({ name: 'octoforge', prefix: '/api/octoforge
     const { removed } = await dropAdoptedDatabase()
     await recordEvent(ACTOR, 'database.dropped', 'database', { removed })
     return jsonOk({ removed, restart_required: true }, removed ? 'adopted database setting removed; restart to use DATABASE_URL again' : 'no adopted database setting')
+  })
+  .put(
+    '/siblings',
+    async ({ body }) => {
+      const { changed } = await storeSiblings(body)
+      return jsonOk({ members: body.members.length, changed }, `sibling list stored (${body.members.length} members)${changed ? '' : ', unchanged'}`)
+    },
+    { body: SiblingList },
+  )
+  .delete('/siblings', async () => {
+    const { removed } = await dropSiblings()
+    return jsonOk({ removed }, removed ? 'sibling list removed; the member switcher is hidden' : 'no sibling list stored')
   })

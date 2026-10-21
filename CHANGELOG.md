@@ -6,6 +6,7 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Added
 
+- Member switcher: with `OCTOFORGE_TOKEN` set, Octoforge can send the list of its tools (`PUT /api/octoforge/siblings`, `DELETE` removes it). A grid button at the right of the navbar then opens links to Octoforge and every member, each with its icon, OctoHatchery marked as "this app". See [docs/octoforge.md](docs/octoforge.md#member-switcher).
 - `bin/verify` starts with a leak scan: local home paths, private addresses, LAN-only names and the names listed in the untracked `.git/info/leak-patterns`, tests and fixtures included.
 
 ### Fixed

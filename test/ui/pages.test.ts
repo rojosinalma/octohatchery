@@ -52,6 +52,8 @@ describe('layout', () => {
     // switcher: mode toggle first in the footer end
     expect(body).toMatch(/<div class="t-footer-end"><div data-tailor-pickers="mode"><\/div>/)
     expect(body).toContain('v0.1.0-test')
+    // no Octoforge sibling list here: no member switcher
+    expect(body).not.toContain('member-switcher')
     // never browser-native tooltips
     expect(body).not.toMatch(/\stitle="/)
   })

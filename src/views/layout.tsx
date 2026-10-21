@@ -1,5 +1,6 @@
 import { type PropsWithChildren } from '@kitajs/html'
 import type { GitHubStatus } from '../lib/github/permissions'
+import type { Switcher } from '../lib/octoforge/siblings'
 import { BrandMark, Icon } from './parts'
 
 export type NavKey = 'overview' | 'repos' | 'jobs' | 'templates' | 'hosts' | 'events' | 'settings'
@@ -29,7 +30,40 @@ export type LayoutProps = PropsWithChildren<{
   repoUrl?: string
   /** Cached GitHub check; drives the warning banner when a permission is missing or no source is configured. */
   github?: Pick<GitHubStatus, 'source' | 'missing'>
+  /** Octoforge sibling list; the member switcher is shown only when it is set. */
+  siblings?: Switcher
 }>
+
+/** Links to Octoforge and every member it lists (contract v1 sibling list); this app is marked. */
+export const MemberSwitcher = ({ siblings }: { siblings?: Switcher }) => {
+  if (!siblings) return null
+  return (
+    <details class="t-menu member-switcher" data-align="end" id="member-switcher">
+      <summary class="t-btn" data-variant="ghost" data-size="sm" aria-label="Octoforge apps" data-tip="Octoforge apps">
+        <Icon id="bi-grid-3x3-gap-fill" />
+      </summary>
+      <ul class="t-menu-list" role="menu">
+        <li>
+          <a class="t-menu-item" role="menuitem" href={siblings.forge.url}>
+            <img class="member-icon" src={siblings.forge.icon} alt="" width="16" height="16" />
+            <span safe>{siblings.forge.title}</span>
+          </a>
+        </li>
+        <li class="t-menu-divider"></li>
+        <li class="t-menu-header">Members</li>
+        {siblings.members.map((m) => (
+          <li>
+            <a class="t-menu-item" role="menuitem" href={m.url} aria-current={m.current ? 'page' : undefined} data-member={m.name}>
+              <img class="member-icon" src={m.icon} alt="" width="16" height="16" />
+              <span safe>{m.title}</span>
+              {m.current ? <span class="t-menu-kbd">this app</span> : null}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
 
 /** One banner under the navbar on every page while GitHub access is incomplete; nothing when it is fine. */
 export const GitHubBanner = ({ github }: { github?: Pick<GitHubStatus, 'source' | 'missing'> }) => {
@@ -57,7 +91,7 @@ const SAFE_ID = /^[a-z0-9-]+$/
 const seedTheme = (theme: Theme) =>
   `(function(){try{var t=${JSON.stringify(Object.fromEntries(Object.entries(theme).filter(([, v]) => v && SAFE_ID.test(v))))};for(var k in t){if(t[k]&&!localStorage.getItem('octohatchery.'+k))localStorage.setItem('octohatchery.'+k,t[k])}}catch(e){}})();`
 
-export const Layout = ({ title, active, tailorHead, version, theme = {}, side, repoUrl, github, children }: LayoutProps) => (
+export const Layout = ({ title, active, tailorHead, version, theme = {}, side, repoUrl, github, siblings, children }: LayoutProps) => (
   <html lang="en">
     <head>
       <meta charset="utf-8" />
@@ -86,6 +120,7 @@ export const Layout = ({ title, active, tailorHead, version, theme = {}, side, r
             ))}
           </ul>
           <div class="t-navbar-end">
+            <MemberSwitcher siblings={siblings} />
             <span class="t-dot" data-status="muted" id="live-dot" data-tip="Live updates: connecting"></span>
           </div>
         </header>
