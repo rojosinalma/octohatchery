@@ -8,6 +8,9 @@ with the tools most workflows expect on top.
 
 - `ghcr.io/actions/actions-runner:2.338.0` as the base: Ubuntu, the runner binary, user `runner` (uid 1001).
 - `gh` (GitHub CLI), `git-lfs`, `jq`, `curl`, `unzip`.
+- `build-essential` and `pkg-config`, so native gems and npm/pip packages with C extensions install
+  (Ruby's `nio4r`, `puma`, `bigdecimal`, for example).
+- Passwordless `sudo` for `runner`, as on GitHub-hosted runners, so `sudo apt-get install` steps work.
 - Docker CLI and the buildx plugin. No Docker daemon: builds go to a remote buildkitd over `BUILDKIT_HOST`.
 - `RUNNER_TOOL_CACHE=/opt/hostedtoolcache`, owned by `runner`. The orchestrator mounts a per-host volume
   there so `actions/setup-node`, `setup-python` and friends download each version once per host.
