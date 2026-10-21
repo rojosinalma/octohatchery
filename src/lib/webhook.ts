@@ -134,6 +134,8 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
     case 'in_progress': {
       const known = await jobByGitHubId(wj.id)
       if (!known) return { status: 200, message: 'job unknown, ignored' }
+      // GitHub does not deliver in order: an in_progress that arrives after completed must not reopen the job.
+      if (known.status === 'completed') return { status: 200, message: 'job already completed, ignored' }
       const job = await followGitHub(known, wj.runner_name)
       await updateJob(job.id, { status: 'in_progress', startedAt: wj.started_at ?? new Date().toISOString(), steps: toSteps(wj.steps) })
       if (job.runnerId !== null) await updateRunner(job.runnerId, { state: 'busy' })

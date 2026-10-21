@@ -87,6 +87,23 @@ describe('webhook', () => {
     expect((await runnerById(runner!.id))?.state).toBe('exited')
   })
 
+  test('an in_progress that arrives after completed leaves the job and its runner closed', async () => {
+    await fresh()
+    const app = new Elysia().use(webhooks)
+    await service.adoptRepo('acme/app', 'user')
+    await service.setSlots({ host: TEST_HOST, type: 'generic', count: 1 }, 'user')
+    await deliver(app, 'workflow_job', payload('queued', 11))
+    const [runner] = await claim()
+    await deliver(app, 'workflow_job', payload('completed', 11, { conclusion: 'success', completed_at: '2026-01-01T00:01:00Z', runner_name: runner!.name }))
+    const r = await deliver(app, 'workflow_job', payload('in_progress', 11, { started_at: '2026-01-01T00:00:00Z', runner_name: runner!.name }))
+    expect(r.json.message).toBe('job already completed, ignored')
+    const job = await jobByGitHubId(11)
+    expect(job?.status).toBe('completed')
+    expect(job?.conclusion).toBe('success')
+    expect((await runnerById(runner!.id))?.state).toBe('exited')
+    expect((await service.listEvents()).filter((e) => e.action === 'job.started' && e.target === 'acme/app#11')).toHaveLength(0)
+  })
+
   test('in_progress and completed store the steps of the payload, sorted by number; a payload without steps keeps them', async () => {
     await fresh()
     const app = new Elysia().use(webhooks)

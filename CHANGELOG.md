@@ -4,6 +4,10 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Fixed
+
+- An `in_progress` webhook that GitHub delivers after the job's `completed` one no longer reopens the job or marks its runner busy again.
+
 ## [0.2.2] - 2026-10-21
 
 ### Added
