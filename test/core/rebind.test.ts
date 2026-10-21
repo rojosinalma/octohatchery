@@ -117,6 +117,22 @@ describe('runner-job binding follows GitHub', () => {
     expect((await jobByGitHubId(2))?.runnerId).toBe(a!.id)
   })
 
+  test('a job cancelled before it ran leaves its runner up and unbound; the next job GitHub gives it binds to it', async () => {
+    const w = await fresh()
+    const [a] = await claimed([1, 2], 1) // job 1 has runner a, job 2 stays queued
+    await applyWorkflowJob(event('completed', 1, null, { conclusion: 'cancelled' }))
+    expect((await runnerById(a!.id))).toMatchObject({ state: 'idle', jobId: null })
+    expect((await jobByGitHubId(1))).toMatchObject({ status: 'completed', runnerId: null })
+    await reap()
+    expect(w.docker.containers.has(a!.containerId!)).toBe(true)
+
+    await applyWorkflowJob(event('in_progress', 2, a!.name))
+    expect((await jobByGitHubId(2))).toMatchObject({ status: 'in_progress', runnerId: a!.id })
+    expect((await runnerById(a!.id))).toMatchObject({ state: 'busy', jobName: 'job-2' })
+    await applyWorkflowJob(event('completed', 2, a!.name, { conclusion: 'success' }))
+    expect((await runnerById(a!.id))?.state).toBe('exited')
+  })
+
   test('a runner name that is not ours leaves the binding alone', async () => {
     await fresh()
     const [a] = await claimed([1])
