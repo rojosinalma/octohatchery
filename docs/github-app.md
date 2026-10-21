@@ -27,7 +27,7 @@ is missing and what breaks without it.
 |---|---|---|---|
 | Metadata | Read | required by GitHub for every App; repository names and visibility | nothing works |
 | Administration | Read and write | create and delete the just-in-time runner registration for each job | nothing runs |
-| Actions | Read and write | list queued jobs and workflow runs, download job logs and the run's per-step log archive | the polling fallback is blind; final job logs cannot be fetched |
+| Actions | Read and write | list queued jobs and workflow runs, download job logs | the polling fallback is blind; final job logs cannot be fetched |
 | Checks | Read | read a finished job's annotations (errors and warnings with file and line) | the job page shows no annotations |
 | Contents | Read and write | read workflows; write them when you ask for `apply_runs_on` with `commit` or `pr` | `apply_runs_on` cannot read or change workflows (`snippet` still works) |
 | Workflows | Read and write | GitHub requires it to change any file under `.github/workflows` | `apply_runs_on` in `pr` or `commit` mode fails when it writes a workflow file |

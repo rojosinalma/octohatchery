@@ -94,14 +94,12 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   job runs, and when it ends the orchestrator fetches the job once more for the final timestamps. A
   job without step data yet shows one row, "Log", with everything in it. **Expand all** opens every
   step and every group inside; **Collapse all** closes the steps.
-- Which step a line belongs to: when GitHub's log archive for the run holds one file per step, every
-  line keeps the step it came from. GitHub hands that archive out only once the whole run has ended,
-  and for many runs it holds just one file per job, so most logs are placed by time instead. GitHub
-  gives step times to the second, and a step's last lines often share a second with the start of the
-  next steps. Inside that second a line stays with the step before until the next step's first line
-  shows up (`##[group]Run …` for a normal step, `Post job cleanup.` for a post step, `Cleaning up
-  orphan processes` for "Complete job"); a line one second or more after a step started belongs to
-  that step. Lines before the first step go to the first step.
+- Which step a line belongs to: lines are placed by time. GitHub gives step times to the second, and
+  a step's last lines often share a second with the start of the next steps. Inside that second a
+  line stays with the step before until the next step's first line shows up (`##[group]Run …` for a
+  normal step, `Post job cleanup.` for a post step, `Cleaning up orphan processes` for "Complete
+  job"); a line one second or more after a step started belongs to that step. Lines before the first
+  step go to the first step.
 - Annotations: the errors and warnings GitHub attached to the job (the check run's annotations: the
   failed step's exit code, linter findings with file and line) sit in a compact list above the steps:
   level icon, title, message and `path:line`. A message that also shows up in the log links to that

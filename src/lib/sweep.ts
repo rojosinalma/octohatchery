@@ -8,7 +8,7 @@ import { recordEvent } from './events'
 import { notServedReason } from './github/accounts'
 import { github } from './github/auth'
 import { reportImages } from './images'
-import { backfillStepLines, backfillSteps } from './joblog'
+import { backfillSteps } from './joblog'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
@@ -171,7 +171,6 @@ export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number
 export async function sweepOnce(): Promise<void> {
   try {
     await backfillSteps()
-    await backfillStepLines()
     if (!(await electLeader())) return
     await removeStaleRunners()
     await purgeRetention()

@@ -1,7 +1,0 @@
-2026-10-21T11:28:32.2270000Z Evaluating lint.if
-2026-10-21T11:28:32.2270000Z Evaluating: success()
-2026-10-21T11:28:32.2270000Z Result: true
-2026-10-21T11:28:32.2910000Z Requested labels: self-hosted, generic
-2026-10-21T11:28:32.2910000Z Job defined at: acme/widgets/.github/workflows/run-tests.yml@refs/heads/main
-2026-10-21T11:28:32.2910000Z Waiting for a runner to pick up this job...
-2026-10-21T11:28:39.6610000Z Job is about to start running on the runner: generic-node-a-1

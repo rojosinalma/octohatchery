@@ -456,7 +456,7 @@ describe('job page', () => {
     expect((pseudo.match(/<details class="log-step"/g) ?? []).length).toBe(1)
   })
 
-  test('job 87 with per-step lines: Standard holds the lint output and its error, Complete job one line; annotations above the steps', async () => {
+  test('job 87 from the flat log: Standard holds the lint output and its error, Complete job one line; annotations above the steps', async () => {
     store.data = await job87Set()
     const { body } = await get('/jobs/87')
     const step = (n: number) => {
