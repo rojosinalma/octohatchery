@@ -273,6 +273,8 @@
     f.elements.name.readOnly = Boolean(type)
     setChips(f, type ? type.labels || [] : [])
     setRadio(f, 'docker', type && type.docker ? type.docker : 'none')
+    f.elements.runAs.value = type && type.runAs ? type.runAs : 'image'
+    T.sync(f.elements.runAs)
     if (!type) { syncTypeBadge(f); setImage(f, f.dataset.imageDefault || ''); return }
     f.elements.name.value = type.name
     syncTypeBadge(f)
@@ -418,6 +420,7 @@
         env: env,
         secretEnv: list(f.elements.secretEnv.value),
         docker: f.elements.docker.value || 'none',
+        runAs: f.elements.runAs.value || 'image',
       }
       busy(submit, true)
       return api('PUT', '/api/runner-types/' + encodeURIComponent(name), payload).then(toast).then(function (res) {

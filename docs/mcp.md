@@ -63,7 +63,7 @@ Read-only:
 
 Changes:
 
-- `upsert_runner_type {name, image, cpus, memoryMb, labels?, mounts?, env?, secretEnv?, description?, docker?}`: create or replace a type. `docker` is `none` (default), `socket` (the host's Docker socket is mounted; `services:` and `docker run` work, every job on the type controls the host's containers) or `dind` (a privileged `docker:dind` sidecar per runner; isolated, slower to start, no shared image cache).
+- `upsert_runner_type {name, image, cpus, memoryMb, labels?, mounts?, env?, secretEnv?, description?, docker?, runAs?}`: create or replace a type. `docker` is `none` (default), `socket` (the host's Docker socket is mounted; `services:` and `docker run` work, every job on the type controls the host's containers) or `dind` (a privileged `docker:dind` sidecar per runner; isolated, slower to start, no shared image cache). `runAs` is `image` (default: the image's own user) or `root` (uid 0; the job can write any host path the type mounts, and with `socket` it adds nothing).
 - `set_slots {host, type, count}`: capacity for one type on one host; `0` removes it.
 - `adopt_repo {repo}`: start serving a repo (`owner/name`); creates the webhook when needed.
 - `ensure_webhook {repo}`: create or repair the `workflow_job` webhook of an adopted repo and store its id. With a GitHub App nothing is created and the result says `covered: "app"`.

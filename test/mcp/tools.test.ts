@@ -82,6 +82,16 @@ describe('actor and argument mapping', () => {
     expect(findTool('apply_runs_on')!.description).toContain('removes the branch')
   })
 
+  test('upsert_runner_type: runAs defaults to image, accepts root, rejects others; the description names the risk', () => {
+    const tool = findTool('upsert_runner_type')!
+    const schema = z.object(tool.inputSchema)
+    expect((schema.parse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512 }) as { runAs: string }).runAs).toBe('image')
+    expect((schema.parse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512, runAs: 'root' }) as { runAs: string }).runAs).toBe('root')
+    expect(schema.safeParse({ name: 'gpu', image: 'i', cpus: 1, memoryMb: 512, runAs: 'admin' }).success).toBe(false)
+    for (const word of ['runAs', '"image"', '"root"', 'uid 0', 'bind-mounts', 'gives root on the host']) expect(tool.description).toContain(word)
+    expect(findTool('list_runner_types')!.description).toContain('runAs')
+  })
+
   test('adopt_repo passes the repo and the actor to the facade', async () => {
     await findTool('adopt_repo')!.handler({ repo: 'owner/name' } as never, ctx)
     expect(service.adoptRepo).toHaveBeenCalledWith('owner/name', 'mcp:test')

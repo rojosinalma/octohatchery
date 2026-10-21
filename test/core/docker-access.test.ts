@@ -7,7 +7,7 @@ import { removeStaleRunners } from '../../src/lib/sweep'
 import { runnerById } from '../../src/lib/store'
 import type { RunnerType } from '../../src/lib/types'
 
-const base: Omit<RunnerType, 'id' | 'createdAt' | 'updatedAt'> = { name: 'x', description: null, labels: [], image: 'img', cpus: 1, memoryMb: 512, mounts: [], env: {}, secretEnv: [], docker: 'none' }
+const base: Omit<RunnerType, 'id' | 'createdAt' | 'updatedAt'> = { name: 'x', description: null, labels: [], image: 'img', cpus: 1, memoryMb: 512, mounts: [], env: {}, secretEnv: [], docker: 'none', runAs: 'image' }
 
 describe('runner docker access', () => {
   test('socket path from DOCKER_HOST; gid when the socket can be inspected', () => {

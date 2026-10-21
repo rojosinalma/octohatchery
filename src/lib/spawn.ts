@@ -21,6 +21,8 @@ export const RUNNER_SOCKET_PATH = '/var/run/docker.sock'
 export const DIND_IMAGE = 'docker:28-dind'
 export const DIND_PORT = 2375
 export const DIND_ROLE = 'dind'
+/** `runAs: root` runs the runner container as uid and gid 0. */
+export const ROOT_USER = '0:0'
 
 /** The host daemon's socket as seen from this process: `DOCKER_HOST` when it names a unix socket, else the default path. */
 export function hostSocketPath(dockerHost = config().dockerHost): string {
@@ -68,6 +70,11 @@ export async function runnerEnv(type: RunnerType, env: Record<string, string | u
   if (missing.length) throw new Error(`runner type "${type.name}" needs ${missing.join(', ')} in this node's environment`)
   for (const name of type.secretEnv) out[name] = env[name]!
   return out
+}
+
+/** `uid:gid` for the container's User, or undefined to keep the image's own user. */
+export function runnerUser(type: Pick<RunnerType, 'runAs'>): string | undefined {
+  return type.runAs === 'root' ? ROOT_USER : undefined
 }
 
 export function runnerMounts(type: RunnerType, socketPath = hostSocketPath()): string[] {
@@ -121,6 +128,7 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
       mounts: runnerMounts(type),
       network: runnerNetwork,
       groupAdd,
+      user: runnerUser(type),
     })
     const updated = await updateRunner(runner.id, { state: 'idle', containerId, githubRunnerId: jit.runnerId, repo })
     if (updated) ensureFollower(updated)

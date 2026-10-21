@@ -19,12 +19,14 @@ templates; the API, the MCP tools and this document keep the name runner type.
 | `env` | Plain environment variables, stored as given. Never put secrets here. |
 | `secretEnv` | Names of environment variables whose values live on the node. |
 | `docker` | What a job can do with Docker: `none` (default), `socket` or `dind`. See [Docker access](#docker-access). |
+| `runAs` | The user the container runs as: `image` (default) or `root`. See [Run as](#run-as). |
 
 Every runner also gets:
 
 - the named volume `octohatchery-tool-cache` at `/opt/hostedtoolcache` (`RUNNER_TOOL_CACHE`), one per host,
 - `BUILDKIT_HOST` pointing at the node's buildkitd sidecar (setting `buildkit_host`),
-- a PID limit of 1024, no added capabilities, and no Docker socket unless the type says `docker: socket`.
+- a PID limit of 1024, no added capabilities, and no Docker socket unless the type says `docker: socket`,
+- the user its image declares, unless the type says `runAs: root`.
 
 A type change affects runners started after the change. Running runners finish with their old settings.
 
@@ -78,6 +80,30 @@ daemon's host**, so what `localhost` means depends on the Docker option of the t
   the node's compose network; the host's gateway IP is `ip route | awk '/default/ {print $3}'`), or run
   the job inside a container (`container: node:22`): GitHub then puts the job container and its
   services on one network and the service is reachable by its `services:` key (`postgres:5432`).
+
+## Run as
+
+By default a runner runs as the user its image declares. In the shipped image that is `runner`, uid 1001,
+which is what GitHub's own runner expects. Set `runAs` to `root` and the container starts as uid 0
+(`--user 0:0`) instead.
+
+| Option | What happens |
+|---|---|
+| `image` (default) | No user is set; the image's `USER` applies. |
+| `root` | The container runs as uid 0, gid 0. |
+
+Use `root` when a job has to write files that belong to root inside a bind mount: a deploy checkout
+owned by root on the host, a shared cache directory created by another root process, or a tool that
+insists on root. Running as uid 1001, such a job fails with `permission denied`.
+
+The risk: a root job can read and write every host path the type bind-mounts, with root's rights, and
+can change ownership of anything in them. Only use `root` on types whose mounts you would hand to any
+job of every adopted repo. With `docker: socket` it adds nothing, since the Docker socket already gives
+a job root on the host. With `dind` the sidecar is privileged either way; the runner's user does not
+change that.
+
+The socket group (`docker: socket`) is still added for both options. A custom image whose `USER` is
+already root behaves like `root` with either option.
 
 ## Images
 
