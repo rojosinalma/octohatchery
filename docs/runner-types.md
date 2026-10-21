@@ -90,7 +90,7 @@ which is what GitHub's own runner expects. Set `runAs` to `root` and the contain
 | Option | What happens |
 |---|---|
 | `image` (default) | No user is set; the image's `USER` applies. |
-| `root` | The container runs as uid 0, gid 0. |
+| `root` | The container runs as uid 0, gid 0, with `RUNNER_ALLOW_RUNASROOT=1` (the Actions runner refuses root without it). |
 
 Use `root` when a job has to write files that belong to root inside a bind mount: a deploy checkout
 owned by root on the host, a shared cache directory created by another root process, or a tool that
