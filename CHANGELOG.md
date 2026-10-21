@@ -4,6 +4,12 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-21
+
+### Changed
+
+- Member switcher: a list older than three of Octoforge's resends (its `updated_at`, setting `siblings_stale_minutes`, 180 minutes) now hides the switcher instead of marking it old. It comes back with the next list. This follows the Octoforge member contract.
+
 ## [0.3.2] - 2026-10-21
 
 The `v0.3.1` tag has an empty `package.json` and was never released; 0.3.2 carries its changes.
@@ -132,7 +138,8 @@ First scaffold.
 - Runner image `ghcr.io/rojosinalma/octohatchery-runner` based on GitHub's `actions-runner`, with `gh`, Docker CLI and buildx, git-lfs, jq, curl and unzip, plus a `buildkitd` sidecar in the compose file for container builds inside jobs.
 - Audit log (`events`) and retention purge for finished jobs, runners and events.
 
-[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.3.3
 [0.3.2]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.3.2
 [0.3.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.3.0
 [0.2.2]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.2
