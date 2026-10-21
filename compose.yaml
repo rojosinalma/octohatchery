@@ -55,9 +55,6 @@ services:
 volumes:
   node_modules:
   buildkit:
-  # Mounted into every runner on this host as RUNNER_TOOL_CACHE; declared here so it survives `compose down`.
-  tool-cache:
-    name: octohatchery-tool-cache
 
 networks:
   # Your reverse proxy's network (set INGRESS_NETWORK in .env). Standalone: delete it and add a `ports:` block to the app.

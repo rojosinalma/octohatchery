@@ -64,7 +64,7 @@ curl -s http://localhost:3000/health
 
 `ok: true` means the database opened and Docker answered. Put a reverse proxy with SSO in front, exposing `POST /webhooks/github` without authentication, and adopt your first repository from the dashboard.
 
-`compose.yaml` pulls `ghcr.io/rojosinalma/octohatchery:latest` and starts the `buildkitd` sidecar next to it. The app's data (the SQLite file) lives in a named volume; the runners' tool cache lives in `octohatchery-tool-cache`.
+`compose.yaml` pulls `ghcr.io/rojosinalma/octohatchery:latest` and starts the `buildkitd` sidecar next to it. The app's data (the SQLite file) lives in a named volume. Runners get their tools from the runner image, not from a volume.
 
 ## Cluster mode
 
@@ -105,7 +105,6 @@ The database is the only state worth backing up. Use your usual PostgreSQL backu
 Everything else is re-creatable:
 
 - Runner containers are ephemeral by design.
-- The tool cache volume is a cache. Deleting it costs a slower first job per host.
 - Webhooks are re-registered when you adopt a repository again, and the leader's polling fallback finds queued jobs even without them.
 - `.env` is yours to keep safe; it is not in the database.
 

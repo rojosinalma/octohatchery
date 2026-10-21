@@ -23,12 +23,24 @@ templates; the API, the MCP tools and this document keep the name runner type.
 
 Every runner also gets:
 
-- the named volume `octohatchery-tool-cache` at `/opt/hostedtoolcache` (`RUNNER_TOOL_CACHE`), one per host,
+- `RUNNER_TOOL_CACHE=/opt/hostedtoolcache`, where the runner image bakes its tools (see [Tool cache](#tool-cache)),
 - `BUILDKIT_HOST` pointing at the node's buildkitd sidecar (setting `buildkit_host`),
 - a PID limit of 1024, no added capabilities, and no Docker socket unless the type says `docker: socket`,
 - the user its image declares, unless the type says `runAs: root`.
 
 A type change affects runners started after the change. Running runners finish with their old settings.
+
+## Tool cache
+
+Nothing is mounted at `/opt/hostedtoolcache`. The default runner image ships the tools there already:
+Ruby versions in the layout `ruby/setup-ruby` looks for, and Bun at `~/.bun/bin`, where
+`oven-sh/setup-bun` looks first. A setup step that asks for a baked version uses it without a download.
+A version that is not baked in is downloaded into the job's own container and is gone when the job ends.
+Each job has its own copy of the tree, so concurrent jobs cannot break each other's tools.
+[runner/README.md](../runner/README.md#baked-tools) lists the versions and how to change them.
+
+A shared volume over that path would hide the baked tools and let concurrent jobs write into the same
+Ruby, so do not add one in `mounts`.
 
 ## Secrets: names in the type, values on the node
 

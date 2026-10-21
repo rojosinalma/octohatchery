@@ -1,5 +1,13 @@
 # Runner image for OctoHatchery: the official GitHub Actions runner plus the tools most jobs expect.
 # Built as ghcr.io/rojosinalma/octohatchery-runner:<tag>; see README.md in this folder.
+# The tool images under tools/ are built first; this image copies their trees in. TOOLS_TAG selects
+# which build of them (CI passes the commit's sha-<short>).
+ARG TOOLS_REGISTRY=ghcr.io/rojosinalma
+ARG TOOLS_TAG=edge
+
+FROM ${TOOLS_REGISTRY}/octohatchery-tool-ruby:${TOOLS_TAG} AS ruby
+FROM ${TOOLS_REGISTRY}/octohatchery-tool-bun:${TOOLS_TAG} AS bun
+
 FROM ghcr.io/actions/actions-runner:2.338.0
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -31,9 +39,16 @@ RUN apt-get update \
 # UTF-8 by default, as on GitHub-hosted runners; without it Ruby, Python and friends read files as US-ASCII.
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-# Shared tool cache (actions/setup-* downloads) mounted from a per-host volume by the orchestrator.
+# Tool cache baked into the image: ruby/setup-ruby finds these Rubies and does not download them.
+# It stays writable by runner, so a setup action can add a version that is not baked in; that copy lives
+# in the job's own container only.
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
 RUN install -d -o runner -g runner -m 0755 /opt/hostedtoolcache
+COPY --from=ruby --chown=runner:runner /opt/hostedtoolcache/ /opt/hostedtoolcache/
+
+# Bun where oven-sh/setup-bun looks first (~/.bun/bin), so a matching bun-version needs no download.
+COPY --from=bun --chown=runner:runner /home/runner/.bun/ /home/runner/.bun/
+ENV PATH=/home/runner/.bun/bin:${PATH}
 
 COPY --chown=runner:runner --chmod=0755 entrypoint.sh /entrypoint.sh
 

@@ -12,7 +12,7 @@ import { adoptedRepos, jobById, runnerTypeByName, updateJob, updateRunner, type 
 import type { Runner, RunnerType } from './types'
 
 const logger = log('scheduler')
-export const TOOL_CACHE_VOLUME = 'octohatchery-tool-cache'
+/** Where the runner image bakes its tools; setup actions read it from RUNNER_TOOL_CACHE. Nothing is mounted there. */
 export const TOOL_CACHE_PATH = '/opt/hostedtoolcache'
 export const MAX_CLAIM_RETRIES = 3
 /** Where the runner image expects the daemon socket (the Docker CLI default). */
@@ -80,7 +80,7 @@ export function runnerUser(type: Pick<RunnerType, 'runAs'>): string | undefined 
 }
 
 export function runnerMounts(type: RunnerType, socketPath = hostSocketPath()): string[] {
-  const mounts = [`${TOOL_CACHE_VOLUME}:${TOOL_CACHE_PATH}`, ...type.mounts]
+  const mounts = [...type.mounts]
   if (type.docker === 'socket') mounts.push(`${socketPath}:${RUNNER_SOCKET_PATH}`)
   return mounts
 }
