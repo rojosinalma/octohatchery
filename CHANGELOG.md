@@ -39,6 +39,8 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Changed
 
+- Runner image: `build-essential` and `pkg-config` for native extensions, passwordless `sudo` for `runner` (the image now sets `USER runner`, keeping its supplementary groups), and a UTF-8 locale (`LANG`/`LC_ALL=C.UTF-8`), matching GitHub-hosted runners.
+
 - Templates dialog: the Image field is a select of the default image and every image in use, with "Other…" to type a new one; editing preselects the template's image.
 - Loading states: the runs-on actions, the adopt rows and the spawn buttons show a spinner and are disabled while the request runs; the sibling runs-on button is disabled too and both come back on failure.
 - Overview: one Hosts card with hosts as columns; a one-line header per host (status dot, name, `leader` badge, `offline` / `Docker unreachable` only when true, specs and last heartbeat), a `N of M slots busy` line and one pill per slot per template (a bar beyond 12 slots). Navbar order is Overview, Repos, Jobs, Templates, Hosts, Events, Settings.

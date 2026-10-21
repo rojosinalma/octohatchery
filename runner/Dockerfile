@@ -28,6 +28,9 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# UTF-8 by default, as on GitHub-hosted runners; without it Ruby, Python and friends read files as US-ASCII.
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 # Shared tool cache (actions/setup-* downloads) mounted from a per-host volume by the orchestrator.
 ENV RUNNER_TOOL_CACHE=/opt/hostedtoolcache
 RUN install -d -o runner -g runner -m 0755 /opt/hostedtoolcache
