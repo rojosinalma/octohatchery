@@ -12,6 +12,7 @@ USER 0
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl gnupg jq git-lfs unzip \
+        build-essential pkg-config \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
@@ -33,8 +34,11 @@ RUN install -d -o runner -g runner -m 0755 /opt/hostedtoolcache
 
 COPY --chown=runner:runner --chmod=0755 entrypoint.sh /entrypoint.sh
 
-# runner is uid 1001 in the base image.
-USER 1001:1001
+# runner is uid 1001 in the base image. By name, not uid:gid, so the container keeps runner's supplementary
+# groups (sudo, docker): setup scripts that call `sudo apt-get` work as on GitHub-hosted runners. The name
+# resolves inside the image, which is all Docker needs here.
+# hadolint ignore=DL3066
+USER runner
 WORKDIR /home/runner
 
 ENTRYPOINT ["/entrypoint.sh"]
