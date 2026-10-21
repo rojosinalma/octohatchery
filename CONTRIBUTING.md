@@ -24,7 +24,7 @@ Run the whole check locally. It is exactly what CI runs:
 bin/verify
 ```
 
-That installs with a frozen lockfile, typechecks (`bun run typecheck`), runs the tests (`bun test`) and probes `/health`. A pull request has to pass it.
+That scans for leaks, installs with a frozen lockfile, typechecks (`bun run typecheck`), runs the tests (`bun test`) and probes `/health`. A pull request has to pass it.
 
 ## Layout and style
 
@@ -35,6 +35,7 @@ That installs with a frozen lockfile, typechecks (`bun run typecheck`), runs the
 - Extension points are registries: a new GitHub auth method, container backend, database driver or MCP tool is one new file plus one registration line. Do not special-case inside existing code.
 - Secrets never land in the database or the logs. Runner types reference environment variable names; the node resolves the values at spawn time.
 - Tests sit in `test/<area>/*.test.ts` and run with `bun test`. Database tests use SQLite in memory.
+- Nothing private goes into the repository, and that includes tests. Mocks, fixtures, fakes, snapshots and expected strings use invented names (`acme`, `umbrella`, `node-a`, `example.com`), never the name of a real private project, organisation, repository, customer, person or machine, and never a real address, path, id or token. A log or API response captured for a fixture is scrubbed before it is committed. `bin/verify` checks for local paths, private addresses and LAN-only names, plus your own list of private names in `.git/info/leak-patterns` (one extended regular expression per line; the file is never committed).
 
 Dependencies are pinned in `bun.lock`. Do not run `bun add` in a pull request without saying why the dependency earns its place.
 

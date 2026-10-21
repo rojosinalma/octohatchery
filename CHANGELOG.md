@@ -4,6 +4,10 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- `bin/verify` starts with a leak scan: local home paths, private addresses, LAN-only names and the names listed in the untracked `.git/info/leak-patterns`, tests and fixtures included.
+
 ### Fixed
 
 - An `in_progress` webhook that GitHub delivers after the job's `completed` one no longer reopens the job or marks its runner busy again.
