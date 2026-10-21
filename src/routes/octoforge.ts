@@ -65,7 +65,8 @@ export const octoforge = new Elysia({ name: 'octoforge', prefix: '/api/octoforge
       ...(cred.mode === 'app' && cred.appId ? { app_id: Number(cred.appId) } : {}),
       ...(cred.login ? { login: cred.login } : {}),
     }
-    return jsonOk({ contract: manifest.contract, version: pkg.version, github, database: databaseStatus() })
+    const publicUrl = config().publicUrl
+    return jsonOk({ contract: manifest.contract, version: pkg.version, ...(publicUrl ? { public_url: publicUrl } : {}), github, database: databaseStatus() })
   })
   .put(
     '/github',
