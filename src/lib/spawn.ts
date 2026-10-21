@@ -8,7 +8,7 @@ import { runnerLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
 import { settings } from './settings'
-import { adoptedRepos, jobById, runnerTypeByName, updateJob, updateRunner, type RunnerRow } from './store'
+import { adoptedRepos, jobById, markRunnerStarted, runnerTypeByName, updateJob, updateRunner, type RunnerRow } from './store'
 import type { Runner, RunnerType } from './types'
 
 const logger = log('scheduler')
@@ -132,7 +132,7 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
       groupAdd,
       user: runnerUser(type),
     })
-    const updated = await updateRunner(runner.id, { state: 'idle', containerId, githubRunnerId: jit.runnerId, repo })
+    const updated = await markRunnerStarted(runner.id, { containerId, githubRunnerId: jit.runnerId, repo })
     if (updated) ensureFollower(updated)
     metrics.runnerSpawns.inc()
     await recordEvent(actor, 'runner.spawn', runner.name, { host: runner.host, type: runner.type, repo, jobId: runner.jobId })

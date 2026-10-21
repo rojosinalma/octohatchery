@@ -8,6 +8,8 @@ export type FakeGitHub = GitHubClient & {
   queued: Map<string, QueuedJob[]>
   files: Map<string, string>
   deletedRunners: number[]
+  /** GitHub runner ids `getRunner` reports as busy; every other id it answers as online and idle. */
+  busyRunners: Set<number>
   /** `repo#githubJobId` → log text; a missing entry answers 404 like GitHub does before the log is ready. */
   jobLogs: Map<string, string>
   /** `repo#githubJobId` → job details; a missing entry answers a deterministic two-step job built from the log's timestamps. */
@@ -36,6 +38,7 @@ export function createFakeGitHub(): FakeGitHub {
   const queued = new Map<string, QueuedJob[]>()
   const files = new Map<string, string>()
   const deletedRunners: number[] = []
+  const busyRunners = new Set<number>()
   const jobLogs = new Map<string, string>()
   const jobDetails = new Map<string, JobDetails>()
   const branches = new Set<string>()
@@ -62,6 +65,7 @@ export function createFakeGitHub(): FakeGitHub {
     queued,
     files,
     deletedRunners,
+    busyRunners,
     jobLogs,
     jobDetails,
     branches,
@@ -91,6 +95,12 @@ export function createFakeGitHub(): FakeGitHub {
       await via(this, 'deleteRunner', repo)
       rec('deleteRunner', repo, runnerId)
       deletedRunners.push(runnerId)
+    },
+    async getRunner(repo, runnerId) {
+      await via(this, 'getRunner', repo)
+      rec('getRunner', repo, runnerId)
+      if (deletedRunners.includes(runnerId)) return null
+      return { status: 'online', busy: busyRunners.has(runnerId) }
     },
     async listQueuedJobs(repo) {
       await via(this, 'listQueuedJobs', repo)

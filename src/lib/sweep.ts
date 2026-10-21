@@ -117,13 +117,30 @@ export async function pollQueuedJobs(): Promise<number> {
   return added
 }
 
-/** Runners idle longer than `stale_runner_minutes`: remove the container, deregister, mark `removed`. */
+/**
+ * Runners idle longer than `stale_runner_minutes`: remove the container, deregister, mark `removed`. GitHub is asked
+ * first: a runner it reports busy is running a job (a webhook was lost or arrived out of order) and is kept.
+ */
 export async function removeStaleRunners(nowMs = Date.now()): Promise<number> {
   const minutes = await settings.fetchInt('stale_runner_minutes', 5)
   const cutoff = new Date(nowMs - minutes * 60_000).toISOString()
   let removed = 0
   for (const r of await activeRunners()) {
     if (r.state !== 'idle' || r.createdAt >= cutoff) continue
+    if (r.githubRunnerId !== null && r.repo) {
+      let onGitHub
+      try {
+        onGitHub = await github().getRunner(r.repo, r.githubRunnerId)
+      } catch (err) {
+        logger.warn(`${r.name}: GitHub runner state unknown, kept until the next pass`, err instanceof Error ? err.message : String(err))
+        continue
+      }
+      if (onGitHub?.busy) {
+        logger.info(`${r.name} is idle here but busy on GitHub: kept and marked busy`)
+        await updateRunner(r.id, { state: 'busy' })
+        continue
+      }
+    }
     await removeRunnerContainers(r).catch((err) => logger.warn(`remove ${r.name} containers failed`, err))
     if (r.githubRunnerId !== null && r.repo) await github().deleteRunner(r.repo, r.githubRunnerId).catch((err) => logger.warn(`deregister ${r.name} failed`, err))
     await updateRunner(r.id, { state: 'removed', exitedAt: new Date(nowMs).toISOString() })

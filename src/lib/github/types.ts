@@ -22,6 +22,8 @@ export type GitHubClient = {
   getInstallationOctokit(repoFullName: string): Promise<Octokit>
   createJitConfig(input: { repo: string; name: string; labels: string[]; runnerGroupId?: number }): Promise<JitConfig>
   deleteRunner(repo: string, runnerId: number): Promise<void>
+  /** A registered runner's state on GitHub; null when GitHub no longer knows it. */
+  getRunner(repo: string, runnerId: number): Promise<{ status: string; busy: boolean } | null>
   /** Jobs of queued workflow runs with their labels (polling fallback). */
   listQueuedJobs(repo: string): Promise<QueuedJob[]>
   /** PAT: create or update the repo's `workflow_job` hook. App: no-op, the App delivers webhooks. */

@@ -58,6 +58,20 @@ export function restClient(
       })
     },
 
+    async getRunner(repo, runnerId) {
+      const o = await getOctokit(repo)
+      const { owner, repo: r } = splitRepo(repo)
+      return call(`GET ${repo} runner ${runnerId}`, async () => {
+        try {
+          const res = await o.rest.actions.getSelfHostedRunnerForRepo({ owner, repo: r, runner_id: runnerId })
+          return { status: res.data.status, busy: res.data.busy }
+        } catch (err) {
+          if ((err as { status?: number }).status === 404) return null
+          throw err
+        }
+      })
+    },
+
     async listQueuedJobs(repo) {
       const o = await getOctokit(repo)
       const { owner, repo: r } = splitRepo(repo)
