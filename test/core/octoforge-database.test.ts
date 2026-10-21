@@ -12,6 +12,9 @@ import { ConfigError, loadConfig } from '../../src/lib/config'
 import { adoptDatabase, connectDatabase, copyPlan, databaseStatus, dropAdoptedDatabase, overridePath, resolveDatabase } from '../../src/lib/octoforge/database'
 import { TEST_ENV } from './helpers'
 
+/** Every Postgres migration, so the journal checks follow new migrations. */
+const MIGRATION_COUNT = (JSON.parse(readFileSync(new URL('../../src/db/migrations/postgres/meta/_journal.json', import.meta.url), 'utf8')) as { entries: unknown[] }).entries.length
+
 const scratch = mkdtempSync(join(tmpdir(), 'octohatchery-adopt-'))
 let n = 0
 const dir = () => mkdtempSync(join(scratch, `${++n}-`))
@@ -240,7 +243,7 @@ describe.skipIf(!PG)('octoforge database: postgres', () => {
       { table_schema: 'member_b', n: 1 },
     ])
     const journal = await inDb((c) => c`select count(*)::int as n from member_a.__drizzle_migrations`)
-    expect(journal[0]!.n).toBe(7)
+    expect(journal[0]!.n).toBe(MIGRATION_COUNT)
     const pub = await inDb((c) => c`select count(*)::int as n from information_schema.tables where table_schema = 'public'`)
     expect(pub[0]!.n).toBe(0)
     // Reopening applies nothing twice.
@@ -279,7 +282,7 @@ describe.skipIf(!PG)('octoforge database: postgres', () => {
     expect(held[0]!.got).toBe(false)
     await detected.close()
     const journal = await inDb((c) => c`select count(*)::int as n from drizzle.__drizzle_migrations`)
-    expect(journal[0]!.n).toBe(7)
+    expect(journal[0]!.n).toBe(MIGRATION_COUNT)
     const own = await inDb((c) => c`select to_regclass('octohatchery.hosts') as t`)
     expect(own[0]!.t).toBeNull()
 
