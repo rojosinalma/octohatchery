@@ -10,6 +10,7 @@ import { ensureFollower } from './joblog'
 import { matchesLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
+import { refreshGitHubCredential } from './octoforge/github'
 import { settings } from './settings'
 import { materialise, removeRunnerContainers } from './spawn'
 import { activeRunners, insertRunner, listHosts, listRunnerTypes, slotsView, updateJob, updateRunner, type JobRow, type RunnerRow } from './store'
@@ -129,6 +130,8 @@ export function startScheduler(): void {
   stopped = false
   const loop = async () => {
     if (stopped) return
+    // Every node picks up a credential Octoforge delivered to another node from the shared settings table.
+    await refreshGitHubCredential().catch((err) => logger.error('github credential refresh failed', err instanceof Error ? err : String(err)))
     await tick()
     const s = await settings.fetchInt('scheduler_tick_s', 5)
     timer = setTimeout(loop, Math.max(1, s) * 1000)

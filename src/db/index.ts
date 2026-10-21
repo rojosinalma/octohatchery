@@ -1,22 +1,25 @@
-import type { Db } from './driver'
+import type { Db, OpenOptions } from './driver'
 import { driverFor } from './drivers'
 import { seed } from './seed'
 import { log } from '../lib/log'
 
 const logger = log('db')
 let url: string | undefined
+let openOptions: OpenOptions = {}
 let reconnecting: Promise<void> | undefined
 
-export type { Db, Row } from './driver'
+export type { Db, OpenOptions, Row } from './driver'
 
 let current: Db | undefined
 
 /** Opens the database named by `url`, migrates it, seeds the defaults and makes it the process-wide handle. */
-export async function connectDb(nextUrl: string): Promise<Db> {
-  const next = await driverFor(nextUrl).open(nextUrl)
+export async function connectDb(nextUrl: string, options: OpenOptions = {}): Promise<Db> {
+  const next = await driverFor(nextUrl).open(nextUrl, options)
   await seed(next)
   current = next
   url = nextUrl
+  // Reconnects keep the schema the first open settled on (a detected legacy layout included).
+  openOptions = { ...options, schema: next.schema ?? options.schema }
   return next
 }
 
@@ -32,7 +35,7 @@ export async function recoverDb(): Promise<boolean> {
     logger.warn('database stopped answering; reconnecting')
     const old = current
     try {
-      current = await driverFor(url!).open(url!)
+      current = await driverFor(url!).open(url!, openOptions)
       logger.info('database reconnected')
     } finally {
       await old?.close().catch(() => {})
@@ -52,6 +55,11 @@ export async function recoverDb(): Promise<boolean> {
 export function db(): Db {
   if (!current) throw new Error('database not connected: call connectDb() first')
   return current
+}
+
+/** URL of the connected database (for comparisons only: it carries the password, never log it). */
+export function dbUrl(): string | undefined {
+  return current ? url : undefined
 }
 
 export function dbConnected(): boolean {

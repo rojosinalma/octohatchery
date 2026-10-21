@@ -20,9 +20,23 @@ export type Config = {
   githubWebhookSecret: string | undefined
   publicUrl: string | undefined
   dataDir: string
+  /** Postgres schema from `DATABASE_SCHEMA`; undefined = the default (see src/lib/octoforge/database.ts). */
+  databaseSchema: string | undefined
+  /** Bearer for the Octoforge member API; unset = the `/api/octoforge` routes do not exist. */
+  octoforgeToken: string | undefined
+  /**
+   * No GitHub variables at all but `OCTOFORGE_TOKEN` set: the node starts without GitHub access and waits for
+   * Octoforge to deliver a credential (`PUT /api/octoforge/github`). GitHub calls fail with a reason until then.
+   */
+  githubAwaitingDelivery: boolean
 }
 
 export class ConfigError extends Error {}
+
+/** Database URL schemes the drivers handle; shared with the Octoforge adoption, which validates the same way. */
+export const DATABASE_URL_PATTERN = /^(sqlite:|postgres(ql)?:\/\/)/
+/** A Postgres schema name we accept: lowercase, unquoted identifier; `pg_` is reserved by Postgres. */
+export const SCHEMA_NAME_PATTERN = /^(?!pg_)[a-z_][a-z0-9_]{0,62}$/
 
 const MODES: readonly Mode[] = ['single', 'cluster']
 const AUTHS: readonly GitHubAuthKind[] = ['app', 'pat', 'none']
@@ -53,10 +67,11 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
   if (mode === 'cluster' && databaseUrl.startsWith('sqlite:')) {
     throw new ConfigError('MODE=cluster needs a shared database: set DATABASE_URL to a postgres:// URL')
   }
-  if (!/^(sqlite:|postgres(ql)?:\/\/)/.test(databaseUrl)) {
+  if (!DATABASE_URL_PATTERN.test(databaseUrl)) {
     throw new ConfigError(`DATABASE_URL must start with sqlite: or postgres://, got "${databaseUrl}"`)
   }
-  const githubAuth = oneOf('GITHUB_AUTH', env.GITHUB_AUTH, AUTHS, 'app')
+  const githubAwaitingDelivery = !env.GITHUB_AUTH && !!env.OCTOFORGE_TOKEN && !env.GITHUB_APP_ID && !env.GITHUB_TOKEN
+  const githubAuth = githubAwaitingDelivery ? 'none' : oneOf('GITHUB_AUTH', env.GITHUB_AUTH, AUTHS, 'app')
   const cfg: Config = {
     port: intOf('PORT', env.PORT, 3000),
     mode,
@@ -73,6 +88,12 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
     githubWebhookSecret: env.GITHUB_WEBHOOK_SECRET || undefined,
     publicUrl: env.PUBLIC_URL?.replace(/\/$/, '') || undefined,
     dataDir: env.DATA_DIR || './data',
+    databaseSchema: env.DATABASE_SCHEMA || undefined,
+    octoforgeToken: env.OCTOFORGE_TOKEN || undefined,
+    githubAwaitingDelivery,
+  }
+  if (cfg.databaseSchema !== undefined && !SCHEMA_NAME_PATTERN.test(cfg.databaseSchema)) {
+    throw new ConfigError(`DATABASE_SCHEMA must be a lowercase identifier (a-z, 0-9, _, not starting with pg_), got "${cfg.databaseSchema}"`)
   }
   if (githubAuth === 'app') {
     for (const [k, v] of [

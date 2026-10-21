@@ -1,7 +1,7 @@
 import { App } from '@octokit/app'
 import { Octokit } from '@octokit/rest'
-import { config } from '../../config'
 import { log } from '../../log'
+import { githubCredential } from '../credential'
 import { installationIndex, MAX_INSTALLATIONS, type Installation } from '../installations'
 import type { InstallationReport, PermissionReport } from '../permissions'
 import { githubMessage, paginateUpTo, restClient } from '../rest'
@@ -17,9 +17,9 @@ const DEFAULT_REPO_CAP = 500
 export const appAuth: GitHubAuthAdapter = {
   kind: 'app',
   create() {
-    const cfg = config()
-    const app = new App({ appId: cfg.githubAppId!, privateKey: cfg.githubAppPrivateKey!, Octokit })
-    const defaultId = cfg.githubAppInstallationId ? Number(cfg.githubAppInstallationId) : undefined
+    const cred = githubCredential()
+    const app = new App({ appId: cred.appId!, privateKey: cred.privateKey!, Octokit })
+    const defaultId = cred.installationId ? Number(cred.installationId) : undefined
 
     const installs = installationIndex(
       async (): Promise<Installation[]> => {

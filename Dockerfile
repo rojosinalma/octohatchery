@@ -23,7 +23,7 @@ FROM oven/bun:1.4.3-alpine AS prod
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=prod-deps /deps/node_modules ./node_modules
-COPY package.json bunfig.toml tsconfig.json ./
+COPY package.json bunfig.toml tsconfig.json octoforge.json ./
 COPY src ./src
 COPY public ./public
 RUN mkdir -p /app/data && chown -R bun:bun /app

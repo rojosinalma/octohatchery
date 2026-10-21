@@ -23,6 +23,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
 
 const TTL_MS = 5_000
 
+/** Keys owned by the Octoforge member API (delivered credentials): never listed, never set through the settings API. */
+export const HIDDEN_PREFIX = 'octoforge_'
+
 type Cached = { value: string | undefined; at: number }
 const cache = new Map<string, Cached>()
 let refreshing: Promise<void> | undefined
@@ -77,11 +80,18 @@ export const settings = {
     cache.set(key, { value, at: Date.now() })
   },
 
-  /** Defaults overlaid with stored rows. */
+  /** Removes a stored row; true when there was one. */
+  async delete(key: string): Promise<boolean> {
+    const rows = await db().all<{ key: string }>(sql`delete from settings where key = ${key} returning key`)
+    cache.set(key, { value: undefined, at: Date.now() })
+    return rows.length > 0
+  },
+
+  /** Defaults overlaid with stored rows; `octoforge_*` keys are left out. */
   async all(): Promise<Record<string, string>> {
     await load()
     const out: Record<string, string> = { ...SETTING_DEFAULTS }
-    for (const [k, v] of cache) if (v.value !== undefined) out[k] = v.value
+    for (const [k, v] of cache) if (v.value !== undefined && !k.startsWith(HIDDEN_PREFIX)) out[k] = v.value
     return out
   },
 

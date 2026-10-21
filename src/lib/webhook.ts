@@ -1,9 +1,9 @@
 import { verify } from '@octokit/webhooks-methods'
 import { z } from 'zod'
-import { config } from './config'
 import { recordEvent } from './events'
 import { notServedReason } from './github/accounts'
 import { github } from './github/auth'
+import { githubCredential } from './github/credential'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
@@ -57,8 +57,8 @@ export function getLastWebhookAt(): string | null {
   return lastWebhookAt
 }
 
-/** True when `signature` (X-Hub-Signature-256) matches the raw body under the configured secret. */
-export async function verifySignature(rawBody: string, signature: string | undefined, secret = config().githubWebhookSecret): Promise<boolean> {
+/** True when `signature` (X-Hub-Signature-256) matches the raw body under the current credential's webhook secret. */
+export async function verifySignature(rawBody: string, signature: string | undefined, secret = githubCredential().webhookSecret): Promise<boolean> {
   if (!secret || !signature) return false
   try {
     return await verify(secret, rawBody, signature)

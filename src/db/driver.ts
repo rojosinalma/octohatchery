@@ -9,6 +9,8 @@ export type Row = Record<string, unknown>
  */
 export type Db = {
   dialect: Dialect
+  /** Postgres: the schema the tables live in (search_path). SQLite: undefined. */
+  schema?: string
   /** Run a statement that returns rows. */
   all<T extends Row = Row>(query: SQL): Promise<T[]>
   /** Run a statement without reading rows. */
@@ -29,5 +31,10 @@ export type Driver = {
   /** URL scheme this driver handles, e.g. `sqlite` or `postgres`. */
   schemes: readonly string[]
   /** Open a connection and apply pending migrations (additive only). */
-  open(url: string): Promise<Db>
+  open(url: string, options?: OpenOptions): Promise<Db>
+}
+
+export type OpenOptions = {
+  /** Postgres schema for the tables and the migrations journal; undefined = the driver's default. SQLite ignores it. */
+  schema?: string
 }
