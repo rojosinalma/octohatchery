@@ -59,6 +59,12 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 - Repos: the webhook column says `GitHub App` in App mode.
 - GitHub App manifest and docs list `workflows: write` (GitHub requires it to change files under `.github/workflows`).
 
+### Fixed
+
+- A runner is no longer killed while it runs a job. GitHub gives a just-in-time runner any queued job of its repo that matches its labels, so with several jobs queued at once a job often runs on the runner claimed for its neighbour. OctoHatchery now moves the job to the runner GitHub names in the `in_progress` (or `completed`) webhook, and the neighbour to the freed runner, or back to the queue. Before, finishing one job could remove the container still running the other one, and the stale-runner sweep could remove a busy runner it still thought idle; GitHub then failed the job with "The self-hosted runner lost communication with the server". Each move leaves a `job.rebound` audit event.
+- Live job logs follow the same binding: lines go to the job the runner really runs, and that job gets GitHub's final log.
+- The stale-runner sweep asks GitHub first and keeps a runner GitHub reports busy; a spawn that finishes after GitHub already started a job on it keeps the runner `busy`.
+
 ## [0.1.0] - 2026-10-19
 
 First scaffold.

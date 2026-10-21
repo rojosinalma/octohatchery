@@ -241,6 +241,71 @@ export async function updateRunner(id: number, patch: RunnerPatch, d: Db = db())
   return runner
 }
 
+/** The newest runner with this name (names carry a timestamp and a random suffix, so in practice one row). */
+export async function runnerByName(name: string, d: Db = db()): Promise<RunnerRow | undefined> {
+  const [row] = await d.all(sql`select * from runners where name = ${name} order by id desc limit 1`)
+  return row ? toRunner(row) : undefined
+}
+
+/**
+ * The container is up: store its ids and move `spawning` to `idle`. A runner that a webhook already marked `busy`
+ * (GitHub can hand it a job before the spawn call returns) or that was killed meanwhile keeps its state.
+ */
+export async function markRunnerStarted(id: number, patch: { containerId: string; githubRunnerId: number; repo: string }, d: Db = db()): Promise<RunnerRow | undefined> {
+  const [row] = await d.all(sql`
+    update runners set state = case when state = 'spawning' then 'idle' else state end,
+      container_id = ${patch.containerId}, github_runner_id = ${patch.githubRunnerId}, repo = ${patch.repo}
+    where id = ${id} returning *`)
+  if (!row) return undefined
+  const runner = toRunner(row)
+  bus.emit('runner', runner)
+  bus.emit('slot', { host: runner.host, type: runner.type })
+  return runner
+}
+
+/** Serialises rebinds across nodes (two webhooks naming each other's runners would otherwise deadlock on row locks). */
+const REBIND_LOCK_KEY = 'octohatchery:rebind'
+/** Temporary seq offset while two jobs swap their live lines (job_logs is keyed by job and seq). */
+const SWAP_SEQ_OFFSET = 1_000_000_000
+
+export type Rebind = { job: JobRow; runner: RunnerRow; previousRunnerId: number | null; displacedJobId: number | null }
+
+/**
+ * A JIT runner is registered with labels, not with a job: GitHub gives it any queued job of the repo that matches,
+ * so the runner a job was claimed for is not always the one that runs it. When GitHub names the runner, the
+ * binding follows: the job moves to that runner, and the job that runner was claimed for moves to the job's old
+ * runner (or back to `queued` when there is none). Live log lines move with their runner. Returns undefined when
+ * the binding already matches or the runner is not ours.
+ */
+export async function rebindJob(jobId: number, runnerName: string, d: Db = db()): Promise<Rebind | undefined> {
+  return d.transaction(async (tx) => {
+    if (tx.dialect === 'postgres') await tx.run(sql`select pg_advisory_xact_lock(hashtext(${REBIND_LOCK_KEY}))`)
+    const job = await jobById(jobId, tx)
+    const runner = await runnerByName(runnerName, tx)
+    if (!job || !runner || job.runnerId === runner.id || (runner.repo !== null && runner.repo !== job.repo)) return undefined
+    const previous = job.runnerId === null ? undefined : await runnerById(job.runnerId, tx)
+    const [displacedRow] = runner.jobId === null || runner.jobId === job.id ? [] : await tx.all(sql`select * from jobs where id = ${runner.jobId}`)
+    const displaced = displacedRow ? toJob(displacedRow) : undefined
+    const takeover = previous && (previous.state === 'spawning' || previous.state === 'idle' || previous.state === 'busy') ? previous : undefined
+
+    // Live lines: the job's current lines came from its old runner, the displaced job's from this runner.
+    await tx.run(sql`update job_logs set seq = seq + ${SWAP_SEQ_OFFSET} where job_id = ${job.id}`)
+    if (displaced) await tx.run(sql`update job_logs set job_id = ${job.id} where job_id = ${displaced.id}`)
+    if (displaced && takeover) {
+      await tx.run(sql`update job_logs set job_id = ${displaced.id}, seq = seq - ${SWAP_SEQ_OFFSET} where job_id = ${job.id} and seq > ${SWAP_SEQ_OFFSET}`)
+      await updateJob(displaced.id, { runnerId: takeover.id, logBytes: job.logBytes, logTruncated: job.logTruncated }, tx)
+    } else {
+      await tx.run(sql`delete from job_logs where job_id = ${job.id} and seq > ${SWAP_SEQ_OFFSET}`)
+      // Nobody is left to run it: back to the queue so the scheduler spawns a runner for it.
+      if (displaced) await updateJob(displaced.id, { runnerId: null, logBytes: 0, logTruncated: false, ...(displaced.status === 'claimed' ? { status: 'queued' as const } : {}) }, tx)
+    }
+    if (previous) await updateRunner(previous.id, { jobId: takeover && displaced ? displaced.id : null, jobName: takeover && displaced ? displaced.name : null }, tx)
+    const bound = await updateRunner(runner.id, { jobId: job.id, jobName: job.name }, tx)
+    const rebound = await updateJob(job.id, { runnerId: runner.id, logBytes: displaced?.logBytes ?? 0, logTruncated: displaced?.logTruncated ?? false }, tx)
+    return { job: rebound!, runner: bound!, previousRunnerId: previous?.id ?? null, displacedJobId: displaced?.id ?? null }
+  })
+}
+
 export async function countJobs(status: JobStatus, d: Db = db()): Promise<number> {
   const [row] = await d.all<{ n: number | string }>(sql`select count(*) as n from jobs where status = ${status}`)
   return Number(row?.n ?? 0)

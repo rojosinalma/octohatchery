@@ -4,7 +4,7 @@ import { config } from './config'
 import { github } from './github/auth'
 import { log } from './log'
 import { settings } from './settings'
-import { appendLogLines, deleteLogLines, jobById, jobsWithoutSteps, logCursor, updateJob, type JobRow, type RunnerRow } from './store'
+import { appendLogLines, deleteLogLines, jobById, jobsWithoutSteps, logCursor, runnerById, updateJob, type JobRow, type RunnerRow } from './store'
 
 // Job log follower: one responsibility — follow a runner container's output, store it in batches,
 // announce each batch on the bus, and when the container exits replace it with GitHub's final log.
@@ -82,7 +82,7 @@ async function storeBatch(job: JobRow, fromSeq: number, lines: { at: string; lin
 }
 
 async function follow(runnerId: number, jobId: number, containerId: string, runnerName: string): Promise<void> {
-  const job = await jobById(jobId)
+  let job = await jobById(jobId)
   if (!job) return
   if (job.logSource !== null) return // already final (restart after completion)
   const cursor = await logCursor(jobId)
@@ -90,6 +90,22 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
   let bytes = job.logBytes
   let truncated = job.logTruncated
   logger.info(`following ${runnerName} for job ${jobId}${cursor.at ? ` from seq ${cursor.seq}` : ''}`)
+
+  /**
+   * GitHub may give this runner another job than the one it was claimed for (`rebindJob`); each batch goes to the
+   * job it is bound to now. The rebind moved this runner's earlier lines along, so that job's cursor continues them.
+   */
+  const target = async (): Promise<JobRow | undefined> => {
+    const bound = (await runnerById(runnerId))?.jobId ?? null
+    if (bound === (job?.id ?? null)) return job
+    const next = bound === null ? undefined : await jobById(bound)
+    job = next && next.logSource === null ? next : undefined
+    seq = job ? (await logCursor(job.id)).seq : 0
+    bytes = job?.logBytes ?? 0
+    truncated = job?.logTruncated ?? false
+    logger.info(`${runnerName} now runs ${job ? `job ${job.id}` : 'no job of ours'}; output follows it`)
+    return job
+  }
 
   let batch: { at: string; line: string }[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -101,11 +117,17 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
     const lines = batch
     batch = []
     writing = writing.then(async () => {
-      if (truncated) return
-      const out = await storeBatch(job, seq + 1, lines, bytes)
-      seq += out.stored
-      bytes = out.bytes
-      truncated = out.truncated
+      try {
+        const into = await target()
+        if (!into || truncated) return
+        const out = await storeBatch(into, seq + 1, lines, bytes)
+        seq += out.stored
+        bytes = out.bytes
+        truncated = out.truncated
+      } catch (err) {
+        // One lost batch of the live view; GitHub's final log replaces it. The chain must survive for the next batch.
+        logger.warn(`${runnerName}: ${lines.length} live line(s) not stored`, err instanceof Error ? err.message : String(err))
+      }
     })
     return writing
   }
@@ -125,8 +147,9 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
     await flush()
     await writing
   }
-  logger.info(`${runnerName} output ended for job ${jobId} (${seq} lines, ${Math.round(bytes / KB)} KB${truncated ? ', truncated' : ''})`)
-  await finalise(job)
+  const final = await target()
+  logger.info(`${runnerName} output ended for job ${final?.id ?? jobId} (${seq} lines, ${Math.round(bytes / KB)} KB${truncated ? ', truncated' : ''})`)
+  if (final) await finalise(final)
 }
 
 /**

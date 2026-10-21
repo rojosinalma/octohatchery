@@ -7,7 +7,7 @@ import { github } from './github/auth'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
-import { insertJobIfNew, jobByGitHubId, repoByName, runnerById, updateJob, updateRunner } from './store'
+import { insertJobIfNew, jobByGitHubId, rebindJob, repoByName, runnerById, updateJob, updateRunner, type JobRow } from './store'
 import type { JobStep } from './types'
 
 const logger = log('http')
@@ -92,6 +92,20 @@ export async function handleWebhook(event: string | undefined, rawBody: string):
   return outcome
 }
 
+/**
+ * Moves the job to the runner GitHub says runs it (see `rebindJob`); one audit event per move. A runner name that
+ * is not ours (or no name) leaves the binding as it is.
+ */
+async function followGitHub(job: JobRow, runnerName: string | null | undefined): Promise<JobRow> {
+  if (!runnerName) return job
+  const moved = await rebindJob(job.id, runnerName)
+  if (!moved) return job
+  const target = `${job.repo}#${job.githubJobId}`
+  logger.info(`${target} "${job.name}" runs on ${runnerName}, not on runner ${job.runnerId ?? 'none'}: binding moved${moved.displacedJobId !== null ? ` (job ${moved.displacedJobId} → runner ${moved.previousRunnerId ?? 'none'})` : ''}`)
+  await recordEvent('webhook', 'job.rebound', target, { runner: runnerName, from: job.runnerId, displacedJob: moved.displacedJobId })
+  return moved.job
+}
+
 export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOutcome> {
   const wj = p.workflow_job
   const repoName = p.repository.full_name
@@ -131,16 +145,19 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
       return { status: 200, message: 'job queued' }
     }
     case 'in_progress': {
-      const job = await jobByGitHubId(wj.id)
-      if (!job) return { status: 200, message: 'job unknown, ignored' }
+      const known = await jobByGitHubId(wj.id)
+      if (!known) return { status: 200, message: 'job unknown, ignored' }
+      const job = await followGitHub(known, wj.runner_name)
       await updateJob(job.id, { status: 'in_progress', startedAt: wj.started_at ?? new Date().toISOString(), steps: toSteps(wj.steps) })
       if (job.runnerId !== null) await updateRunner(job.runnerId, { state: 'busy' })
       await recordEvent('webhook', 'job.started', target, { runner: wj.runner_name ?? null })
       return { status: 200, message: 'job in progress' }
     }
     case 'completed': {
-      const job = await jobByGitHubId(wj.id)
-      if (!job) return { status: 200, message: 'job unknown, ignored' }
+      const known = await jobByGitHubId(wj.id)
+      if (!known) return { status: 200, message: 'job unknown, ignored' }
+      // The in_progress delivery may have been lost: bind to the runner GitHub names before closing anything.
+      const job = await followGitHub(known, wj.runner_name)
       const completedAt = wj.completed_at ?? new Date().toISOString()
       await updateJob(job.id, { status: 'completed', conclusion: wj.conclusion ?? null, completedAt, ...(wj.steps ? { steps: toSteps(wj.steps) } : {}) })
       if (job.runnerId !== null) {
