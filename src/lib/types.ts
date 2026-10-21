@@ -20,6 +20,9 @@ export const JOBS_PER_PAGE = [10, 20, 25, 50, 100] as const
 export const JOBS_PER_MAX = 100
 
 export const RUNNER_DOCKER_OPTIONS: readonly RunnerDocker[] = ['none', 'socket', 'dind']
+/** User a runner container runs as: the one its image declares (the shipped image: `runner`, uid 1001) or root (uid 0). */
+export type RunnerRunAs = 'image' | 'root'
+export const RUNNER_RUN_AS_OPTIONS: readonly RunnerRunAs[] = ['image', 'root']
 export type RunnerType = {
   id: number
   name: string
@@ -32,6 +35,7 @@ export type RunnerType = {
   env: Record<string, string>
   secretEnv: string[]
   docker: RunnerDocker
+  runAs: RunnerRunAs
   createdAt: string
   updatedAt: string
 }

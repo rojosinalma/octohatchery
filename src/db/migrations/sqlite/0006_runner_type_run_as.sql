@@ -1,0 +1,1 @@
+ALTER TABLE `runner_types` ADD `run_as` text DEFAULT 'image' NOT NULL;

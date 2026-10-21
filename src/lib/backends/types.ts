@@ -19,6 +19,8 @@ export type SpawnInput = {
   network: string
   /** Extra groups for the container's user (the host's docker socket group when the type mounts the socket). */
   groupAdd?: string[]
+  /** `uid:gid` the container runs as; unset = the user the image declares. */
+  user?: string
 }
 
 /** A helper container that lives and dies with one runner (today: the Docker-in-Docker daemon). */

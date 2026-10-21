@@ -2,6 +2,7 @@ import type {
   Host,
   HostImage,
   RunnerDocker,
+  RunnerRunAs,
   RunnerType,
   Slot,
 } from "../lib/types";
@@ -104,6 +105,12 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
                 <span class="t-mono" safe>
                   {t.name}
                 </span>
+                {t.runAs === "root" ? (
+                  <>
+                    {" "}
+                    <RootBadge />
+                  </>
+                ) : null}
                 {t.description ? (
                   <div class="t-muted t-small" safe>
                     {t.description}
@@ -384,6 +391,28 @@ export const DockerBadge = ({ docker }: { docker: RunnerDocker }) => {
   );
 };
 
+/** The Run as options in dialog order; the label carries its one-line explanation. */
+export const RUN_AS_OPTIONS: { value: RunnerRunAs; label: string }[] = [
+  { value: "image", label: "Image user (runner, uid 1001)" },
+  {
+    value: "root",
+    label:
+      "root (uid 0) — needed when jobs write root-owned files in bind mounts",
+  },
+];
+
+export const RootBadge = () => (
+  <span
+    class="t-badge"
+    data-tone="warning"
+    data-variant="outline"
+    data-size="xs"
+    data-tip="Runs as root (uid 0)"
+  >
+    root
+  </span>
+);
+
 const TypeDialog = ({
   types,
   imageDefault,
@@ -642,6 +671,27 @@ const TypeDialog = ({
             <p class="t-hint">
               Comma-separated variable names. Values are read from the node's
               own environment at spawn time and never stored.
+            </p>
+          </div>
+          <div class="t-field" data-span="12">
+            <label class="t-label" for="tf-run-as">
+              Run as
+            </label>
+            <select
+              class="t-select"
+              id="tf-run-as"
+              name="runAs"
+              aria-describedby="tf-run-as-hint"
+            >
+              {RUN_AS_OPTIONS.map((o) => (
+                <option value={o.value} selected={o.value === "image"} safe>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p class="t-hint" id="tf-run-as-hint">
+              Root can write any host path this template mounts. With the host
+              socket, jobs are root on the host anyway.
             </p>
           </div>
           <fieldset class="t-check-group docker-options" data-span="12">

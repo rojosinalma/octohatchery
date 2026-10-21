@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { PassThrough } from 'node:stream'
 import { config } from '../config'
 import { log } from '../log'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo } from './types'
+import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo, type SpawnInput } from './types'
 
 const logger = log('docker')
 const PIDS_LIMIT = 1024
@@ -147,6 +147,32 @@ export function imagesFromSummaries(list: { RepoTags?: string[] | null; RepoDige
   return out
 }
 
+/** Engine create options for a runner container; `User` only when the type overrides the image's user. */
+export function runnerContainerOptions({ runner, type, jitconfig, env, mounts, network, groupAdd, user }: SpawnInput): Docker.ContainerCreateOptions {
+  return {
+    Image: type.image,
+    name: runner.name,
+    Env: [`RUNNER_JITCONFIG=${jitconfig}`, ...Object.entries(env).map(([k, v]) => `${k}=${v}`)],
+    ...(user ? { User: user } : {}),
+    Labels: {
+      [RUNNER_LABEL]: 'true',
+      [RUNNER_ID_LABEL]: String(runner.id),
+      [RUNNER_TYPE_LABEL]: runner.type,
+      [RUNNER_HOST_LABEL]: runner.host,
+    },
+    HostConfig: {
+      Binds: mounts,
+      NetworkMode: network,
+      Memory: type.memoryMb * MB,
+      MemorySwap: type.memoryMb * MB,
+      NanoCpus: Math.round(type.cpus * 1e9),
+      PidsLimit: PIDS_LIMIT,
+      RestartPolicy: { Name: 'no' },
+      GroupAdd: groupAdd?.length ? groupAdd : undefined,
+    },
+  }
+}
+
 export const dockerBackend: BackendAdapter = {
   kind: 'docker',
   create(): ContainerBackend {
@@ -181,31 +207,12 @@ export const dockerBackend: BackendAdapter = {
           return null
         }
       },
-      async spawnRunner({ runner, type, jitconfig, env, mounts, network, groupAdd }) {
+      async spawnRunner(input) {
+        const { runner, type, user } = input
         await pullIfMissing(docker, type.image)
-        const container = await docker.createContainer({
-          Image: type.image,
-          name: runner.name,
-          Env: [`RUNNER_JITCONFIG=${jitconfig}`, ...Object.entries(env).map(([k, v]) => `${k}=${v}`)],
-          Labels: {
-            [RUNNER_LABEL]: 'true',
-            [RUNNER_ID_LABEL]: String(runner.id),
-            [RUNNER_TYPE_LABEL]: runner.type,
-            [RUNNER_HOST_LABEL]: runner.host,
-          },
-          HostConfig: {
-            Binds: mounts,
-            NetworkMode: network,
-            Memory: type.memoryMb * MB,
-            MemorySwap: type.memoryMb * MB,
-            NanoCpus: Math.round(type.cpus * 1e9),
-            PidsLimit: PIDS_LIMIT,
-            RestartPolicy: { Name: 'no' },
-            GroupAdd: groupAdd?.length ? groupAdd : undefined,
-          },
-        })
+        const container = await docker.createContainer(runnerContainerOptions(input))
         await container.start()
-        logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}${type.docker !== 'none' ? ` docker=${type.docker}` : ''}`)
+        logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}${type.docker !== 'none' ? ` docker=${type.docker}` : ''}${user ? ` user=${user}` : ''}`)
         return container.id
       },
       async spawnSidecar({ runner, name, image, role, env, network, privileged }) {

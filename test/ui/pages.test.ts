@@ -708,6 +708,18 @@ describe('templates', () => {
     expect(body).not.toContain('placeholder="ghcr.io/rojosinalma/octohatchery-runner:latest"')
   })
 
+  test('Run as: a select defaulting to the image user; root templates get a badge in the list', async () => {
+    let { body } = await get('/templates')
+    expect(body).toContain('<select class="t-select" id="tf-run-as" name="runAs" aria-describedby="tf-run-as-hint">')
+    expect(body).toContain('<option value="image" selected>Image user (runner, uid 1001)</option><option value="root">root (uid 0) — needed when jobs write root-owned files in bind mounts</option>')
+    expect(body).not.toContain('data-tip="Runs as root (uid 0)"')
+    store.data = { ...full, types: [{ ...full.types[0]!, runAs: 'root' }] }
+    ;({ body } = await get('/templates'))
+    const row = body.slice(body.indexOf('<tr id="generic"'), body.indexOf('</tr>', body.indexOf('<tr id="generic"')))
+    expect(row).toContain('data-tip="Runs as root (uid 0)">root</span>')
+    expect(row).toContain('&#34;runAs&#34;:&#34;root&#34;')
+  })
+
   test('the default image comes from the runner_image_default setting', async () => {
     store.data = { ...full, settings: { ...full.settings, runner_image_default: 'registry.example/runner:2' } }
     const { body } = await get('/templates')

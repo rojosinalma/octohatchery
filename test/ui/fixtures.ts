@@ -19,6 +19,7 @@ export const types: RunnerType[] = [
     env: { CI: 'true' },
     secretEnv: ['NPM_TOKEN'],
     docker: 'none',
+    runAs: 'image',
     createdAt: '2026-10-19T09:00:00Z',
     updatedAt: '2026-10-19T09:00:00Z',
   },
