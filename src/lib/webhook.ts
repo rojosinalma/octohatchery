@@ -162,7 +162,15 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
       await updateJob(job.id, { status: 'completed', conclusion: wj.conclusion ?? null, completedAt, ...(wj.steps ? { steps: toSteps(wj.steps) } : {}) })
       if (job.runnerId !== null) {
         const runner = await runnerById(job.runnerId)
-        if (runner && (runner.state === 'busy' || runner.state === 'idle')) await updateRunner(runner.id, { state: 'exited', exitedAt: completedAt })
+        // GitHub names the runner of every job that ran; a busy runner with no name given is the job's own (older payloads).
+        if (runner && (runner.name === wj.runner_name || (!wj.runner_name && runner.state === 'busy'))) {
+          if (runner.state === 'busy' || runner.state === 'idle') await updateRunner(runner.id, { state: 'exited', exitedAt: completedAt })
+        } else if (runner && runner.jobId === job.id) {
+          // The job ended without running on this runner (cancelled while queued): the JIT runner is still registered
+          // and GitHub may hand it another job, so it stays up, unbound; the stale sweep removes it if nothing comes.
+          await updateRunner(runner.id, { jobId: null, jobName: null })
+          await updateJob(job.id, { runnerId: null })
+        }
       }
       await recordEvent('webhook', 'job.completed', target, { conclusion: wj.conclusion ?? null })
       return { status: 200, message: 'job completed' }
