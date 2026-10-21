@@ -27,7 +27,8 @@ is missing and what breaks without it.
 |---|---|---|---|
 | Metadata | Read | required by GitHub for every App; repository names and visibility | nothing works |
 | Administration | Read and write | create and delete the just-in-time runner registration for each job | nothing runs |
-| Actions | Read and write | list queued jobs and workflow runs, download job logs | the polling fallback is blind; final job logs cannot be fetched |
+| Actions | Read and write | list queued jobs and workflow runs, download job logs and the run's per-step log archive | the polling fallback is blind; final job logs cannot be fetched |
+| Checks | Read | read a finished job's annotations (errors and warnings with file and line) | the job page shows no annotations |
 | Contents | Read and write | read workflows; write them when you ask for `apply_runs_on` with `commit` or `pr` | `apply_runs_on` cannot read or change workflows (`snippet` still works) |
 | Workflows | Read and write | GitHub requires it to change any file under `.github/workflows` | `apply_runs_on` in `pr` or `commit` mode fails when it writes a workflow file |
 | Pull requests | Read and write | open the pull request for `apply_runs_on` with `pr` | `apply_runs_on` in `pr` mode fails after the branch is pushed |
@@ -51,6 +52,7 @@ that. Replace `<PUBLIC_URL>` with the address GitHub can reach, for example `htt
     "contents": "write",
     "workflows": "write",
     "pull_requests": "write",
+    "checks": "read",
     "metadata": "read"
   },
   "default_events": ["workflow_job"],
@@ -95,7 +97,7 @@ webhook secret steps are already done.
    **Organisation settings → Developer settings → GitHub Apps**).
 2. Name: `OctoHatchery` (or anything; names are global). Homepage URL: your `<PUBLIC_URL>`.
 3. Webhook: active, URL `<PUBLIC_URL>/webhooks/github`, secret = your `GITHUB_WEBHOOK_SECRET`.
-4. Repository permissions: Actions, Administration, Contents, Workflows, Pull requests → Read and write; Metadata → Read.
+4. Repository permissions: Actions, Administration, Contents, Workflows, Pull requests → Read and write; Checks, Metadata → Read.
 5. Subscribe to events: **Workflow job**.
 6. Where can this App be installed: **Only on this account**. Pick **Any account** if you want to
    serve repos of an organisation or another user too (see "Serving several accounts" below). You can
@@ -205,7 +207,8 @@ A fine-grained token does not tell the API what it may do, so the GitHub tab can
 in full. It probes one adopted repository with cheap reads (runners, workflow runs, webhooks,
 contents) and reports a permission as `none` when GitHub refuses, `unknown` when the read works
 (write access cannot be proven without writing). Classic tokens announce their scopes and are mapped
-directly; `repo` and `workflow` cover everything above.
+directly; `repo` and `workflow` cover everything above. Job annotations are read with whatever the
+token can see; when GitHub refuses, the job page shows none and the log is unaffected.
 
 5. Expiry: fine-grained tokens expire after at most one year. Put a reminder in your calendar.
    When the token expires, runners stop registering and `/health` turns red; nothing else breaks.

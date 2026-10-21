@@ -7,6 +7,7 @@
   var T = window.Tailor
   var $ = function (sel, root) { return (root || document).querySelector(sel) }
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)) }
+  var linesLabel = function (n) { return n + (n === 1 ? ' line' : ' lines') }
   var plainText = function (s) { return String(s).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') }
   var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] }) }
 
@@ -654,79 +655,150 @@
   /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy, steps + folded groups ─ */
   var LOG_DOM_LINES = 5000
   // Group markers, the same rules as src/views/log-groups.ts: `##[group]`/`##[section]Starting:` open a group
-  // (closing the one before), `##[endgroup]`/`##[section]Finishing:` close it, `##[error]`/`##[warning]` tone a line.
-  var LOG_OPEN_RE = /^##\[(?:group\]|section\]Starting: )(.*)$/, LOG_CLOSE_RE = /^##\[(?:endgroup\]|section\]Finishing: )/, LOG_TONE_RE = /^##\[(error|warning)\]/
-  // Steps view rules, the same as src/views/log-steps.ts: commands, progress runs, blank lines, mm:ss gutter.
-  var LOG_CMD_RE = /^(?:##)?\[command\](.*)$/, LOG_PROGRESS_RE = /^(?:Received \d+ of \d+|\d{1,3}(?:\.\d+)?%(?:\s|$)|.*\b\d{1,3}(?:\.\d+)?% \(\d+\/\d+\))/
+  // (closing the one before), `##[endgroup]`/`##[section]Finishing:` close it, `##[error|warning|notice|debug]` tone a line.
+  var LOG_OPEN_RE = /^##\[(?:group\]|section\]Starting: )(.*)$/, LOG_CLOSE_RE = /^##\[(?:endgroup\]|section\]Finishing: )/, LOG_TONE_RE = /^##\[(error|warning|notice|debug)\]/
+  var LOG_TONES = { error: 'danger', warning: 'warning', notice: 'notice', debug: 'debug' }
+  // Steps view rules, the same as src/views/log-steps.ts: shown markers, progress runs, blank lines.
+  var LOG_MARK_RE = /^(##\[(?:error|warning|notice|debug|command)\]|\[command\])/, LOG_PROGRESS_RE = /^(?:Received \d+ of \d+|\d{1,3}(?:\.\d+)?%(?:\s|$)|.*\b\d{1,3}(?:\.\d+)?% \(\d+\/\d+\))/
+  var LOG_MARK_KIND = { '##[error]': 'danger', '##[warning]': 'warning', '##[notice]': 'notice', '##[debug]': 'debug', '##[command]': 'cmd', '[command]': 'cmd' }
+  // Icon and word in front of a marker line, the same as MARKS in src/views/job.tsx.
+  var LOG_MARKS = { danger: ['bi-x-circle-fill', 'Error:'], warning: ['bi-exclamation-triangle', 'Warning:'], notice: ['bi-info-circle', 'Notice:'], debug: [null, 'Debug:'] }
+  var LOG_TS_KEY = 'octohatchery.logTimestamps'
   function classifyLine(raw) {
     var text = plainText(raw), m = LOG_OPEN_RE.exec(text)
     if (m) return { kind: 'open', title: m[1].trim() || 'group' }
     if (LOG_CLOSE_RE.test(text)) return { kind: 'close' }
     m = LOG_TONE_RE.exec(text)
-    if (m) return { kind: 'line', tone: m[1] === 'error' ? 'danger' : 'warning' }
+    if (m) return { kind: 'line', tone: LOG_TONES[m[1]] }
     return { kind: 'line' }
   }
+  function lineView(raw) {
+    var m = LOG_MARK_RE.exec(plainText(raw))
+    if (!m) return { kind: 'text', raw: raw }
+    var i = raw.indexOf(m[1])
+    return { kind: LOG_MARK_KIND[m[1]], raw: i >= 0 ? raw.slice(0, i) + raw.slice(i + m[1].length) : raw }
+  }
+  // ANSI SGR → escaped HTML with known classes only, the same rules as src/views/log-ansi.ts.
+  var ANSI_RE = /\x1b\[([0-9;?]*)([A-Za-z])|\x1b|[\x00-\x08\x0b-\x1f\x7f]/g
+  function sgr(s, params) {
+    var n = { fg: s.fg, bg: s.bg, bold: s.bold, italic: s.italic, underline: s.underline }
+    var codes = params === '' ? [0] : params.split(';').map(function (p) { return p === '' ? 0 : Number(p) })
+    for (var i = 0; i < codes.length; i++) {
+      var c = codes[i]
+      if (c === 0) { n.fg = null; n.bg = null; n.bold = false; n.italic = false; n.underline = false }
+      else if (c === 1) n.bold = true
+      else if (c === 3) n.italic = true
+      else if (c === 4) n.underline = true
+      else if (c === 22) n.bold = false
+      else if (c === 23) n.italic = false
+      else if (c === 24) n.underline = false
+      else if (c >= 30 && c <= 37) n.fg = c - 30
+      else if (c >= 90 && c <= 97) n.fg = c - 90 + 8
+      else if (c === 39) n.fg = null
+      else if (c >= 40 && c <= 47) n.bg = c - 40
+      else if (c >= 100 && c <= 107) n.bg = c - 100 + 8
+      else if (c === 49) n.bg = null
+      else if (c === 38 || c === 48) i += codes[i + 1] === 5 ? 2 : codes[i + 1] === 2 ? 4 : 0
+    }
+    return n
+  }
+  function sgrClass(s) {
+    return [s.fg !== null ? 'ansi-fg-' + s.fg : '', s.bg !== null ? 'ansi-bg-' + s.bg : '', s.bold ? 'ansi-bold' : '', s.italic ? 'ansi-italic' : '', s.underline ? 'ansi-underline' : ''].filter(Boolean).join(' ')
+  }
+  function ansiHtml(raw) {
+    var out = '', state = { fg: null, bg: null, bold: false, italic: false, underline: false }, last = 0, m
+    var push = function (text) { if (!text) return; var cls = sgrClass(state); out += cls ? '<span class="' + cls + '">' + esc(text) + '</span>' : esc(text) }
+    ANSI_RE.lastIndex = 0
+    while ((m = ANSI_RE.exec(raw))) {
+      push(raw.slice(last, m.index))
+      last = m.index + m[0].length
+      if (m[2] === 'm' && m[1].indexOf('?') < 0) state = sgr(state, m[1])
+    }
+    push(raw.slice(last))
+    return out
+  }
+  function icon(id, size) { return '<svg class="t-icon" aria-hidden="true"' + (size ? ' data-size="' + size + '"' : '') + '><use href="/tailor/icons.svg#' + id + '"></use></svg>' }
   function clock(at) { var m = /T(\d{2}:\d{2}:\d{2})/.exec(at); return m ? m[1] : at }
   function spanMs(a, b) { var x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? 0 : Math.max(0, y - x) }
-  function pad2(n) { return (n < 10 ? '0' : '') + n }
-  function elapsed(at, base) {
-    var a = Date.parse(at), b = Date.parse(base || '')
-    var s = isNaN(a) || isNaN(b) ? 0 : Math.max(0, Math.floor((a - b) / 1000))
-    var mm = pad2(Math.floor((s % 3600) / 60)), ss = pad2(s % 60)
-    return s >= 3600 ? Math.floor(s / 3600) + ':' + mm + ':' + ss : mm + ':' + ss
-  }
   function fmtDuration(ms) {
     var s = Math.round(ms / 1000)
     if (s < 60) return s + ' s'
     if (s < 3600) return Math.floor(s / 60) + ' min ' + (s % 60) + ' s'
     return Math.floor(s / 3600) + ' h ' + Math.floor((s % 3600) / 60) + ' min'
   }
+  // Opens every <details> around `el` (step, group) so it can be seen.
+  function reveal(el) { for (var d = el && el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true }
   function wireJobLog() {
     var section = $('#log')
     if (!section) return
     var empty = $('#log-empty'), count = $('#log-count')
     var followBtn = $('[data-action="log-follow"]', section), copyBtn = $('[data-action="log-copy"]', section)
     var expandBtn = $('[data-action="log-expand"]', section), collapseBtn = $('[data-action="log-collapse"]', section)
+    var tsBtn = $('[data-action="log-timestamps"]', section)
     var sourceBadge = $('#log-source'), truncatedBadge = $('#log-truncated')
     var jobId = section.dataset.jobId, lastSeq = Number(section.dataset.lastSeq || 0)
     var raw = section.dataset.raw === 'true'
     var following = followBtn.getAttribute('aria-pressed') === 'true'
     var es = null
     var view = $('#log-view')
-    // Steps view state: the job's start (gutter base), the group still receiving lines per step body, the line
-    // count across the view, the last progress line of the current run (replaced by the next one).
-    var base = view.dataset.started || null
+    // Steps view state: the group still receiving lines per step body, the line count across the view, the last
+    // progress line of the current run (replaced by the next one).
     var openGroups = {}, lineCount = $$('.log-line', view).length, lastProgress = null
-    if (!raw) $$('details.log-step', view).forEach(function (st) {
-      var body = $('.log-step-body', st), last = body && body.lastElementChild
-      if (last && last.matches('details.log-group:not([data-closed])')) openGroups[st.dataset.number] = last
-    })
+    function scanOpenGroups() {
+      openGroups = {}
+      $$('details.log-step', view).forEach(function (st) {
+        var body = $('.log-step-body', st), last = body && body.lastElementChild
+        if (last && last.matches('details.log-group:not([data-closed])')) openGroups[st.dataset.number] = last
+      })
+    }
+    if (!raw) scanOpenGroups()
 
     function setFollow(on) {
       following = on
       followBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
       if (on) view.scrollTop = view.scrollHeight
     }
-    function timeCell(at) {
-      return raw ? '<span class="log-time">' + esc(clock(at)) + '</span>' : '<span class="log-time" data-tip="' + esc(at) + '">' + esc(elapsed(at, base)) + '</span>'
+    // Number and time of a streamed line, the same markup as Gutter in src/views/job.tsx.
+    function gutter(id, n, at) {
+      return (id ? '<a class="log-num" href="#' + id + '" tabindex="-1">' + n + '</a>' : '<span class="log-num"></span>')
+        + '<time class="log-ts" datetime="' + esc(at) + '" data-tip="' + esc(at) + '">' + esc(clock(at)) + '</time>'
     }
-    function lineNode(l, tone, marker) {
+    function takeNumber(st) {
+      if (!st) return null
+      var n = Number(st.dataset.next || 1)
+      st.dataset.next = String(n + 1)
+      return n
+    }
+    function lineNode(l, tone, marker, st) {
       var span = document.createElement('span')
       span.className = 'log-line'
       span.dataset.seq = String(l.seq)
       span.dataset.at = l.at
       if (tone) span.dataset.tone = tone
-      if (marker) { span.dataset.marker = ''; span.hidden = true }
-      var text = plainText(l.line), cmd = raw ? null : LOG_CMD_RE.exec(text)
-      if (cmd) { span.dataset.cmd = ''; text = cmd[1] }
-      span.innerHTML = timeCell(l.at) + '<span class="log-text">' + esc(text) + '</span>\n'
+      if (raw) {
+        span.innerHTML = '<span class="log-time">' + esc(clock(l.at)) + '</span><span class="log-text">' + esc(plainText(l.line)) + '</span>\n'
+        return span
+      }
+      if (marker) {
+        span.dataset.marker = ''; span.hidden = true
+        span.innerHTML = gutter(null, null, l.at) + '<span class="log-text">' + esc(plainText(l.line)) + '</span>\n'
+        return span
+      }
+      var n = takeNumber(st), id = st && n !== null ? 'step-' + st.dataset.number + '-' + n : null
+      if (id) { span.id = id; span.dataset.n = String(n) }
+      var v = lineView(l.line), mark = LOG_MARKS[v.kind]
+      if (v.kind === 'cmd') span.dataset.cmd = ''
+      span.innerHTML = gutter(id, n, l.at)
+        + (mark ? '<span class="log-mark">' + (mark[0] ? icon(mark[0], 'xs') : '') + esc(mark[1]) + '</span>' : '')
+        + '<span class="log-text">' + ansiHtml(v.raw) + '</span>\n'
       return span
     }
-    function groupNode(l, title) {
+    function groupNode(l, title, st) {
       var d = document.createElement('details')
       d.className = 'log-group'
       d.open = true
-      d.innerHTML = '<summary class="log-summary">' + timeCell(l.at) + '<span class="log-chevron" aria-hidden="true"></span>'
+      var n = takeNumber(st), id = st && n !== null ? 'step-' + st.dataset.number + '-' + n : null
+      d.innerHTML = '<summary class="log-summary"' + (id ? ' id="' + id + '" data-n="' + n + '"' : '') + '>' + gutter(id, n, l.at) + '<span class="log-chevron" aria-hidden="true"></span>'
         + '<span class="log-group-title">' + esc(title) + '</span><span class="log-group-meta t-muted"></span></summary>'
       d.dataset.first = l.at
       d.dataset.count = '0'
@@ -736,20 +808,58 @@
       var n = Number(g.dataset.count || 0)
       $('.log-group-meta', g).textContent = n + ' lines · ' + fmtDuration(spanMs(g.dataset.first, at))
     }
-    // The step a streamed line belongs to: the last one started at or before its stamp, else the running step,
-    // else the last step. A page without step rows (raw) has none.
-    function stepFor(at) {
+    // The step a streamed line belongs to, the same rules as assignLines in src/views/log-steps.ts: the step GitHub
+    // named for it; else by time, never back to an earlier step: a stamp a whole second past a later step's start
+    // moves there, inside a start second only a step opener (`##[group]Run …`, `Post job cleanup.`,
+    // `Cleaning up orphan processes`) moves on, to the step it names or the next started one. Before any step has a
+    // start the running step takes the line. A page without step rows (raw) has none.
+    var LOG_OPENER_RE = /^(?:##\[group\](Run .*)|Post job cleanup\.|Cleaning up orphan processes)\s*$/
+    var curStep = null
+    function stepStart(st) { return st.dataset.conclusion === 'skipped' ? NaN : Date.parse(st.dataset.started || '') }
+    function stepFor(l) {
       var steps = $$('details.log-step', view)
       if (!steps.length) return null
-      var t = Date.parse(at), pick = null
-      if (!isNaN(t)) steps.forEach(function (st) { var s = Date.parse(st.dataset.started || ''); if (!isNaN(s) && s <= t) pick = st })
-      if (!pick) steps.forEach(function (st) { if (st.dataset.status === 'in_progress') pick = st })
-      return pick || steps[steps.length - 1]
+      if (l.step !== undefined && l.step !== null) {
+        var named = $('details.log-step[data-number="' + l.step + '"]', view)
+        if (named) { if (!curStep || steps.indexOf(named) > steps.indexOf(curStep)) curStep = named; return named }
+      }
+      var idx = curStep ? steps.indexOf(curStep) : -1
+      if (idx < 0) steps.forEach(function (st, i) { if (Number(st.dataset.count || 0) > 0) idx = i })
+      if (idx < 0) idx = 0
+      var t = Date.parse(l.at)
+      if (!isNaN(t)) {
+        for (var i = idx + 1; i < steps.length; i++) if (stepStart(steps[i]) + 1000 <= t) idx = i
+        var op = LOG_OPENER_RE.exec(plainText(l.line))
+        if (op) {
+          var title = (op[1] || '').trim(), started = []
+          for (var j = idx + 1; j < steps.length; j++) if (stepStart(steps[j]) <= t) started.push(j)
+          var byName = title ? started.filter(function (k) { return $('.log-step-name', steps[k]).textContent === title })[0] : undefined
+          if (byName !== undefined) idx = byName; else if (started.length) idx = started[0]
+        }
+      }
+      if (isNaN(stepStart(steps[idx]))) steps.forEach(function (st, k) { if (st.dataset.status === 'in_progress' && k >= idx) idx = k })
+      curStep = steps[idx]
+      return curStep
     }
-    function bumpStep(st) {
+    // Error and warning badges on a step row, the same markup as StepTally in src/views/job.tsx.
+    function tally(st, tone) {
+      var kind = tone === 'danger' ? 'errors' : 'warnings'
+      var b = $('.log-step-tally[data-kind="' + kind + '"]', st), n = b ? Number(b.textContent) + 1 : 1
+      var word = tone === 'danger' ? (n === 1 ? 'error' : 'errors') : (n === 1 ? 'warning' : 'warnings')
+      if (!b) {
+        b = document.createElement('span')
+        b.className = 't-badge log-step-tally'; b.dataset.tone = tone; b.dataset.size = 'xs'; b.dataset.kind = kind
+        var at = kind === 'errors' ? $('.log-step-tally', st) || $('.log-step-count', st) : $('.log-step-count', st)
+        at.parentNode.insertBefore(b, at)
+      }
+      b.innerHTML = icon(tone === 'danger' ? 'bi-x-circle-fill' : 'bi-exclamation-triangle', 'xs') + n
+      b.dataset.tip = n + ' ' + word
+    }
+    function bumpStep(st, tone) {
       if (!st) return
       st.dataset.count = String(Number(st.dataset.count || 0) + 1)
-      $('.log-step-count', st).textContent = st.dataset.count + ' lines'
+      $('.log-step-count', st).textContent = linesLabel(+st.dataset.count)
+      if (tone === 'danger' || tone === 'warning') tally(st, tone)
     }
     function closeGroup(key) {
       var g = openGroups[key]
@@ -765,36 +875,40 @@
       if (raw) { place(lineNode(l, m.kind === 'line' ? m.tone : undefined), view); return }
       var text = plainText(l.line)
       if (text.trim() === '') return
-      var st = stepFor(l.at)
+      var st = stepFor(l)
       // A close marker belongs to the step whose group is still open, whatever its stamp says.
-      if (m.kind === 'close') Object.keys(openGroups).forEach(function (k) { var g = openGroups[k].closest('details.log-step'); if (g) st = g })
+      if (m.kind === 'close' && (l.step === undefined || l.step === null)) Object.keys(openGroups).forEach(function (k) { var g = openGroups[k].closest('details.log-step'); if (g) st = g })
       var body = st ? $('.log-step-body', st) : view, key = st ? st.dataset.number : '-'
       var open = openGroups[key], into = open || body
       if (m.kind === 'line' && LOG_PROGRESS_RE.test(text.trim())) {
-        if (lastProgress && lastProgress.parentNode === into) { lastProgress.replaceWith(lineNode(l, m.tone)); lastProgress = $('[data-seq="' + l.seq + '"]', into); return }
-        place(lineNode(l, m.tone), into); lastProgress = into.lastElementChild
+        if (lastProgress && lastProgress.parentNode === into) {
+          // The new progress line takes the place (and the number) of the one it replaces.
+          if (st) st.dataset.next = String(Number(lastProgress.dataset.n || st.dataset.next))
+          var next = lineNode(l, m.tone, false, st); lastProgress.replaceWith(next); lastProgress = next; return
+        }
+        place(lineNode(l, m.tone, false, st), into); lastProgress = into.lastElementChild
         if (open) { open.dataset.count = String(Number(open.dataset.count || 0) + 1); updateMeta(open, l.at) }
-        bumpStep(st)
+        bumpStep(st, m.tone)
         return
       }
       lastProgress = null
       if (m.kind === 'open') {
         closeGroup(key)
-        var g = groupNode(l, m.title)
+        var g = groupNode(l, m.title, st)
         body.appendChild(g)
         openGroups[key] = g
-        place(lineNode(l, undefined, true), g)
+        place(lineNode(l, undefined, true, st), g)
         updateMeta(g, l.at)
       } else if (m.kind === 'close') {
-        if (open) { place(lineNode(l, undefined, true), open); updateMeta(open, l.at); closeGroup(key) }
-        else place(lineNode(l, undefined, true), body)
+        if (open) { place(lineNode(l, undefined, true, st), open); updateMeta(open, l.at); closeGroup(key) }
+        else place(lineNode(l, undefined, true, st), body)
       } else if (open) {
-        place(lineNode(l, m.tone), open)
+        place(lineNode(l, m.tone, false, st), open)
         open.dataset.count = String(Number(open.dataset.count || 0) + 1)
         if (m.tone === 'danger' || (m.tone === 'warning' && !open.dataset.tone)) { open.dataset.tone = m.tone; if (m.tone === 'danger') open.open = true }
         updateMeta(open, l.at)
-        bumpStep(st)
-      } else { place(lineNode(l, m.tone), body); bumpStep(st) }
+        bumpStep(st, m.tone)
+      } else { place(lineNode(l, m.tone, false, st), body); bumpStep(st, m.tone) }
     }
     // Drop the oldest lines past the cap; a group left without lines goes with them (step rows stay).
     function trim() {
@@ -812,13 +926,18 @@
       trim()
       view.hidden = false
       empty.hidden = true
-      count.textContent = lineCount + ' lines'
+      count.textContent = linesLabel(lineCount)
       if (following) view.scrollTop = view.scrollHeight
+      if (search) search.refresh()
     }
     function reset() {
-      lastSeq = 0; openGroups = {}; lineCount = 0; lastProgress = null
+      lastSeq = 0; openGroups = {}; lineCount = 0; lastProgress = null; curStep = null
       if (raw) view.textContent = ''
-      else $$('details.log-step', view).forEach(function (st) { $('.log-step-body', st).textContent = ''; st.dataset.count = '0'; $('.log-step-count', st).textContent = '0 lines' })
+      else $$('details.log-step', view).forEach(function (st) {
+        $('.log-step-body', st).textContent = ''; st.dataset.count = '0'; st.dataset.next = '1'
+        $('.log-step-count', st).textContent = '0 lines'
+        $$('.log-step-tally', st).forEach(function (b) { b.remove() })
+      })
     }
     function finish(info) {
       section.removeAttribute('data-live')
@@ -847,11 +966,11 @@
             reset(); append(res.lines); view.scrollTop = 0
             T.toast('info', 'Log replaced with the final one from GitHub')
           })
-        } else rerender().then(function () { view.scrollTop = 0; T.toast('info', 'Log replaced with the final one from GitHub') })
+        } else rerender().then(function () { view.scrollTop = 0; focusFailure(); T.toast('info', 'Log replaced with the final one from GitHub') })
       }
     }
-    // A `job` event (status, steps, conclusion changed): swap lead, outcome line and the steps view from the server,
-    // keeping which steps the user opened or closed, then catch up on lines the stream delivered meanwhile.
+    // A `job` event (status, steps, conclusion changed): swap lead, outcome line, annotations and the steps view from
+    // the server, keeping which steps the user opened or closed, then catch up on lines the stream delivered meanwhile.
     var rerendering = null
     function rerender() {
       if (raw) return Promise.resolve()
@@ -862,7 +981,7 @@
         if (!fresh) return
         var opened = {}
         $$('details.log-step', view).forEach(function (st) { opened[st.dataset.number] = st.open })
-        ;['job-lead', 'job-outcome'].forEach(function (id) {
+        ;['job-lead', 'job-outcome', 'log-annotations'].forEach(function (id) {
           var a = $('#' + id), b = $('#' + id, fresh)
           if (a && b) { a.replaceWith(b); T.upgrade(b) }
         })
@@ -872,14 +991,11 @@
         view.replaceWith(nextView)
         view = nextView
         T.upgrade(view)
-        base = view.dataset.started || null
-        openGroups = {}; lastProgress = null
-        $$('details.log-step', view).forEach(function (st) {
-          var body = $('.log-step-body', st), last = body && body.lastElementChild
-          if (last && last.matches('details.log-group:not([data-closed])')) openGroups[st.dataset.number] = last
-        })
+        lastProgress = null; curStep = null
+        scanOpenGroups()
         lineCount = $$('.log-line', view).length
-        count.textContent = lineCount + ' lines'
+        count.textContent = linesLabel(lineCount)
+        if (search) search.refresh()
         var rendered = Number(view.dataset.lastSeq || 0)
         if (rendered < lastSeq) {
           // lines the stream handed us after the server rendered: fetch and append them
@@ -919,19 +1035,140 @@
       else if (atBottom && !following && !followBtn.disabled) setFollow(true)
     }, { passive: true, capture: true })
     followBtn.addEventListener('click', function () { setFollow(!following) })
-    // Copy takes every stored line in view, the hidden group markers included, as plain text.
+    // Copy takes every stored line in view, the hidden group markers included, as plain text without gutters.
     copyBtn.addEventListener('click', function () {
       var nodes = $$('.log-line', view)
-      var text = nodes.map(function (n) { return n.textContent.replace(/\n$/, '') }).join('\n')
+      var text = nodes.map(function (n) { var t = $('.log-text', n); return (t ? t.textContent : n.textContent).replace(/\n$/, '') }).join('\n')
       if (!navigator.clipboard) { T.toast('warning', 'Clipboard is not available in this browser'); return }
       navigator.clipboard.writeText(text).then(
-        function () { T.toast('success', 'Copied ' + nodes.length + ' lines') },
+        function () { T.toast('success', 'Copied ' + linesLabel(nodes.length)) },
         function (err) { T.toast('danger', 'Copy failed: ' + err.message) })
     })
-    if (expandBtn) expandBtn.addEventListener('click', function () { $$('details.log-step, details.log-group', view).forEach(function (d) { d.open = true }) })
-    if (collapseBtn) collapseBtn.addEventListener('click', function () { $$('details.log-step', view).forEach(function (d) { d.open = false }) })
+    if (expandBtn) expandBtn.addEventListener('click', function () { $$('details.log-step, details.log-group', view).forEach(function (d) { d.open = true }); if (search) search.refresh() })
+    if (collapseBtn) collapseBtn.addEventListener('click', function () { $$('details.log-step', view).forEach(function (d) { d.open = false }); if (search) search.refresh() })
+
+    // Timestamps: off by default, the choice kept in localStorage; CSS shows `.log-ts` while the section has the flag.
+    function setTimestamps(on) {
+      if (on) section.dataset.timestamps = ''; else section.removeAttribute('data-timestamps')
+      if (tsBtn) tsBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
+      try { if (on) localStorage.setItem(LOG_TS_KEY, '1'); else localStorage.removeItem(LOG_TS_KEY) } catch (err) { /* private mode: not remembered */ }
+    }
+    if (tsBtn) {
+      var tsOn = false
+      try { tsOn = localStorage.getItem(LOG_TS_KEY) === '1' } catch (err) { /* private mode */ }
+      setTimestamps(tsOn)
+      tsBtn.addEventListener('click', function () { setTimestamps(tsBtn.getAttribute('aria-pressed') !== 'true') })
+    }
+
+    // Search over the lines of open steps: matches are wrapped in <mark> by DOM text nodes (never HTML), counted,
+    // Enter / the arrows walk them. Bounded by the lines in the DOM (≤ LOG_DOM_LINES) and MAX_MARKS highlights.
+    var search = raw ? null : wireLogSearch(section, function () { return view })
+
+    // Line anchors: `#step-4-12` opens step 4 (and the group around the line), scrolls to it and marks it.
+    function goToHash() {
+      var id = decodeURIComponent(location.hash.slice(1))
+      if (!/^step-\d+-\d+$/.test(id)) return false
+      var el = document.getElementById(id)
+      if (!el || !view.contains(el)) return false
+      reveal(el)
+      $$('[data-target]', view).forEach(function (x) { x.removeAttribute('data-target') })
+      el.dataset.target = ''
+      el.scrollIntoView({ block: 'center' })
+      return true
+    }
+    // A failed job opens on its failed step, scrolled to the first error line.
+    function focusFailure() {
+      var st = $('details.log-step[data-conclusion="failure"]', view)
+      var line = st && ($('.log-line[data-tone="danger"]:not([data-marker])', st) || $('.log-line:not([data-marker])', st))
+      if (!line) return
+      reveal(line)
+      line.scrollIntoView({ block: 'center' })
+    }
+    window.addEventListener('hashchange', goToHash)
+    if (!raw && !goToHash() && section.dataset.complete === 'true') focusFailure()
     if (following) view.scrollTop = view.scrollHeight
     connectLog()
+  }
+
+  /*
+   * Log search: one input in the log toolbar, a match count and previous/next buttons. Lines of closed steps are not
+   * searched (GitHub's rule); matches inside a closed group of an open step are, and the group opens on a jump.
+   */
+  function wireLogSearch(section, getView) {
+    var input = $('#log-search', section)
+    if (!input) return null
+    var counter = $('#log-matches', section)
+    var prevBtn = $('[data-action="log-search-prev"]', section), nextBtn = $('[data-action="log-search-next"]', section)
+    var MAX_MARKS = 1000
+    var marks = [], current = -1, timer = null
+    function clear() {
+      $$('mark.log-match', getView()).forEach(function (m) {
+        var parent = m.parentNode
+        parent.replaceChild(document.createTextNode(m.textContent), m)
+        parent.normalize()
+      })
+      $$('.log-line[data-match]', getView()).forEach(function (l) { l.removeAttribute('data-match') })
+      marks = []; current = -1
+    }
+    function highlight(textEl, needle) {
+      var walker = document.createTreeWalker(textEl, NodeFilter.SHOW_TEXT), nodes = [], node, hit = false
+      while ((node = walker.nextNode())) nodes.push(node)
+      nodes.forEach(function (t) {
+        var s = t.nodeValue, lower = s.toLowerCase(), i = lower.indexOf(needle), at = 0
+        if (i < 0 || marks.length >= MAX_MARKS) return
+        var frag = document.createDocumentFragment()
+        while (i >= 0 && marks.length < MAX_MARKS) {
+          if (i > at) frag.appendChild(document.createTextNode(s.slice(at, i)))
+          var m = document.createElement('mark'); m.className = 'log-match'; m.textContent = s.slice(i, i + needle.length)
+          frag.appendChild(m); marks.push(m); hit = true
+          at = i + needle.length; i = lower.indexOf(needle, at)
+        }
+        if (at < s.length) frag.appendChild(document.createTextNode(s.slice(at)))
+        t.parentNode.replaceChild(frag, t)
+      })
+      return hit
+    }
+    function show() {
+      var q = input.value
+      counter.hidden = !q
+      counter.textContent = !q ? '' : marks.length >= MAX_MARKS ? MAX_MARKS + '+ matches' : marks.length === 1 ? '1 match' : marks.length + ' matches'
+      if (q && current >= 0 && marks.length) counter.textContent = (current + 1) + ' of ' + counter.textContent
+      prevBtn.disabled = nextBtn.disabled = marks.length === 0
+    }
+    function run() {
+      clear()
+      var needle = input.value.toLowerCase()
+      if (needle) {
+        $$('details.log-step[open] .log-line:not([data-marker]) .log-text', getView()).forEach(function (t) {
+          if (highlight(t, needle)) t.closest('.log-line').dataset.match = ''
+        })
+      }
+      input.dataset.ran = input.value
+      show()
+    }
+    function jump(delta) {
+      if (!marks.length) return
+      if (current >= 0) marks[current].removeAttribute('data-current')
+      current = (current + delta + marks.length) % marks.length
+      var m = marks[current]
+      m.dataset.current = ''
+      reveal(m)
+      m.scrollIntoView({ block: 'center' })
+      show()
+    }
+    input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(run, 150) })
+    input.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return
+      e.preventDefault()
+      clearTimeout(timer)
+      if (input.dataset.ran !== input.value) run()
+      jump(e.shiftKey ? -1 : 1)
+    })
+    prevBtn.addEventListener('click', function () { jump(-1) })
+    nextBtn.addEventListener('click', function () { jump(1) })
+    // Opening or closing a step changes what is searched.
+    section.addEventListener('toggle', function (e) { if (input.value && e.target.matches && e.target.matches('details.log-step')) { clearTimeout(timer); timer = setTimeout(run, 50) } }, true)
+    return { refresh: function () { if (input.value) run() } }
   }
 
   /* ── Boot ────────────────────────────────────────────────────────────────── */

@@ -84,31 +84,56 @@ toggle, and a status dot in the top-right corner that shows whether the live con
   GitHub", and under the title one line with the outcome: `succeeded 12 min ago in 2m 20s`,
   `failed …`, `running … for 1m 5s`. Facts: runner name and state, host and type, labels,
   queued / started / finished with the duration.
-- Steps: the log reads like GitHub's. One row per workflow step, in order, each with a chevron, a
-  round status icon (green check = succeeded, red cross = failed, grey slash = cancelled or
-  skipped, grey dash = not started, spinner = running), the step name, the number of lines and
-  how long the step took. Every row starts collapsed except a failed step and the running one; a
-  click opens that step's lines. Steps and their times come from GitHub: the `workflow_job`
-  webhook sends them while the job runs, and when it ends the orchestrator fetches the job once
-  more for the final timestamps. A log line belongs to the step that was running at its timestamp;
-  lines before the first step and after the last one go to the first and the last step. A job
-  without step data yet shows one row, "Log", with everything in it. **Expand all** opens every
+- Steps: the log reads like GitHub's, and goes a bit further. One row per workflow step, in order,
+  each with a chevron, a round status icon (green check = succeeded, red cross = failed, grey slash
+  = cancelled or skipped, grey dash = not started, spinner = running), the step name, small red and
+  orange badges with the number of errors and warnings the step printed, the number of lines and how
+  long the step took. Every row starts collapsed except a failed step and the running one; a click
+  opens that step's lines. A finished job that failed opens on its failed step, scrolled to the first
+  error line. Steps and their times come from GitHub: the `workflow_job` webhook sends them while the
+  job runs, and when it ends the orchestrator fetches the job once more for the final timestamps. A
+  job without step data yet shows one row, "Log", with everything in it. **Expand all** opens every
   step and every group inside; **Collapse all** closes the steps.
-- Inside a step: the gutter shows `mm:ss` since the job started (the absolute time on hover),
-  blank lines are dropped, a run of progress lines (`Received 1234 of 5678 (21%)…`, `45%…`) keeps
-  only its last line, `##[command]` lines show the command in accent monospace with the marker
-  stripped, `##[error]` lines are red, `##[warning]` lines are orange. `##[group]<title>` …
-  `##[endgroup]` blocks (and `##[section]Starting:` / `##[section]Finishing:` markers when a log
-  has them) fold into a second level of collapsible groups whose header shows the title, the
-  number of lines and the time the block took; a group with an error opens by default. Groups are
-  one level deep: a new group closes the one before it.
+- Which step a line belongs to: when GitHub's log archive for the run holds one file per step, every
+  line keeps the step it came from. GitHub hands that archive out only once the whole run has ended,
+  and for many runs it holds just one file per job, so most logs are placed by time instead. GitHub
+  gives step times to the second, and a step's last lines often share a second with the start of the
+  next steps. Inside that second a line stays with the step before until the next step's first line
+  shows up (`##[group]Run …` for a normal step, `Post job cleanup.` for a post step, `Cleaning up
+  orphan processes` for "Complete job"); a line one second or more after a step started belongs to
+  that step. Lines before the first step go to the first step.
+- Annotations: the errors and warnings GitHub attached to the job (the check run's annotations: the
+  failed step's exit code, linter findings with file and line) sit in a compact list above the steps:
+  level icon, title, message and `path:line`. A message that also shows up in the log links to that
+  line. Reading them needs the App's **Checks: read** permission; without it the list stays empty
+  and the log is not affected.
+- Inside a step: lines are numbered from 1 in a gutter (a group's header counts as a line, its
+  hidden `##[group]`/`##[endgroup]` markers do not). Every number is a link to its line:
+  `/jobs/87#step-4-12` opens step 4, scrolls to line 12 and marks it. **Show timestamps** adds the
+  time of day (UTC, `HH:MM:SS`, the full stamp on hover) next to the numbers; it is off by default
+  and the browser remembers the choice. Terminal colours are shown the way GitHub shows them: the
+  16 ANSI colours, bold, italic and underline, mapped to the palette (the cyan bold command echo of a
+  `run:` step reads in the accent colour); other escape codes are dropped and the text is always
+  escaped. Blank lines are dropped, a run of progress lines (`Received 1234 of 5678 (21%)…`,
+  `45%…`) keeps only its last line, `##[command]` lines show the command in accent monospace with
+  the marker stripped. `##[error]`, `##[warning]`, `##[notice]` and `##[debug]` lines show an icon
+  and the word (Error, Warning, Notice, Debug) instead of the marker, in red, orange, blue and
+  purple. `##[group]<title>` … `##[endgroup]` blocks (and `##[section]Starting:` /
+  `##[section]Finishing:` markers when a log has them) fold into a second level of collapsible
+  groups whose header shows the title, the number of lines and the time the block took; a group
+  with an error opens by default. Groups are one level deep: a new group closes the one before it.
+- Search: the box in the log toolbar searches the lines of the open steps (closed steps are left
+  out, as on GitHub). Matches are highlighted and counted (`2 of 7 matches`); **Enter** or the down
+  arrow jumps to the next one, **Shift+Enter** or the up arrow to the previous one, opening the group
+  it sits in. The search runs in the browser over the lines on the page.
 - Live: while the job runs the page opens `GET /api/jobs/:id/log/stream?after=<last seq>` and
-  appends each `line` batch to the step running at the line's time (the group receiving lines
+  appends each `line` batch to its step by the same rule as above, numbering as it goes (the group receiving lines
   stays open, earlier groups fold as they close); at most 5000 lines stay in the page, older ones
   drop off the top. When GitHub reports a step change (`job` event) the steps block is re-rendered
-  from `GET /jobs/:id?partial=log`, keeping which steps you opened or closed. **Follow** keeps the
+  from `GET /jobs/:id?partial=log` together with the annotations, keeping which steps you opened or closed. **Follow** keeps the
   newest lines in view and switches itself off when you scroll up (and on again at the bottom).
-  **Copy** puts every line in view on the clipboard, group markers included, and reports the count.
+  **Copy** puts every line in view on the clipboard as plain text (no numbers, no times), group
+  markers included, and reports the count.
   **Raw** (`?raw=1`) shows every line as stored — no steps, no groups, blank lines kept, time of
   day in the gutter; **Steps** goes back.
 - Source badge: `runner (live)` while the runner prints, `GitHub` once the job finished and GitHub's

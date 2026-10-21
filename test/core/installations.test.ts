@@ -10,7 +10,7 @@ import { settings } from '../../src/lib/settings'
 import { pollQueuedJobs } from '../../src/lib/sweep'
 import { webhooks } from '../../src/routes/webhooks'
 
-const ALL_GRANTED = { metadata: 'read', administration: 'write', actions: 'write', contents: 'write', workflows: 'write', pull_requests: 'write' }
+const ALL_GRANTED = { metadata: 'read', administration: 'write', actions: 'write', contents: 'write', workflows: 'write', pull_requests: 'write', checks: 'read' }
 const ROJO: Installation = { id: 11, account: 'rojo', accountType: 'User', permissions: { ...ALL_GRANTED } }
 const TROOPY: Installation = { id: 22, account: 'troopy-bot', accountType: 'Organization', permissions: { ...ALL_GRANTED, workflows: 'read' } }
 

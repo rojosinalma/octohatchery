@@ -75,9 +75,14 @@ export type Job = {
   logTruncated: boolean
   /** Steps as last reported by GitHub (webhook payload or the job API); empty until the job starts. */
   steps: JobStep[]
+  /** Check-run annotations GitHub reported for the job once it ended (errors, warnings, notices); empty otherwise. */
+  annotations: JobAnnotation[]
 }
+/** One check-run annotation: `failure` = error, `warning`, `notice`; `path`/`line` point into the repo when GitHub knows them. */
+export type JobAnnotation = { level: 'failure' | 'warning' | 'notice'; message: string; title: string | null; path: string | null; startLine: number | null; endLine: number | null }
 export type LogSource = 'runner' | 'github' | null
-export type LogLine = { seq: number; at: string; line: string }
+/** One stored log line; `step` is the step number when the line came from GitHub's per-step files, else absent. */
+export type LogLine = { seq: number; at: string; line: string; step?: number | null }
 export type JobLog = { lines: LogLine[]; source: LogSource; truncated: boolean; complete: boolean }
 export type RunnerState = 'spawning' | 'idle' | 'busy' | 'exited' | 'failed' | 'removed'
 export type Runner = {

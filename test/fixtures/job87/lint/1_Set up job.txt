@@ -1,0 +1,16 @@
+﻿2026-10-21T11:28:42.2472379Z Current runner version: '2.338.0'
+2026-10-21T11:28:42.2481945Z Runner name: 'generic-node-a-1'
+2026-10-21T11:28:42.2483304Z Runner group name: 'Default'
+2026-10-21T11:28:42.2484537Z Machine name: 'd8eb6c5e9921'
+2026-10-21T11:28:42.2488017Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T11:28:42.2491374Z Contents: read
+2026-10-21T11:28:42.2492081Z Metadata: read
+2026-10-21T11:28:42.2492724Z ##[endgroup]
+2026-10-21T11:28:42.2496125Z Secret source: Actions
+2026-10-21T11:28:42.2497654Z Cache mode: write
+2026-10-21T11:28:42.2499016Z Prepare workflow directory
+2026-10-21T11:28:42.2941264Z Prepare all required actions
+2026-10-21T11:28:42.3004316Z Getting action download info
+2026-10-21T11:28:42.8156992Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-21T11:28:43.2638225Z Download action repository 'ruby/setup-ruby@v1' (SHA:824c0e29fdfc7d689c191c27acc969d2d04b7dd8)
+2026-10-21T11:28:43.8768022Z Complete job name: lint

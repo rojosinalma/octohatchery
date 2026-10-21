@@ -9,7 +9,7 @@ const WORKFLOW = 'jobs:\n  build:\n    runs-on: ubuntu-latest\n'
 describe('permissions model', () => {
   test('required list covers what the code calls; runs-on modes name a subset', () => {
     const keys = REQUIRED_PERMISSIONS.map((p) => p.key)
-    expect(keys).toEqual(['metadata', 'administration', 'actions', 'contents', 'workflows', 'pull_requests', 'webhooks'])
+    expect(keys).toEqual(['metadata', 'administration', 'actions', 'contents', 'workflows', 'pull_requests', 'checks', 'webhooks'])
     for (const p of REQUIRED_PERMISSIONS) {
       expect(p.why.length).toBeGreaterThan(10)
       expect(p.breaks.length).toBeGreaterThan(10)
@@ -33,7 +33,7 @@ describe('permissions model', () => {
   })
 
   test('evaluate: definite gaps only; webhooks required for pat only; app links for user and organisation', () => {
-    const app = evaluate({ source: 'app', granted: { metadata: 'read', administration: 'write', actions: 'read', contents: 'write', pull_requests: 'write' } })
+    const app = evaluate({ source: 'app', granted: { metadata: 'read', administration: 'write', actions: 'read', contents: 'write', pull_requests: 'write', checks: 'read' } })
     expect(app.missing).toEqual(['actions:write', 'workflows:write'])
     expect(app.permissions.map((p) => p.key)).not.toContain('webhooks')
     const pat = evaluate({ source: 'pat', granted: { metadata: 'read', administration: 'unknown', actions: 'unknown', contents: 'unknown', workflows: 'unknown', pull_requests: 'unknown', webhooks: 'none' } })

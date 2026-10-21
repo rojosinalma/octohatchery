@@ -3,15 +3,18 @@ import type { LogLine } from '../lib/types'
 /*
  * Group markers in a job log. The runner (and GitHub's stored log) wraps blocks in `##[group]<title>` …
  * `##[endgroup]`; some tooling writes `##[section]Starting: <step>` … `##[section]Finishing: <step>`. Both are
- * one level: a new group closes the one before it, an unterminated one runs to the end. `##[error]` and
- * `##[warning]` lines carry a tone; a group with an error opens by default. `public/app.js` keeps the same rules
+ * one level: a new group closes the one before it, an unterminated one runs to the end. `##[error]`,
+ * `##[warning]`, `##[notice]` and `##[debug]` lines carry a tone (danger, warning, notice, debug); a group takes
+ * the tone of its worst error or warning and opens by default when it holds an error. `public/app.js` keeps the same rules
  * for lines that arrive over the stream: change one, change the other.
  */
 
-export type LineTone = 'danger' | 'warning'
-export type GroupedLine = { line: LogLine; tone?: LineTone; marker?: boolean }
-export type LogGroup = { kind: 'group'; title: string; lines: GroupedLine[]; closed: boolean; tone?: LineTone }
-export type LogBlock = { kind: 'line'; line: LogLine; tone?: LineTone; marker?: boolean } | LogGroup
+export type LineTone = 'danger' | 'warning' | 'notice' | 'debug'
+/** `n` is the line's number inside its step (steps view only); marker lines have none. */
+export type GroupedLine = { line: LogLine; tone?: LineTone; marker?: boolean; n?: number }
+/** `n` is the number of the group's header line (its `##[group]` marker) inside its step. */
+export type LogGroup = { kind: 'group'; title: string; lines: GroupedLine[]; closed: boolean; tone?: 'danger' | 'warning'; n?: number }
+export type LogBlock = ({ kind: 'line' } & GroupedLine) | LogGroup
 
 export type Marker = { kind: 'open'; title: string } | { kind: 'close' } | { kind: 'line'; tone?: LineTone }
 
@@ -20,7 +23,8 @@ export const plainText = (line: string) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g
 
 const OPEN_RE = /^##\[(?:group\]|section\]Starting: )(.*)$/
 const CLOSE_RE = /^##\[(?:endgroup\]|section\]Finishing: )/
-const TONE_RE = /^##\[(error|warning)\]/
+const TONE_RE = /^##\[(error|warning|notice|debug)\]/
+const TONES: Record<string, LineTone> = { error: 'danger', warning: 'warning', notice: 'notice', debug: 'debug' }
 
 export const classify = (raw: string): Marker => {
   const text = plainText(raw)
@@ -28,7 +32,7 @@ export const classify = (raw: string): Marker => {
   if (open) return { kind: 'open', title: open[1]!.trim() || 'group' }
   if (CLOSE_RE.test(text)) return { kind: 'close' }
   const tone = TONE_RE.exec(text)
-  if (tone) return { kind: 'line', tone: tone[1] === 'error' ? 'danger' : 'warning' }
+  if (tone) return { kind: 'line', tone: TONES[tone[1]!] }
   return { kind: 'line' }
 }
 

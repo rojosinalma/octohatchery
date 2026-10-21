@@ -17,6 +17,7 @@ bunx tsc --noEmit
 # Each test area runs in its own process: Bun's mock.module() is process-wide and the
 # mcp/ui suites replace src/lib/service, which would leak into the core suite.
 for area in test/*/; do
+  ls "$area"*.test.ts >/dev/null 2>&1 || continue # fixtures and helpers only
   step "bun test ${area%/}"
   bun test "${area%/}"
 done

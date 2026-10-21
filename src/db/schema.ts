@@ -81,6 +81,8 @@ export const jobs = sqliteTable(
     logBytes: integer('log_bytes').notNull().default(0),
     logTruncated: integer('log_truncated', { mode: 'boolean' }).notNull().default(false),
     steps: text('steps').notNull().default('[]'),
+    /** Check-run annotations GitHub reported for the job (level, message, path, line), stored when the log is final. */
+    annotations: text('annotations').notNull().default('[]'),
   },
   (t) => [index('jobs_status_queued').on(t.status, t.queuedAt), index('jobs_repo').on(t.repo)],
 )
@@ -127,6 +129,8 @@ export const jobLogs = sqliteTable(
     seq: integer('seq').notNull(),
     at: text('at').notNull(),
     line: text('line').notNull(),
+    /** Step number the line belongs to, from GitHub's per-step log files; null for live lines and the flat log. */
+    step: integer('step'),
   },
   (t) => [primaryKey({ columns: [t.jobId, t.seq] })],
 )

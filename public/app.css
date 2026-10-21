@@ -546,6 +546,15 @@
   padding-left: 1.5ch;
 }
 
+/* Steps view: the indent of a group's lines goes after the number, so the numbers stay in one column. */
+.log-step-body .log-group > .log-line {
+  padding-left: 0;
+}
+
+.log-step-body .log-group > .log-line > .log-num {
+  margin-right: 3ch;
+}
+
 .log-toolbar .t-btn-group {
   display: inline-flex;
 }
@@ -667,9 +676,179 @@
   display: none;
 }
 
-/* The gutter inside a step is mm:ss, 6 characters wide. */
-.log-step-body .log-time {
-  width: 7ch;
+/* Steps view gutter: the line number (a link to the line's anchor) and, with "Show timestamps", the time of day. */
+.log-num {
+  display: inline-block;
+  flex: none;
+  width: 5ch;
+  margin-right: 1.5ch;
+  text-align: right;
+  color: var(--t-muted);
+  text-decoration: none;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+a.log-num:hover,
+a.log-num:focus-visible {
+  color: var(--t-text);
+  text-decoration: underline;
+}
+
+.log-ts {
+  display: none;
+  flex: none;
+  width: 9ch;
+  color: var(--t-muted);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+#log[data-timestamps] .log-ts {
+  display: inline-block;
+}
+
+/* The line a #step-N-L link points at, and the line under the cursor's anchor. */
+.log-line[data-target],
+.log-summary[data-target],
+.log-line:target,
+.log-summary:target {
+  background: color-mix(in srgb, var(--t-accent) 22%, transparent);
+  box-shadow: inset 2px 0 0 var(--t-accent);
+}
+
+/* ##[error] / ##[warning] / ##[notice]: icon and word in front, marker stripped; ##[debug] reads muted purple. */
+.log-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5ch;
+  margin-right: 1ch;
+  font-weight: 600;
+  user-select: none;
+}
+
+.log-line[data-tone="notice"] {
+  color: var(--t-info);
+}
+
+.log-line[data-tone="debug"] {
+  color: var(--t-hue-purple);
+}
+
+/* ANSI colours (src/views/log-ansi.ts): the 16 terminal colours mapped to palette tokens; cyan (GitHub's command
+   echo) reads as accent. Bright variants share the hue and add weight. */
+.ansi-fg-0, .ansi-fg-8 { color: var(--t-muted); }
+.ansi-fg-1, .ansi-fg-9 { color: var(--t-hue-red); }
+.ansi-fg-2, .ansi-fg-10 { color: var(--t-hue-green); }
+.ansi-fg-3, .ansi-fg-11 { color: var(--t-hue-yellow); }
+.ansi-fg-4, .ansi-fg-12 { color: var(--t-info); }
+.ansi-fg-5, .ansi-fg-13 { color: var(--t-hue-purple); }
+.ansi-fg-6, .ansi-fg-14 { color: var(--t-accent); }
+.ansi-fg-7, .ansi-fg-15 { color: var(--t-text); }
+.ansi-fg-9, .ansi-fg-10, .ansi-fg-11, .ansi-fg-12, .ansi-fg-13, .ansi-fg-14, .ansi-fg-15 { font-weight: 600; }
+.ansi-bg-0, .ansi-bg-8 { background: color-mix(in srgb, var(--t-muted) 25%, transparent); }
+.ansi-bg-1, .ansi-bg-9 { background: color-mix(in srgb, var(--t-hue-red) 25%, transparent); }
+.ansi-bg-2, .ansi-bg-10 { background: color-mix(in srgb, var(--t-hue-green) 25%, transparent); }
+.ansi-bg-3, .ansi-bg-11 { background: color-mix(in srgb, var(--t-hue-yellow) 25%, transparent); }
+.ansi-bg-4, .ansi-bg-12 { background: color-mix(in srgb, var(--t-info) 25%, transparent); }
+.ansi-bg-5, .ansi-bg-13 { background: color-mix(in srgb, var(--t-hue-purple) 25%, transparent); }
+.ansi-bg-6, .ansi-bg-14 { background: color-mix(in srgb, var(--t-accent) 25%, transparent); }
+.ansi-bg-7, .ansi-bg-15 { background: color-mix(in srgb, var(--t-text) 20%, transparent); }
+.ansi-bold { font-weight: 700; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+
+/* Error and warning counts on a step row. */
+.log-step-tally {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Search in the log toolbar: input, "n matches", previous / next. */
+.log-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--t-space-1);
+}
+
+.log-search .t-input {
+  width: 14rem;
+}
+
+[data-action="log-search-prev"] .t-icon {
+  transform: rotate(180deg);
+}
+
+mark.log-match {
+  color: inherit;
+  background: color-mix(in srgb, var(--t-warning) 35%, transparent);
+  border-radius: var(--t-radius-sm);
+}
+
+mark.log-match[data-current] {
+  background: color-mix(in srgb, var(--t-warning) 70%, transparent);
+  outline: 1px solid var(--t-warning);
+}
+
+/* Annotations above the steps: one compact row each, level icon, message, path:line. */
+.log-annotations {
+  margin-bottom: var(--t-space-3);
+  border: var(--t-border-w) solid var(--t-border);
+  border-radius: var(--t-radius-xl);
+  background: var(--t-surface);
+  padding: var(--t-space-2) var(--t-space-3);
+}
+
+.log-annotations-title {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  margin: 0 0 var(--t-space-2);
+  font-size: var(--t-text-sm);
+  font-weight: 600;
+}
+
+.log-annotation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--t-space-1);
+}
+
+.log-annotation {
+  display: flex;
+  align-items: baseline;
+  gap: var(--t-space-2);
+  font-size: var(--t-text-sm);
+}
+
+.log-annotation-icon {
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+}
+
+.log-annotation-icon[data-tone="danger"] { color: var(--t-danger); }
+.log-annotation-icon[data-tone="warning"] { color: var(--t-warning); }
+.log-annotation-icon[data-tone="info"] { color: var(--t-info); }
+
+.log-annotation-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-annotation-title {
+  margin-right: 1ch;
+}
+
+.log-annotation-where {
+  flex: none;
 }
 
 .log-empty {

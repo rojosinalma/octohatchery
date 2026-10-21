@@ -21,7 +21,7 @@ describe('runner type run_as', () => {
       const file = readFileSync(join(MIGRATIONS, dialect, '0006_runner_type_run_as.sql'), 'utf8')
       expect(file).toMatch(/ALTER TABLE [`"]runner_types[`"] ADD (COLUMN )?[`"]run_as[`"] text DEFAULT 'image' NOT NULL/)
       const journal = JSON.parse(readFileSync(join(MIGRATIONS, dialect, 'meta/_journal.json'), 'utf8')) as { entries: { idx: number; tag: string }[] }
-      expect(journal.entries.at(-1)).toMatchObject({ idx: 6, tag: '0006_runner_type_run_as' })
+      expect(journal.entries.find((e) => e.idx === 6)).toMatchObject({ idx: 6, tag: '0006_runner_type_run_as' })
     }
   })
 

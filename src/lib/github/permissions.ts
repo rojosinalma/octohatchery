@@ -57,6 +57,13 @@ export const REQUIRED_PERMISSIONS: readonly RequiredPermission[] = [
     breaks: 'apply_runs_on in pull request mode fails after the branch is pushed.',
   },
   {
+    key: 'checks',
+    level: 'read',
+    why: 'Reads the annotations of a finished job (errors and warnings with file and line) for the job page.',
+    breaks: 'The job page shows no annotations; the log itself is unaffected.',
+    modes: ['app'],
+  },
+  {
     key: 'webhooks',
     level: 'write',
     why: 'Creates the workflow_job webhook on each adopted repository (token mode only; the App delivers its own events).',

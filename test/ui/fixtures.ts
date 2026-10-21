@@ -58,6 +58,7 @@ export const jobs: Job[] = [
       { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-10-19T10:00:30Z', completedAt: '2026-10-19T10:00:40Z' },
       { number: 2, name: 'Build', status: 'in_progress', conclusion: null, startedAt: '2026-10-19T10:00:40Z', completedAt: null },
     ],
+    annotations: [],
   },
   {
     id: 8,
@@ -81,6 +82,7 @@ export const jobs: Job[] = [
       { number: 2, name: 'Run tests', status: 'completed', conclusion: 'failure', startedAt: '2026-10-19T08:00:20Z', completedAt: '2026-10-19T08:05:00Z' },
       { number: 3, name: 'Complete job', status: 'completed', conclusion: 'success', startedAt: '2026-10-19T08:05:00Z', completedAt: '2026-10-19T08:05:10Z' },
     ],
+    annotations: [],
   },
 ]
 
@@ -259,3 +261,41 @@ export const makeService = (store: { data: FixtureSet }) => ({
   setSetting: async () => {},
   health: async () => health,
 })
+
+/**
+ * Job 87 as the job page gets it after the finaliser stored GitHub's per-step files (test/fixtures/job87): every line
+ * carries its step, the check run reported two annotations.
+ */
+export async function job87Set(): Promise<FixtureSet> {
+  const { pickJobSteps } = await import('../../src/lib/github/log-archive')
+  const { parseGitHubLog } = await import('../../src/lib/joblog')
+  const { job87Details, job87Zip } = await import('../core/job87')
+  const d = job87Details()
+  const pick = pickJobSteps(job87Zip(), d.name)
+  if (!pick.ok) throw new Error(pick.reason)
+  const lines = pick.steps.flatMap((s) => parseGitHubLog(s.text).map((l) => ({ ...l, step: s.number }))).map((l, i) => ({ seq: i + 1, ...l }))
+  const job: Job = {
+    id: 87,
+    repo: 'acme/widgets',
+    githubJobId: 870,
+    runId: d.runId,
+    name: d.name,
+    labels: ['self-hosted', 'generic'],
+    status: 'completed',
+    conclusion: 'failure',
+    runnerId: 2,
+    htmlUrl: 'https://github.com/acme/widgets/actions/runs/9001/job/870',
+    queuedAt: '2026-10-21T11:28:32Z',
+    startedAt: d.startedAt,
+    completedAt: d.completedAt,
+    logSource: 'github',
+    logBytes: 35_000,
+    logTruncated: false,
+    steps: d.steps,
+    annotations: [
+      { level: 'failure', message: 'Process completed with exit code 1.', title: null, path: '.github', startLine: 1, endLine: 1 },
+      { level: 'warning', message: 'Do not introduce global variables.', title: 'Style/GlobalVars', path: 'lib/lifecycle/tokens.rb', startLine: 45, endLine: 45 },
+    ],
+  }
+  return { ...full, jobs: [...full.jobs, job], logs: { ...full.logs, 87: { lines, source: 'github', truncated: false, complete: true } } }
+}
