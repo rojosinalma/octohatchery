@@ -177,6 +177,16 @@ export const githubStatus: GitHubStatus = {
 
 export const githubOk: GitHubStatus = { ...githubStatus, ok: true, permissions: githubStatus.permissions.map((p) => ({ ...p, granted: 'write', ok: true })), missing: [] }
 
+/** An App installed on two accounts; the organisation lacks one permission and is not served yet. */
+export const githubMulti: GitHubStatus = {
+  ...githubOk,
+  newInstallUrl: 'https://github.com/apps/octohatchery-acme/installations/new',
+  installations: [
+    { id: 7654321, account: 'acme', type: 'user', repoCount: 3, missing: [], allowed: true, url: 'https://github.com/settings/installations/7654321' },
+    { id: 999, account: 'troopy-bot', type: 'org', repoCount: 1, missing: ['workflows:write'], allowed: false, url: 'https://github.com/organizations/troopy-bot/settings/installations/999' },
+  ],
+}
+
 export const githubRepos: GitHubRepoItem[] = [
   { fullName: 'acme/widgets', isPrivate: false, defaultBranch: 'main', adopted: true },
   { fullName: 'acme/new-thing', isPrivate: true, defaultBranch: 'main', adopted: false },

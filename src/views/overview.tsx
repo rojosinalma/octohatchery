@@ -10,6 +10,28 @@ const LIVE_STATES = new Set(['spawning', 'idle', 'busy'])
 /** Pills read well up to this many slots; beyond it the row falls back to the bar and count. */
 const PILL_MAX = 12
 
+/** At most this many host columns per row: a column stays wide enough for full template names and a runner capsule. */
+const HOST_COLS_MAX = 3
+/** The host grid has this many tracks; a host spans `HOST_TRACKS / hosts in its row`, so every row splits equally. */
+const HOST_TRACKS = 6
+
+/**
+ * Hosts per row: as few rows as the column cap allows, filled as evenly as possible (4 → 2+2, 5 → 3+2, 7 → 3+2+2),
+ * so a host never sits alone in a short last row while a longer row exists above it.
+ */
+export function hostRows(count: number): number[] {
+  if (count <= 0) return []
+  const rows = Math.ceil(count / HOST_COLS_MAX)
+  const base = Math.floor(count / rows)
+  const extra = count % rows
+  return Array.from({ length: rows }, (_, i) => base + (i < extra ? 1 : 0))
+}
+
+/** The track span of each host in order, for `data-span` on its column. */
+export function hostSpans(count: number): number[] {
+  return hostRows(count).flatMap((n) => Array.from({ length: n }, () => HOST_TRACKS / n))
+}
+
 const LeaderBadge = () => (
   <span
     class="t-badge host-leader"
@@ -122,13 +144,13 @@ const SlotRow = ({ slot, runners }: { slot: Slot; runners: Runner[] }) => {
 }
 
 /** One host column: a one-line header, the slot summary, then one row per template with slots here. */
-const HostSection = ({ host, slots, runners }: { host: Host; slots: Slot[]; runners: Runner[] }) => {
+const HostSection = ({ host, slots, runners, span }: { host: Host; slots: Slot[]; runners: Runner[]; span: number }) => {
   const mine = slots.filter((s) => s.host === host.name && s.count > 0).sort((a, b) => a.type.localeCompare(b.type))
   const used = mine.reduce((n, s) => n + s.used, 0)
   const total = mine.reduce((n, s) => n + s.count, 0)
   const offline = host.status === 'offline'
   return (
-    <section class="host-section" data-name={host.name} data-tone={offline ? 'danger' : undefined} aria-label={`Host ${host.name}`}>
+    <section class="host-section" data-name={host.name} data-span={String(span)} data-tone={offline ? 'danger' : undefined} aria-label={`Host ${host.name}`}>
       <header class="host-head t-cluster" data-gap="2" data-align="center">
         <span class="t-dot" data-status={host.status === 'online' ? (host.dockerOk ? 'running' : 'degraded') : 'stopped'} data-tip={host.status}></span>
         <a class="t-mono host-name" href={`/hosts#${encodeURIComponent(host.name)}`} data-tip="Host details" safe>
@@ -191,6 +213,7 @@ const SlotBar = ({ slot }: { slot: Slot }) => {
 
 /** The live block: re-fetched whole by `app.js` on `runner` / `slot` events (`GET /?partial=1`). */
 export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
+  const spans = hostSpans(hosts.length)
   if (hosts.length === 0) {
     return (
       <div id="overview-live" data-live="runner slot">
@@ -219,9 +242,9 @@ export const OverviewLive = ({ hosts, slots, runners }: OverviewData) => {
             </a>
           </div>
         </div>
-        <div class="t-card-body host-list t-grid" data-min="md">
-          {hosts.map((h) => (
-            <HostSection host={h} slots={slots} runners={runners} />
+        <div class="t-card-body host-list" data-hosts={String(hosts.length)}>
+          {hosts.map((h, i) => (
+            <HostSection host={h} slots={slots} runners={runners} span={spans[i] ?? HOST_TRACKS} />
           ))}
         </div>
       </section>

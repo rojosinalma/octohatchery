@@ -13,40 +13,57 @@
   max-height: none;
 }
 
-/* Overview: one Hosts card, hosts as columns (2-up on desktop, stacked under 992px), a hairline between
-   them, a one-line header per host, then the slot summary and one pill row per template. */
+/* Overview: one Hosts card, hosts as columns that split each row equally (at most 3 per row, rows filled evenly;
+   the server sets each column's span over 6 tracks). Under 992px they stack. A hairline separates every cell:
+   the grid gap shows the border colour behind the columns. */
 .host-list {
-  padding: 0;
-  gap: 0;
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
+  gap: var(--t-border-w);
+  padding: 0;
+  background: var(--t-border);
 }
 
 @media (min-width: 992px) {
   .host-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .host-section[data-span="2"] {
+    grid-column: span 2;
+  }
+
+  .host-section[data-span="3"] {
+    grid-column: span 3;
+  }
+
+  .host-section[data-span="6"] {
+    grid-column: span 6;
   }
 }
 
 .host-section {
+  container-type: inline-size;
+  min-width: 0;
   padding: var(--t-space-2) var(--t-space-3) var(--t-space-3);
-  border-top: var(--t-border-w) solid var(--t-border);
+  background: var(--t-surface);
 }
 
-.host-section:first-child {
-  border-top: 0;
-}
-
-.host-section:only-child {
-  grid-column: 1 / -1;
-}
-
-@media (min-width: 992px) {
-  .host-section:nth-child(2) {
-    border-top: 0;
+/* A narrow column moves the specs under the host name instead of squeezing the header. */
+@container (max-width: 28rem) {
+  .host-section .host-head {
+    flex-wrap: wrap;
+    row-gap: 0;
   }
 
-  .host-section:nth-child(even) {
-    border-left: var(--t-border-w) solid var(--t-border);
+  .host-section .host-head .t-toolbar-spacer {
+    display: none;
+  }
+
+  .host-section .host-head .host-specs {
+    flex-basis: 100%;
+    padding-left: calc(0.6rem + var(--t-space-2));
+    white-space: normal;
   }
 }
 
@@ -772,4 +789,31 @@
 
 .t-empty[data-size="sm"] .t-empty-actions {
   margin: 0;
+}
+
+/* Settings → GitHub: one card per App installation, its permission gaps as a short list, the served-accounts boxes. */
+.gh-install .t-card-title {
+  min-width: 0;
+}
+
+.gh-gaps {
+  margin: 0;
+  padding-left: var(--t-space-4);
+  font-size: var(--t-text-sm);
+}
+
+.gh-gaps li + li {
+  margin-top: var(--t-space-1);
+}
+
+.gh-accounts {
+  margin: 0;
+}
+
+.gh-accounts .t-check:last-child {
+  margin-bottom: 0;
+}
+
+.gh-accounts-default {
+  margin: var(--t-space-2) 0 0;
 }

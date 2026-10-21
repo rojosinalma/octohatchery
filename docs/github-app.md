@@ -6,7 +6,7 @@ to authenticate with `GITHUB_AUTH` in `.env`:
 
 | | GitHub App (`GITHUB_AUTH=app`) | Personal access token (`GITHUB_AUTH=pat`) |
 |---|---|---|
-| Best for | an organisation, or a personal account you want to keep tidy | a quick start on a personal account |
+| Best for | an organisation, several accounts, or a personal account you want to keep tidy | a quick start on one account |
 | Webhook | one, on the App, covers every repo it is installed on | one per adopted repo, created on adopt |
 | Expiry | the private key does not expire | a fine-grained token lasts at most one year |
 | Audit | actions show as the App | actions show as you |
@@ -97,7 +97,9 @@ webhook secret steps are already done.
 3. Webhook: active, URL `<PUBLIC_URL>/webhooks/github`, secret = your `GITHUB_WEBHOOK_SECRET`.
 4. Repository permissions: Actions, Administration, Contents, Workflows, Pull requests → Read and write; Metadata → Read.
 5. Subscribe to events: **Workflow job**.
-6. Where can this App be installed: **Only on this account**.
+6. Where can this App be installed: **Only on this account**. Pick **Any account** if you want to
+   serve repos of an organisation or another user too (see "Serving several accounts" below). You can
+   change this later.
 7. Create the App.
 
 ### Install it and collect the values
@@ -110,9 +112,11 @@ webhook secret steps are already done.
    if your deployment prefers that; the value never leaves the node.
 3. **Install App** (left menu) → choose your account or organisation → **All repositories** or a
    selection. Repos you leave out cannot be adopted later until you add them here.
-4. After the install, the browser URL ends in `/installations/<number>`. That number is
-   `GITHUB_APP_INSTALLATION_ID`. You can also list it: `GET /app/installations` with an App JWT
-   (for example `bun -e` with `@octokit/app`: `new App({appId, privateKey}).octokit.request('GET /app/installations')`).
+4. Optional: after the install, the browser URL ends in `/installations/<number>`. Put that number in
+   `GITHUB_APP_INSTALLATION_ID` to make this installation the default one: while the
+   `github_accounts` setting is empty, only the default installation is served. Leave it out and
+   OctoHatchery finds every installation of the App by itself (`GET /app/installations`) and serves
+   them all.
 5. Set the webhook secret you used → `GITHUB_WEBHOOK_SECRET`.
 
 `.env` for App mode:
@@ -120,13 +124,13 @@ webhook secret steps are already done.
 ```sh
 GITHUB_AUTH=app
 GITHUB_APP_ID=123456
-GITHUB_APP_INSTALLATION_ID=7654321
+GITHUB_APP_INSTALLATION_ID=7654321   # optional: the default installation
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"
 GITHUB_WEBHOOK_SECRET=<openssl rand -hex 32>
 ```
 
-Restart the node. **Settings → GitHub** shows the App, the installation, how many repositories it
-covers and the granted-versus-required permission table; `GET /health` carries the same verdict as
+Restart the node. **Settings → GitHub** shows the App, one card per installation (account, how many
+repositories it covers, what it is missing) and the granted-versus-required permission table; `GET /health` carries the same verdict as
 `github: {ok, source, missing}`; a banner on every page names any missing permission. **Repos → Adopt a
 repo** lists what the installation can see. Adopting a repo in App mode only flips a switch in the
 database: the App's webhook already covers it.
@@ -144,11 +148,39 @@ The steps are the same. The differences:
 
 - The App lives under the account or organisation that created it; the install URL and the
   installation id belong to where you installed it. One App can be installed on both, with a
-  different installation id each; OctoHatchery serves one installation per node.
+  different installation id each, and one OctoHatchery serves them all (next section).
 - In an organisation, only owners can create and install Apps. Members may need to request it.
 - Organisation runners: OctoHatchery registers runners per repository, so no organisation-level
   runner group is needed. Repos in the organisation must allow repository-level self-hosted runners
   (**Organisation settings → Actions → Runners → Runner creation**).
+
+### Serving several accounts
+
+One App can be installed on your own account and on organisations (or other users) at the same
+time. OctoHatchery picks the right installation for every call by the repo's owner, so a job in
+`my-org/app` registers its runner with the `my-org` installation and a job in `me/site` with yours.
+
+1. Make the App installable outside its owner: on the App's settings page, **Advanced → Make public**.
+   (An App created with "Any account" already is.) "Public" only means other accounts may install it;
+   they cannot use your OctoHatchery unless you let them in at step 4.
+2. Open `https://github.com/apps/<app-slug>/installations/new` (the **install on another account** link
+   on the GitHub tab), pick the organisation, and choose all repositories or a selection. In an
+   organisation only an owner can do this.
+3. In OctoHatchery press **Re-check** on **Settings → GitHub**. The new account appears as its own card
+   and under **Accounts served**. Installations are cached for five minutes otherwise.
+4. Tick the account under **Accounts served**. This saves the `github_accounts` setting (a
+   comma-separated list of logins) at once.
+5. **Repos → Adopt a repo** now lists that account's repos too, grouped by owner.
+
+Accounts that are not ticked are ignored everywhere: their webhooks are dropped (with a
+`webhook.ignored` event in the audit log, never a job), they cannot be adopted, and their repos stay
+out of the adopt dialog. This matters once the App is public: anyone can install it, but nothing they
+send reaches a runner until you tick their account. While `github_accounts` is empty, OctoHatchery
+serves the installation in `GITHUB_APP_INSTALLATION_ID`, or every installation when that is not set.
+
+Each installation accepts permissions on its own. When you add a permission to the App, every
+account has to accept it; the card of an account that has not says what is missing and links to its
+installation page.
 
 ## Personal access token mode
 

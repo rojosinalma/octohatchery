@@ -1,4 +1,6 @@
 import type { GitHubAuthKind } from '../config'
+import { allows, type AccountPolicy } from './accounts'
+import { installationUrl } from './installations'
 
 export type PermissionLevel = 'read' | 'write'
 /** What the token proved: a definite level, a definite absence, or nothing (fine-grained tokens expose no grant list). */
@@ -69,6 +71,9 @@ export const RUNS_ON_PERMISSIONS: Record<'pr' | 'commit', string[]> = {
   commit: ['contents', 'workflows'],
 }
 
+/** What one App installation accepted, as the App reports it. */
+export type InstallationReport = { id: number; account: string; accountType: string; granted: Record<string, string>; repoCount?: number }
+
 export type PermissionReport = {
   source: GitHubAuthKind
   /** Permission key → granted level as GitHub reports it (`read`, `write`, `admin`, …). */
@@ -82,6 +87,22 @@ export type PermissionReport = {
   appOwner?: { login: string; type: string }
   /** Free-text caveat for the operator (fine-grained tokens, probe skipped, …). */
   note?: string
+  /** App: every installation; the top-level fields then describe the default one. */
+  installations?: InstallationReport[]
+}
+
+/** One installation as the dashboard and `GET /api/github/status` show it. */
+export type InstallationStatus = {
+  id: number
+  account: string
+  type: 'user' | 'org'
+  repoCount?: number
+  /** Definite gaps on this installation (`<key>:<level>`). */
+  missing: string[]
+  /** Served under `github_accounts`; an installation that is not is ignored everywhere. */
+  allowed: boolean
+  /** The installation's settings page on GitHub. */
+  url: string
 }
 
 export type PermissionRow = RequiredPermission & {
@@ -102,11 +123,15 @@ export type GitHubStatus = {
   appUrl?: string
   permissionsUrl?: string
   installUrl?: string
+  /** App: where the App is installed on another account (needs the App to be public for accounts other than its owner). */
+  newInstallUrl?: string
   webhookUrl?: string
   note?: string
   permissions: PermissionRow[]
-  /** Keys that are definitely missing (`<key>:<level>`). */
+  /** Keys that are definitely missing (`<key>:<level>`); with installations, on any served installation. */
   missing: string[]
+  /** App: every installation, sorted by account; `installationId`/`account` are the default one. */
+  installations?: InstallationStatus[]
   checkedAt: string
   /** Set when GitHub could not be asked; the rows are then all `unknown`. */
   error?: string
@@ -145,22 +170,45 @@ export function evaluate(report: PermissionReport): { permissions: PermissionRow
 }
 
 /** Where the operator edits the App's permissions and accepts them on the installation. */
-export function githubLinks(report: PermissionReport): Pick<GitHubStatus, 'appUrl' | 'permissionsUrl' | 'installUrl'> {
+export function githubLinks(report: PermissionReport): Pick<GitHubStatus, 'appUrl' | 'permissionsUrl' | 'installUrl' | 'newInstallUrl'> {
   if (report.source === 'pat') return { permissionsUrl: 'https://github.com/settings/personal-access-tokens' }
   if (report.source !== 'app') return {}
-  const out: Pick<GitHubStatus, 'appUrl' | 'permissionsUrl' | 'installUrl'> = {}
+  const out: Pick<GitHubStatus, 'appUrl' | 'permissionsUrl' | 'installUrl' | 'newInstallUrl'> = {}
   if (report.appSlug) {
     const base = report.appOwner?.type === 'Organization' ? `https://github.com/organizations/${report.appOwner.login}/settings/apps/${report.appSlug}` : `https://github.com/settings/apps/${report.appSlug}`
     out.appUrl = base
     out.permissionsUrl = `${base}/permissions`
+    out.newInstallUrl = `https://github.com/apps/${report.appSlug}/installations/new`
   }
-  if (report.installationId) {
-    out.installUrl =
-      report.accountType === 'Organization' && report.account
-        ? `https://github.com/organizations/${report.account}/settings/installations/${report.installationId}`
-        : `https://github.com/settings/installations/${report.installationId}`
-  }
+  if (report.installationId) out.installUrl = installationUrl({ id: report.installationId, account: report.account, accountType: report.accountType })
   return out
+}
+
+/**
+ * App with installations: one row per installation; the default one (`report.installationId` when it exists, else the
+ * first served one) fills the top-level fields and the permission table; `missing` and `ok` cover every served one.
+ */
+function withInstallations(report: PermissionReport & { installations: InstallationReport[] }, policy: AccountPolicy): { top: PermissionReport; rows: InstallationStatus[]; note?: string } {
+  const sorted = [...report.installations].sort((a, b) => a.account.localeCompare(b.account))
+  const rows = sorted.map((i) => ({
+    id: i.id,
+    account: i.account,
+    type: i.accountType === 'Organization' ? ('org' as const) : ('user' as const),
+    repoCount: i.repoCount,
+    missing: evaluate({ source: report.source, granted: i.granted }).missing,
+    allowed: allows(policy, i),
+    url: installationUrl(i),
+  }))
+  const configured = report.installationId
+  const def = sorted.find((i) => i.id === configured) ?? sorted.find((_, n) => rows[n]!.allowed) ?? sorted[0]
+  const notes = [report.note]
+  if (!sorted.length) notes.push('The App is installed on no account yet. Install it, then press Re-check.')
+  else if (configured !== undefined && !sorted.some((i) => i.id === configured)) notes.push(`GITHUB_APP_INSTALLATION_ID ${configured} is not an installation of this App.`)
+  if (sorted.length && !rows.some((r) => r.allowed)) notes.push('No installation is served: tick an account under "Accounts served".')
+  const top: PermissionReport = def
+    ? { ...report, installationId: def.id, account: def.account, accountType: def.accountType, granted: def.granted, repoCount: def.repoCount }
+    : { ...report, installationId: undefined, account: undefined, accountType: undefined, granted: {} }
+  return { top, rows, note: notes.filter(Boolean).join(' ') || undefined }
 }
 
 /** A status for a source that could not be asked: every row unknown, nothing missing, the error kept for the operator. */
@@ -177,20 +225,29 @@ export function unknownStatus(source: GitHubAuthKind, error: string | undefined,
   }
 }
 
-export function buildStatus(report: PermissionReport, webhookUrl: string | undefined): GitHubStatus {
-  const { permissions, missing } = evaluate(report)
+export function buildStatus(report: PermissionReport, webhookUrl: string | undefined, policy: AccountPolicy = { kind: 'all' }): GitHubStatus {
+  const multi = report.installations ? withInstallations({ ...report, installations: report.installations }, policy) : undefined
+  const top = multi?.top ?? report
+  const own = evaluate(top)
+  const permissions = multi && top.installationId === undefined ? requiredFor(top.source).map((p) => ({ ...p, granted: 'unknown' as const, ok: null })) : own.permissions
+  const served = multi?.rows.filter((r) => r.allowed)
+  const gaps = new Set(served ? served.flatMap((r) => r.missing) : own.missing)
+  const missing = requiredFor(top.source)
+    .map((p) => `${p.key}:${p.level}`)
+    .filter((k) => gaps.has(k))
   return {
-    ok: report.source !== 'none' && missing.length === 0,
+    ok: report.source !== 'none' && missing.length === 0 && (!served || served.length > 0),
     source: report.source,
-    account: report.account,
-    installationId: report.installationId,
-    repoCount: report.repoCount,
+    account: top.account,
+    installationId: top.installationId,
+    repoCount: top.repoCount,
     appSlug: report.appSlug,
-    ...githubLinks(report),
+    ...githubLinks(top),
     webhookUrl,
-    note: report.note,
+    note: multi ? multi.note : report.note,
     permissions,
     missing,
+    ...(multi ? { installations: multi.rows } : {}),
     checkedAt: new Date().toISOString(),
   }
 }

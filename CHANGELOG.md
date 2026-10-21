@@ -6,6 +6,11 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Added
 
+- One GitHub App can serve several accounts: OctoHatchery lists the App's installations (`GET /app/installations`, cached five minutes, re-fetched when a repo's owner is unknown and on Re-check) and uses the installation of each repo's owner for every GitHub call. `GITHUB_APP_INSTALLATION_ID` is now optional and names the default installation.
+- Setting `github_accounts`: the accounts whose installations are served. Empty serves the default installation, or every installation without `GITHUB_APP_INSTALLATION_ID`. Webhooks from other accounts are dropped with a `webhook.ignored` audit event and never create a job; their repos cannot be adopted and are left out of the adopt dialog and the polling fallback.
+- Settings → GitHub: one card per installation (account, user or organisation, installation link, repository count, missing permissions with what breaks), **Accounts served** as checkboxes, and a link to install the App on another account. `GET /api/github/status` carries `installations` and `newInstallUrl`.
+- Repos → Adopt a repo lists the repositories of every served installation, grouped by owner.
+
 - Job logs: the node that runs a job follows its runner's output into the database while the job runs and swaps in GitHub's final log when it ends; capped per job by the new `log_max_kb` setting (default 2048) and purged with the job.
 - Job page `/jobs/:id` with a live, bounded log view (follow, copy, source and truncated badges); job names in the Jobs and Runners tables link to it.
 - `GET /api/jobs/:id`, `GET /api/jobs/:id/log?after=&limit=` and the SSE stream `GET /api/jobs/:id/log/stream`.
@@ -37,6 +42,7 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 - Loading states: the runs-on actions, the adopt rows and the spawn buttons show a spinner and are disabled while the request runs; the sibling runs-on button is disabled too and both come back on failure.
 - Overview: one Hosts card with hosts as columns; a one-line header per host (status dot, name, `leader` badge, `offline` / `Docker unreachable` only when true, specs and last heartbeat), a `N of M slots busy` line and one pill per slot per template (a bar beyond 12 slots). Navbar order is Overview, Repos, Jobs, Templates, Hosts, Events, Settings.
 - Overview: every live runner sits in its slot. Slot circles are right-aligned on each template row; a runner is a capsule ending in its filled circle (job and repo, `waiting for a job` or `starting`; links to the job; × kills it after a confirmation), so a busier row grows to the left. The separate Runners table is gone. The page fits the window: Recent jobs takes the remaining height and its table scrolls inside the card.
+- Overview: hosts split the Hosts card equally, up to three columns per row with rows filled evenly; a narrow column puts the specs under the host name.
 - Dashboard: runner types are called templates on the pages (`/templates`, `/runner-types` redirects there); the API and MCP names are unchanged.
 - Repos and Templates: the action columns are icon-only buttons with tooltips (runs-on, Add / Repair webhook, Unadopt; Edit, Delete).
 - Hosts: columns Host, Slots, CPUs, Memory (GB), OS, Docker, Docker version, App version, Last seen; the leader badge is small and spaced from the name.

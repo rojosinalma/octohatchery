@@ -5,6 +5,7 @@ import { db, recoverDb } from '../db'
 import { backend } from './backends'
 import { config } from './config'
 import { recordEvent } from './events'
+import { notServedReason } from './github/accounts'
 import { github } from './github/auth'
 import { reportImages } from './images'
 import { backfillSteps } from './joblog'
@@ -93,6 +94,12 @@ export async function heartbeat(): Promise<void> {
 export async function pollQueuedJobs(): Promise<number> {
   let added = 0
   for (const repo of await adoptedRepos()) {
+    // An adopted repo on an account that is no longer served is skipped, as its webhooks are.
+    const notServed = await notServedReason(github().installs, repo.fullName.split('/')[0]!)
+    if (notServed) {
+      logger.debug(`poll ${repo.fullName} skipped: ${notServed}`)
+      continue
+    }
     let jobs
     try {
       jobs = await github().listQueuedJobs(repo.fullName)
