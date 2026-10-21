@@ -16,6 +16,7 @@ Two layers. `.env` holds bootstrap values and secrets and is read once at start.
 | `HOST_NAME` | yes | The name this node registers as a host and puts on its runners as a label. Unique per node. |
 | `PORT` | no | HTTP port inside the container. Default `3000`. |
 | `DATABASE_URL` | yes | `sqlite:<path>` for SQLite (for example `sqlite:./data/octohatchery.db`) or `postgres://` URL for PostgreSQL. The scheme selects the driver. Use `sslmode=require` on PostgreSQL over a network. |
+| `DATABASE_SCHEMA` | no | PostgreSQL only: the schema that holds the tables and the migrations journal. Default `octohatchery`. A lowercase name (letters, digits, `_`, not starting with `pg_`). Created when missing. Several tools, or several OctoHatchery installs, can share one database with one schema each. SQLite ignores it. See the upgrade note below for installs from before this setting. |
 | `DOCKER_HOST` | no | Where the Docker daemon is. Default is the mounted socket `/var/run/docker.sock`. |
 | `PUBLIC_URL` | yes | The HTTPS URL GitHub reaches you at. Webhooks are registered as `<PUBLIC_URL>/webhooks/github`. |
 | `GITHUB_AUTH` | yes | `app` or `pat`. |
@@ -24,9 +25,10 @@ Two layers. `.env` holds bootstrap values and secrets and is read once at start.
 | `GITHUB_APP_INSTALLATION_ID` | no | The default installation. Without it the App's installations are discovered; see `github_accounts`. |
 | `GITHUB_TOKEN` | with `pat` | A personal access token with repository and runner administration scopes. |
 | `GITHUB_WEBHOOK_SECRET` | yes | Random string. OctoHatchery sets it on every webhook it registers and verifies every delivery against it. |
+| `OCTOFORGE_TOKEN` | no | Bearer token for the [Octoforge](octoforge.md) member API under `/api/octoforge`. Unset, those routes do not exist. Set, the node may start without any `GITHUB_*` value and wait for Octoforge to hand one over; a handed-over credential wins over the `GITHUB_*` values. |
 | any name a runner type lists under secret env | per type | Values for secrets a runner type passes into its containers. Read at spawn time; a missing one fails the spawn with a reason. |
 
-Every node in a cluster needs the same GitHub values and webhook secret, its own `HOST_NAME`, and the same `DATABASE_URL`. Secrets a runner type needs must be present on every host that has a slot for that type.
+Every node in a cluster needs the same GitHub values and webhook secret, its own `HOST_NAME`, and the same `DATABASE_URL` and `DATABASE_SCHEMA`. Secrets a runner type needs must be present on every host that has a slot for that type.
 
 ### `settings` table
 
@@ -95,6 +97,18 @@ The `PUBLIC_URL` is one address for the whole cluster. Any node can receive a we
    ```
 
 3. Check `/health` and the Overview page on each node.
+
+### Tables in `public` (installs from before `DATABASE_SCHEMA`)
+
+Older versions kept the tables in the `public` schema and the migrations journal in a schema called `drizzle`. When `DATABASE_SCHEMA` is not set, the database has a `hosts` table in `public`, and the schema `octohatchery` has none, OctoHatchery keeps using `public` as before and logs once at start:
+
+```
+tables found in schema public; set DATABASE_SCHEMA=public to silence this, or adopt a database to move
+```
+
+Nothing moves, and upgraded and older nodes still elect one leader between them. To make it explicit, set `DATABASE_SCHEMA=public` on every node. To move the data into its own schema, adopt a database (see [octoforge.md](octoforge.md#database)): it copies every row into the new schema, checks the counts and switches over on restart. An explicit `DATABASE_SCHEMA` always wins over the detection.
+
+`DATA_DIR/octoforge-database.json`, written by an adoption, overrides `DATABASE_URL` and `DATABASE_SCHEMA` at start. Delete it (or call `DELETE /api/octoforge/database`) and restart to go back.
 
 Running runners keep going through an upgrade: the new node process re-attaches to containers by their `octohatchery.runner` labels and reaps them when they exit. Migrations are additive, so in a cluster you can upgrade nodes one at a time. The runner image is pulled by tag at spawn time; change it on the runner type to roll it out.
 

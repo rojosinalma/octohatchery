@@ -115,6 +115,8 @@ export type GitHubStatus = {
   /** Source answers and no required permission is definitely missing. */
   ok: boolean
   source: GitHubAuthKind
+  /** Where the credential comes from: this node's env, a delivery from Octoforge, or nowhere. */
+  credentialSource?: 'env' | 'octoforge' | 'none'
   account?: string
   installationId?: number
   repoCount?: number

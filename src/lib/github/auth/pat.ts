@@ -1,6 +1,6 @@
 import { Octokit } from '@octokit/rest'
-import { config } from '../../config'
 import { log } from '../../log'
+import { githubCredential } from '../credential'
 import type { PermissionReport } from '../permissions'
 import { paginateUpTo, probeTokenPermissions, restClient } from '../rest'
 import { splitRepo, type GitHubAuthAdapter, type RepoInfo } from '../types'
@@ -12,7 +12,7 @@ const DEFAULT_REPO_CAP = 500
 export const patAuth: GitHubAuthAdapter = {
   kind: 'pat',
   create() {
-    const octokit = new Octokit({ auth: config().githubToken })
+    const octokit = new Octokit({ auth: githubCredential().token })
     const getOctokit = async () => octokit
     return restClient('pat', getOctokit, {
       async ensureWebhook(fullName, url, secret) {

@@ -1,0 +1,46 @@
+{
+  "contract": 1,
+  "name": "octohatchery",
+  "title": "OctoHatchery",
+  "description": "Orchestrator for self-hosted GitHub Actions runners.",
+  "icon": "/favicon.svg",
+  "health": "/health",
+  "github": {
+    "auth": ["app", "pat"],
+    "app": {
+      "permissions": {
+        "actions": "write",
+        "administration": "write",
+        "contents": "write",
+        "workflows": "write",
+        "pull_requests": "write",
+        "metadata": "read"
+      },
+      "events": ["workflow_job"],
+      "webhook_path": "/webhooks/github",
+      "setup_path": "/"
+    },
+    "pat": {
+      "classic_scopes": ["repo", "workflow"],
+      "fine_grained": {
+        "actions": "write",
+        "administration": "write",
+        "contents": "write",
+        "workflows": "write",
+        "pull_requests": "write",
+        "metadata": "read"
+      },
+      "user_identity": false
+    }
+  },
+  "database": { "engines": ["sqlite", "postgres"], "schema": true },
+  "env": {
+    "github_token": "GITHUB_TOKEN",
+    "app_id": "GITHUB_APP_ID",
+    "app_private_key": "GITHUB_APP_PRIVATE_KEY",
+    "app_installation_id": "GITHUB_APP_INSTALLATION_ID",
+    "app_webhook_secret": "GITHUB_WEBHOOK_SECRET",
+    "database_url": "DATABASE_URL",
+    "database_schema": "DATABASE_SCHEMA"
+  }
+}

@@ -8,6 +8,7 @@ import { config } from './config'
 import { recordEvent } from './events'
 import { accountPolicy, ACCOUNT_RE, allows, parseAccounts, refusal } from './github/accounts'
 import { github } from './github/auth'
+import { githubCredential } from './github/credential'
 import { buildStatus, RUNS_ON_PERMISSIONS, unknownStatus, type GitHubStatus } from './github/permissions'
 import { githubMessage } from './github/rest'
 import type { RepoInfo } from './github/types'
@@ -16,7 +17,7 @@ import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { rewriteRunsOn, runsOnSnippet } from './runs-on'
 import { FINALISE_GRACE_MS } from './joblog'
-import { SETTING_DEFAULTS, settings } from './settings'
+import { HIDDEN_PREFIX, SETTING_DEFAULTS, settings } from './settings'
 import { materialise, removeRunnerContainers } from './spawn'
 import * as store from './store'
 import { isLeader } from './sweep'
@@ -87,17 +88,18 @@ function webhookUrl(): string | undefined {
 /** Asks GitHub once; never throws: an unreachable GitHub becomes a status with `error` and every row unknown. */
 async function checkGitHub(): Promise<GitHubStatus> {
   const gh = github()
-  if (gh.kind === 'none') return unknownStatus('none', undefined, webhookUrl())
+  const credentialSource = githubCredential().source
+  if (gh.kind === 'none') return { ...unknownStatus('none', undefined, webhookUrl()), credentialSource }
   try {
     const probeRepo = (await store.adoptedRepos())[0]?.fullName
     const report = await gh.permissions(probeRepo)
     const policy = gh.installs ? await accountPolicy(gh.installs.defaultId) : undefined
     const status = buildStatus({ ...report, source: gh.kind }, webhookUrl(), policy)
     if (status.missing.length) logger.warn(`github permissions missing: ${status.missing.join(', ')}`)
-    return status
+    return { ...status, credentialSource }
   } catch (err) {
     logger.warn('github permission check failed', githubMessage(err))
-    return unknownStatus(gh.kind, githubMessage(err), webhookUrl())
+    return { ...unknownStatus(gh.kind, githubMessage(err), webhookUrl()), credentialSource }
   }
 }
 
@@ -302,7 +304,7 @@ export const service = {
     })
     let timer: ReturnType<typeof setTimeout> | undefined
     const timeout = new Promise<GitHubStatus>((resolve) => {
-      timer = setTimeout(() => resolve(statusCache?.value ?? unknownStatus(github().kind, 'GitHub did not answer in time', webhookUrl())), GITHUB_CHECK_TIMEOUT_MS)
+      timer = setTimeout(() => resolve(statusCache?.value ?? { ...unknownStatus(github().kind, 'GitHub did not answer in time', webhookUrl()), credentialSource: githubCredential().source }), GITHUB_CHECK_TIMEOUT_MS)
     })
     return Promise.race([statusInFlight, timeout]).finally(() => clearTimeout(timer))
   },
@@ -355,10 +357,11 @@ export const service = {
       return { repo, covered: 'app', created: false }
     }
     const cfg = config()
-    if (!cfg.publicUrl || !cfg.githubWebhookSecret) throw new ServiceError('PUBLIC_URL and GITHUB_WEBHOOK_SECRET must be set to create a webhook', 'invalid')
+    const secret = githubCredential().webhookSecret
+    if (!cfg.publicUrl || !secret) throw new ServiceError('PUBLIC_URL and GITHUB_WEBHOOK_SECRET must be set to create a webhook', 'invalid')
     let hook
     try {
-      hook = await gh.ensureWebhook(fullName, `${cfg.publicUrl}/webhooks/github`, cfg.githubWebhookSecret)
+      hook = await gh.ensureWebhook(fullName, `${cfg.publicUrl}/webhooks/github`, secret)
     } catch (err) {
       throw new ServiceError(`GitHub refused the webhook on ${fullName}: ${err instanceof Error ? err.message : String(err)}`, 'unavailable')
     }
@@ -378,9 +381,10 @@ export const service = {
       throw new ServiceError(`GitHub did not return ${fullName}: ${err instanceof Error ? err.message : String(err)}`, 'unavailable')
     }
     const cfg = config()
+    const secret = githubCredential().webhookSecret
     let webhookId: number | null = null
-    if (cfg.publicUrl && cfg.githubWebhookSecret) {
-      const hook = await github().ensureWebhook(info.fullName, `${cfg.publicUrl}/webhooks/github`, cfg.githubWebhookSecret)
+    if (cfg.publicUrl && secret) {
+      const hook = await github().ensureWebhook(info.fullName, `${cfg.publicUrl}/webhooks/github`, secret)
       webhookId = hook?.id ?? null
     } else if (github().kind === 'pat') {
       logger.warn(`PUBLIC_URL or GITHUB_WEBHOOK_SECRET missing: ${info.fullName} relies on polling only`)
@@ -599,6 +603,7 @@ export const service = {
   },
 
   async setSetting(key: string, value: string, actor: Actor): Promise<void> {
+    if (key.startsWith(HIDDEN_PREFIX)) throw new ServiceError(`"${key}" is managed by the Octoforge member API and cannot be set here`, 'invalid')
     if (!(key in SETTING_DEFAULTS)) throw new ServiceError(`unknown setting "${key}" (known: ${Object.keys(SETTING_DEFAULTS).join(', ')})`, 'not_found')
     if (key === 'log_level') {
       if (!LOG_LEVELS.includes(value)) throw new ServiceError(`log_level must be one of ${LOG_LEVELS.join(', ')}`)

@@ -109,6 +109,7 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 - [docs/dashboard.md](docs/dashboard.md): the six pages and what each control does.
 - [docs/mcp.md](docs/mcp.md): MCP tools and how to connect an agent.
 - [docs/operations.md](docs/operations.md): configuration, single and cluster mode, upgrades, backups, troubleshooting, teardown.
+- [docs/octoforge.md](docs/octoforge.md): running under Octoforge: the manifest, the member API, handing over GitHub credentials and the shared database.
 - [docs/SDD.md](docs/SDD.md): software design document and the design decisions log.
 
 ## Development

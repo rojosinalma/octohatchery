@@ -1,8 +1,10 @@
 import { config } from '../../config'
+import { githubCredential } from '../credential'
 import type { GitHubAuthAdapter, GitHubClient } from '../types'
 import { appAuth } from './app'
 import { noneAuth } from './none'
 import { patAuth } from './pat'
+import { unconfiguredGitHub } from './unconfigured'
 
 /** One entry per auth method; a new method = one file + one line here. */
 export const githubAuthAdapters: readonly GitHubAuthAdapter[] = [appAuth, patAuth, noneAuth]
@@ -15,13 +17,19 @@ export function githubAuthFor(kind: string): GitHubAuthAdapter {
 
 let current: GitHubClient | undefined
 
-/** The process-wide GitHub client, created from `GITHUB_AUTH` on first use. */
+/**
+ * The process-wide GitHub client, created on first use from the current credential (delivered by Octoforge, else
+ * `GITHUB_AUTH`). `refreshGitHubCredential` drops it when the credential changes.
+ */
 export function github(): GitHubClient {
-  current ??= githubAuthFor(config().githubAuth).create()
+  if (!current) {
+    const cred = githubCredential()
+    current = cred.mode === 'none' && config().githubAwaitingDelivery ? unconfiguredGitHub() : githubAuthFor(cred.mode).create()
+  }
   return current
 }
 
-/** Tests only: inject a client (or reset with undefined). */
+/** Drops the client (credential changed) or, in tests, injects one. */
 export function setGitHub(client: GitHubClient | undefined): void {
   current = client
 }

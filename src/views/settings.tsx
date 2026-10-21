@@ -449,7 +449,7 @@ export const GitHubSection = ({ github, accounts = '' }: { github: GitHubStatus;
       ) : null}
       <dl class="t-facts">
         <dt>Mode</dt>
-        <dd safe>{SOURCE_LABEL[github.source]}</dd>
+        <dd safe>{`${SOURCE_LABEL[github.source]}${github.credentialSource === 'octoforge' ? ' (delivered by Octoforge)' : ''}`}</dd>
         {github.appSlug ? (
           <>
             <dt>App</dt>

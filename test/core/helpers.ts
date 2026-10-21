@@ -5,6 +5,7 @@ import { createFakeBackend, type FakeBackend } from '../../src/lib/backends/fake
 import { loadConfig, setConfig, type Config } from '../../src/lib/config'
 import { createFakeGitHub, type FakeGitHub } from '../../src/lib/github/auth/none'
 import { setGitHub } from '../../src/lib/github/auth'
+import { resetGitHubCredential } from '../../src/lib/github/credential'
 import { resetImagePulls } from '../../src/lib/images'
 import { configureJobLog } from '../../src/lib/joblog'
 import { resetGitHubCaches } from '../../src/lib/service'
@@ -34,11 +35,12 @@ export async function fresh(env: Record<string, string> = {}): Promise<TestWorld
   configureJobLog({ retryDelaysMs: [], flushMs: 10 })
   const config = loadConfig({ ...TEST_ENV, ...env })
   setConfig(config)
+  resetGitHubCredential()
   const github = createFakeGitHub()
   setGitHub(github)
   const docker = createFakeBackend()
   setBackend(docker)
-  const db = await connectDb(config.databaseUrl)
+  const db = await connectDb(config.databaseUrl, { schema: config.databaseSchema })
   await upsertHost({ name: config.hostName, isLeader: true, dockerOk: true })
   await settings.set('log_level', Bun.env.TEST_LOG_LEVEL ?? 'error')
   return { db, github, docker, config }
