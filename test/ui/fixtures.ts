@@ -186,7 +186,7 @@ export const githubMulti: GitHubStatus = {
   newInstallUrl: 'https://github.com/apps/octohatchery-acme/installations/new',
   installations: [
     { id: 7654321, account: 'acme', type: 'user', repoCount: 3, missing: [], allowed: true, url: 'https://github.com/settings/installations/7654321' },
-    { id: 999, account: 'troopy-bot', type: 'org', repoCount: 1, missing: ['workflows:write'], allowed: false, url: 'https://github.com/organizations/troopy-bot/settings/installations/999' },
+    { id: 999, account: 'umbrella', type: 'org', repoCount: 1, missing: ['workflows:write'], allowed: false, url: 'https://github.com/organizations/umbrella/settings/installations/999' },
   ],
 }
 

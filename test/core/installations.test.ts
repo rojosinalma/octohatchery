@@ -12,7 +12,7 @@ import { webhooks } from '../../src/routes/webhooks'
 
 const ALL_GRANTED = { metadata: 'read', administration: 'write', actions: 'write', contents: 'write', workflows: 'write', pull_requests: 'write', checks: 'read' }
 const ROJO: Installation = { id: 11, account: 'rojo', accountType: 'User', permissions: { ...ALL_GRANTED } }
-const TROOPY: Installation = { id: 22, account: 'troopy-bot', accountType: 'Organization', permissions: { ...ALL_GRANTED, workflows: 'read' } }
+const UMBRELLA: Installation = { id: 22, account: 'umbrella', accountType: 'Organization', permissions: { ...ALL_GRANTED, workflows: 'read' } }
 
 function payload(repo: string, id: number, installation?: number) {
   return JSON.stringify({
@@ -35,15 +35,15 @@ async function deliver(body: string) {
   return { status: res.status, json: (await res.json()) as { ok: boolean; message: string } }
 }
 
-/** Fresh world whose fake GitHub is an App installed on `rojo` (default) and `troopy-bot`. */
+/** Fresh world whose fake GitHub is an App installed on `rojo` (default) and `umbrella`. */
 async function multi(opts: { defaultId?: number } = { defaultId: ROJO.id }) {
   const w = await fresh()
-  w.github.useInstallations([ROJO, TROOPY], opts)
+  w.github.useInstallations([ROJO, UMBRELLA], opts)
   w.github.kind = 'app'
   w.github.reposByInstallation.set(ROJO.id, [{ fullName: 'rojo/site', isPrivate: true, defaultBranch: 'main' }])
-  w.github.reposByInstallation.set(TROOPY.id, [
-    { fullName: 'troopy-bot/troopy', isPrivate: true, defaultBranch: 'dev' },
-    { fullName: 'troopy-bot/docs', isPrivate: false, defaultBranch: 'main' },
+  w.github.reposByInstallation.set(UMBRELLA.id, [
+    { fullName: 'umbrella/billing', isPrivate: true, defaultBranch: 'dev' },
+    { fullName: 'umbrella/docs', isPrivate: false, defaultBranch: 'main' },
   ])
   return w
 }
@@ -75,11 +75,11 @@ describe('installation index', () => {
     let fetches = 0
     const idx = installationIndex(async () => (fetches++, [...list]), { ttlMs: 60_000, missRefetchMs: 100, now: () => t })
     expect((await idx.forOwner('ROJO'))?.id).toBe(11)
-    list.push(TROOPY) // installed on a new account after the list was cached
-    expect(await idx.forOwner('troopy-bot')).toBeUndefined() // the list is younger than the miss window
+    list.push(UMBRELLA) // installed on a new account after the list was cached
+    expect(await idx.forOwner('umbrella')).toBeUndefined() // the list is younger than the miss window
     expect(fetches).toBe(1)
     t = 150
-    expect((await idx.forOwner('troopy-bot'))?.id).toBe(22)
+    expect((await idx.forOwner('umbrella'))?.id).toBe(22)
     expect(fetches).toBe(2)
     expect(await idx.forOwner('nobody')).toBeUndefined() // just fetched: no second call
     expect(fetches).toBe(2)
@@ -106,18 +106,18 @@ describe('installation index', () => {
 
   test('every repo call uses the installation of the repo owner', async () => {
     const w = await multi({})
-    await settings.set('github_accounts', 'rojo,troopy-bot')
-    await service.adoptRepo('troopy-bot/troopy', 'user')
+    await settings.set('github_accounts', 'rojo,umbrella')
+    await service.adoptRepo('umbrella/billing', 'user')
     await service.adoptRepo('rojo/site', 'user')
     await service.setSlots({ host: TEST_HOST, type: 'generic', count: 2 }, 'user')
-    expect((await deliver(payload('troopy-bot/troopy', 1, TROOPY.id))).json.message).toBe('job queued')
+    expect((await deliver(payload('umbrella/billing', 1, UMBRELLA.id))).json.message).toBe('job queued')
     expect((await deliver(payload('rojo/site', 2, ROJO.id))).json.message).toBe('job queued')
     await claim()
-    expect(w.github.installationCalls).toContain('createJitConfig troopy-bot/troopy → 22')
+    expect(w.github.installationCalls).toContain('createJitConfig umbrella/billing → 22')
     expect(w.github.installationCalls).toContain('createJitConfig rojo/site → 11')
-    expect(w.github.installationCalls).toContain('getRepo troopy-bot/troopy → 22')
-    await w.github.getJob('troopy-bot/troopy', 1)
-    expect(w.github.installationCalls).toContain('getJob troopy-bot/troopy → 22')
+    expect(w.github.installationCalls).toContain('getRepo umbrella/billing → 22')
+    await w.github.getJob('umbrella/billing', 1)
+    expect(w.github.installationCalls).toContain('getJob umbrella/billing → 22')
     await expect(w.github.getJob('stranger/x', 1)).rejects.toMatchObject({ status: 404, message: expect.stringContaining('not installed on stranger') })
   })
 })
@@ -125,57 +125,57 @@ describe('installation index', () => {
 describe('github_accounts allowlist', () => {
   test('policy: listed accounts, else the default installation, else every installation', async () => {
     await fresh()
-    expect(parseAccounts(' Rojo, troopy-bot,,rojo ')).toEqual(['rojo', 'troopy-bot'])
+    expect(parseAccounts(' Rojo, umbrella,,rojo ')).toEqual(['rojo', 'umbrella'])
     expect(await accountPolicy(undefined)).toEqual({ kind: 'all' })
     expect(await accountPolicy(11)).toEqual({ kind: 'default', installationId: 11 })
-    await settings.set('github_accounts', 'Troopy-Bot')
+    await settings.set('github_accounts', 'Umbrella')
     const listed = await accountPolicy(11)
-    expect(listed).toEqual({ kind: 'listed', accounts: ['troopy-bot'] })
-    expect(allows(listed, TROOPY)).toBe(true)
+    expect(listed).toEqual({ kind: 'listed', accounts: ['umbrella'] })
+    expect(allows(listed, UMBRELLA)).toBe(true)
     expect(allows(listed, ROJO)).toBe(false)
     expect(allows({ kind: 'default', installationId: 11 }, ROJO)).toBe(true)
-    expect(allows({ kind: 'default', installationId: 11 }, TROOPY)).toBe(false)
+    expect(allows({ kind: 'default', installationId: 11 }, UMBRELLA)).toBe(false)
   })
 
   test('a webhook from an installation that is not served is dropped: an event, never a job row', async () => {
     const w = await multi()
     // Adopted while it was served, then the account is unticked: still no job row.
-    await settings.set('github_accounts', 'rojo,troopy-bot')
-    await service.adoptRepo('troopy-bot/troopy', 'user')
+    await settings.set('github_accounts', 'rojo,umbrella')
+    await service.adoptRepo('umbrella/billing', 'user')
     await service.setSetting('github_accounts', 'rojo', 'user')
-    const r = await deliver(payload('troopy-bot/troopy', 7, TROOPY.id))
+    const r = await deliver(payload('umbrella/billing', 7, UMBRELLA.id))
     expect(r.status).toBe(200)
-    expect(r.json.message).toMatch(/^ignored: account troopy-bot is not in github_accounts/)
+    expect(r.json.message).toMatch(/^ignored: account umbrella is not in github_accounts/)
     expect(await service.listJobs()).toHaveLength(0)
     const ev = (await service.listEvents()).find((e) => e.action === 'webhook.ignored')
-    expect(ev).toMatchObject({ actor: 'github', target: 'troopy-bot/troopy' })
+    expect(ev).toMatchObject({ actor: 'github', target: 'umbrella/billing' })
     // Default policy (setting empty, GITHUB_APP_INSTALLATION_ID = rojo): decided by the delivery's installation id.
     await service.setSetting('github_accounts', '', 'user')
     const calls = w.github.installationFetches()
-    expect((await deliver(payload('troopy-bot/troopy', 8, TROOPY.id))).json.message).toMatch(/not the default installation/)
+    expect((await deliver(payload('umbrella/billing', 8, UMBRELLA.id))).json.message).toMatch(/not the default installation/)
     expect(w.github.installationFetches()).toBe(calls) // no GitHub call needed
     expect(await service.listJobs()).toHaveLength(0)
     // The poll fallback skips the repo as well.
-    w.github.queued.set('troopy-bot/troopy', [{ githubJobId: 9, runId: 1, name: 'b', labels: ['self-hosted'], htmlUrl: '', queuedAt: '2026-01-01T00:00:00Z' }])
+    w.github.queued.set('umbrella/billing', [{ githubJobId: 9, runId: 1, name: 'b', labels: ['self-hosted'], htmlUrl: '', queuedAt: '2026-01-01T00:00:00Z' }])
     expect(await pollQueuedJobs()).toBe(0)
     expect(w.github.calls.some((c) => c.method === 'listQueuedJobs')).toBe(false)
   })
 
   test('adopt refuses an account that is not served or where the App is not installed', async () => {
     await multi()
-    await expect(service.adoptRepo('troopy-bot/troopy', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('troopy-bot/troopy is not served: account troopy-bot is not the default installation') })
+    await expect(service.adoptRepo('umbrella/billing', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('umbrella/billing is not served: account umbrella is not the default installation') })
     await expect(service.adoptRepo('stranger/x', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('not installed on stranger') })
     expect((await service.adoptRepo('rojo/site', 'user')).fullName).toBe('rojo/site')
-    await service.setSetting('github_accounts', 'rojo,troopy-bot', 'user')
-    expect((await service.adoptRepo('troopy-bot/troopy', 'user')).adopted).toBe(true)
+    await service.setSetting('github_accounts', 'rojo,umbrella', 'user')
+    expect((await service.adoptRepo('umbrella/billing', 'user')).adopted).toBe(true)
     expect(await notServedReason(undefined, 'anyone')).toBeNull() // sources without installations serve their one account
   })
 
   test('setting validation: logins only, normalised', async () => {
     await fresh()
     await expect(service.setSetting('github_accounts', 'rojo,not a login', 'user')).rejects.toMatchObject({ message: expect.stringContaining('"not a login" is not a GitHub login') })
-    await service.setSetting('github_accounts', ' Rojo ,troopy-bot,rojo', 'user')
-    expect(await settings.fetch('github_accounts', '')).toBe('rojo,troopy-bot')
+    await service.setSetting('github_accounts', ' Rojo ,umbrella,rojo', 'user')
+    expect(await settings.fetch('github_accounts', '')).toBe('rojo,umbrella')
   })
 })
 
@@ -188,19 +188,19 @@ describe('status and repository list across installations', () => {
     expect(s.installUrl).toBe('https://github.com/settings/installations/11')
     expect(s.installations).toEqual([
       { id: 11, account: 'rojo', type: 'user', repoCount: 1, missing: [], allowed: true, url: 'https://github.com/settings/installations/11' },
-      { id: 22, account: 'troopy-bot', type: 'org', repoCount: 2, missing: ['workflows:write'], allowed: false, url: 'https://github.com/organizations/troopy-bot/settings/installations/22' },
+      { id: 22, account: 'umbrella', type: 'org', repoCount: 2, missing: ['workflows:write'], allowed: false, url: 'https://github.com/organizations/umbrella/settings/installations/22' },
     ])
-    expect(s.missing).toEqual([]) // troopy-bot is not served, so its gap does not count
+    expect(s.missing).toEqual([]) // umbrella is not served, so its gap does not count
     expect(s.ok).toBe(true)
-    await service.setSetting('github_accounts', 'rojo,troopy-bot', 'user')
+    await service.setSetting('github_accounts', 'rojo,umbrella', 'user')
     const s2 = await service.githubStatus() // the setting dropped the cached status
     expect(s2.installations!.map((i) => i.allowed)).toEqual([true, true])
     expect(s2.missing).toEqual(['workflows:write'])
     expect(s2.ok).toBe(false)
     // apply_runs_on checks the installation of the repo's owner
-    await service.adoptRepo('troopy-bot/troopy', 'user')
-    await expect(service.applyRunsOn({ fullName: 'troopy-bot/troopy', mode: 'commit', type: 'generic' }, 'user')).rejects.toMatchObject({
-      message: expect.stringContaining('GitHub access on troopy-bot lacks workflows:write'),
+    await service.adoptRepo('umbrella/billing', 'user')
+    await expect(service.applyRunsOn({ fullName: 'umbrella/billing', mode: 'commit', type: 'generic' }, 'user')).rejects.toMatchObject({
+      message: expect.stringContaining('GitHub access on umbrella lacks workflows:write'),
     })
   })
 
@@ -215,8 +215,8 @@ describe('status and repository list across installations', () => {
   test('repository list covers every served installation; recheck re-fetches the installations', async () => {
     const w = await multi()
     expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site'])
-    await service.setSetting('github_accounts', 'rojo,troopy-bot', 'user')
-    expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site', 'troopy-bot/docs', 'troopy-bot/troopy'])
+    await service.setSetting('github_accounts', 'rojo,umbrella', 'user')
+    expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site', 'umbrella/billing', 'umbrella/docs'])
     const before = w.github.installationFetches()
     await service.recheckGitHub('user')
     expect(w.github.installationFetches()).toBe(before + 1)

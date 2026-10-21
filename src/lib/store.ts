@@ -163,6 +163,21 @@ export async function jobsWithoutSteps(limit: number, d: Db = db()): Promise<Job
   return rows.map(toJob)
 }
 
+/**
+ * Jobs whose row may disagree with GitHub, newest first: open (`claimed`/`in_progress`) with no live runner of ours,
+ * or completed with a conclusion that may be a guess (`unknown`; `failure`, which older reapers wrote for any non-zero
+ * runner exit). Only rows that ended, started or were queued at or after `since`.
+ */
+export async function jobsToReconcile(since: string, limit: number, d: Db = db()): Promise<JobRow[]> {
+  const rows = await d.all(sql`
+    select j.* from jobs j left join runners r on r.id = j.runner_id
+    where ((j.status in ('claimed', 'in_progress') and (r.id is null or r.state not in (${inList(ACTIVE_RUNNER_STATES)})))
+        or (j.status = 'completed' and j.conclusion in ('unknown', 'failure')))
+      and coalesce(j.completed_at, j.started_at, j.queued_at) >= ${since}
+    order by j.id desc limit ${limit}`)
+  return rows.map(toJob)
+}
+
 // job logs
 
 /** Lines after `after` (exclusive) in order, at most `limit`. */

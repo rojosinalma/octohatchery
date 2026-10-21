@@ -203,6 +203,7 @@ export function fakeJobDetails(): JobDetails {
     conclusion: 'success',
     startedAt: '2026-01-01T00:00:00Z',
     completedAt: '2026-01-01T00:02:00Z',
+    runnerName: null,
     steps: [
       { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:00Z' },
       { number: 2, name: 'Run tests', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:01:00Z', completedAt: '2026-01-01T00:02:00Z' },

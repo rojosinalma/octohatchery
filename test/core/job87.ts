@@ -14,6 +14,7 @@ export const job87Details = (): JobDetails => ({
   conclusion: 'failure',
   startedAt: '2026-10-21T11:28:40Z',
   completedAt: '2026-10-21T11:29:54Z',
+  runnerName: null,
   steps: [
     step(1, 'Set up job', '2026-10-21T11:28:42Z', '2026-10-21T11:28:43Z'),
     step(2, 'Run actions/checkout@v7', '2026-10-21T11:28:43Z', '2026-10-21T11:28:45Z'),

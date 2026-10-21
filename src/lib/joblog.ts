@@ -4,6 +4,7 @@ import { bus } from './bus'
 import { config } from './config'
 import { github } from './github/auth'
 import { log } from './log'
+import { reconcileJob } from './reconcile'
 import { settings } from './settings'
 import { appendLogLines, deleteLogLines, jobById, jobsWithoutSteps, logCursor, runnerById, updateJob, type JobRow, type RunnerRow } from './store'
 
@@ -150,7 +151,7 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
   }
   const final = await target()
   logger.info(`${runnerName} output ended for job ${final?.id ?? jobId} (${seq} lines, ${Math.round(bytes / KB)} KB${truncated ? ', truncated' : ''})`)
-  if (final) await finalise(final)
+  if (final) await finalise(final, runnerId)
 }
 
 /**
@@ -208,11 +209,31 @@ export async function backfillSteps(max = 5): Promise<number> {
 }
 
 /**
- * Replaces the live lines with GitHub's flat job log (the view splits it into steps by time and step openers) and
- * stores the job's annotations. After the retry budget the live lines stay and the source is marked `runner`.
+ * Reconciles the job with GitHub's job API (status, conclusion, steps, binding: `reconcileJob`), then replaces the
+ * live lines with GitHub's flat job log (the view splits it into steps by time and step openers) and stores the job's
+ * annotations. After the retry budget the live lines stay and the source is marked `runner`. With `runnerId` (the
+ * runner whose output ended): when GitHub says another runner ran the job, its log is left to that runner and the job
+ * this runner holds after the rebind is finalised instead (one hop).
  */
-export async function finalise(job: JobRow): Promise<void> {
-  await storeSteps(job)
+export async function finalise(job: JobRow, runnerId?: number, hop = false): Promise<void> {
+  const r = await reconcileJob(job)
+  if (r && runnerId !== undefined && r.job.runnerId !== runnerId) {
+    const held = (await runnerById(runnerId))?.jobId ?? null
+    logger.info(`job ${job.id} (${job.repo}#${job.githubJobId}) did not run on runner ${runnerId} (GitHub: ${r.github.runnerName ?? 'no runner'}, ${r.github.status}); its log is not finalised from here`)
+    if (hop || held === null || held === job.id) return
+    const next = await jobById(held)
+    if (next && next.logSource === null) await finalise(next, runnerId, true)
+    return
+  }
+  if (r && runnerId !== undefined && r.github.status !== 'completed') {
+    // Open on GitHub and not on this runner (waiting for one, or on a runner that is not ours): there is no final log
+    // to fetch, and marking the source would stop the follower of the runner that takes it later.
+    const self = await runnerById(runnerId)
+    if (!self || r.github.runnerName !== self.name) {
+      logger.info(`job ${job.id} (${job.repo}#${job.githubJobId}) is ${r.github.status} on GitHub (runner ${r.github.runnerName ?? 'none'}); its log is not finalised from here`)
+      return
+    }
+  }
   let annotated = false
   for (let attempt = 0; ; attempt++) {
     try {
