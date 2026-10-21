@@ -8,8 +8,11 @@ export type JitConfig = { runnerId: number; encodedJitConfig: string }
 export type RepoInfo = { fullName: string; isPrivate: boolean; defaultBranch: string }
 export type FileContents = { content: string; sha: string }
 export type WebhookResult = { id: number; created: boolean }
-/** `GET /repos/{o}/{r}/actions/jobs/{id}`: the fields the orchestrator stores. */
-export type JobDetails = { status: string; conclusion: string | null; startedAt: string | null; completedAt: string | null; steps: JobStep[] }
+/**
+ * `GET /repos/{o}/{r}/actions/jobs/{id}`: the fields the orchestrator stores. `runnerName` is the runner GitHub gave
+ * the job (null while it waits for one).
+ */
+export type JobDetails = { status: string; conclusion: string | null; startedAt: string | null; completedAt: string | null; runnerName: string | null; steps: JobStep[] }
 
 /** Everything the app asks of GitHub, behind one interface so `app` and `pat` (and `none` in tests) are interchangeable. */
 export type GitHubClient = {
@@ -51,7 +54,7 @@ export type GitHubClient = {
   listWorkflowFiles(repo: string, ref?: string): Promise<string[]>
   /** Plain-text log of a finished job (follows GitHub's redirect). Throws with `status: 404` while the log is not ready. */
   getJobLog(repo: string, githubJobId: number): Promise<string>
-  /** Status, conclusion and steps (with GitHub's timestamps) of one job. */
+  /** Status, conclusion, runner name and steps (with GitHub's timestamps) of one job. */
   getJob(repo: string, githubJobId: number): Promise<JobDetails>
   /** Check-run annotations of a job (its check run id is the job id), at most `max`; schema-checked. */
   listJobAnnotations(repo: string, githubJobId: number, max?: number): Promise<JobAnnotation[]>

@@ -13,6 +13,11 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 - Job page: lines without a step from GitHub are placed by time without going back to an earlier step, and inside the second a step started they stay with the step before until that step's first line (`##[group]Run …`, `Post job cleanup.`, `Cleaning up orphan processes`). Output a step printed in the same second the next steps started (a linter's findings and its `##[error]`, for example) now sits under that step instead of under "Complete job". The gutter shows the line number instead of the time since the job started; **Copy** copies the text without numbers and times.
 
+### Fixed
+
+- Jobs whose webhooks came late or not at all (a new GitHub App installation can start delivering minutes after its first run) no longer end up with a made-up result. When a runner exits and no `completed` webhook has arrived, the reaper asks GitHub's job API: the job gets GitHub's status, conclusion, times and steps, and it moves to the runner GitHub says ran it. A job that still runs on another runner stays open instead of being closed. The finaliser takes the result from the same call. Before, any non-zero runner exit was recorded as `failure` and a clean exit as `unknown`, even when GitHub reported `success`.
+- If GitHub cannot be asked, the job is closed as `unknown`, never `failure`. The leader's sweep asks again later: jobs from the last 24 hours that are open without a runner, or closed as `unknown` or `failure`, at most 10 per pass. This also repairs rows written by earlier versions. Every change is recorded as a `job.reconciled` event.
+
 ## [0.2.1] - 2026-10-21
 
 ### Added

@@ -13,7 +13,8 @@ import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { settings } from './settings'
 import { removeRunnerContainers } from './spawn'
-import { activeRunners, adoptedRepos, insertJobIfNew, updateRunner, upsertHost } from './store'
+import { reconcileJob } from './reconcile'
+import { activeRunners, adoptedRepos, insertJobIfNew, jobsToReconcile, updateRunner, upsertHost } from './store'
 import type { HostSpecs } from './types'
 
 const logger = log('sweep')
@@ -150,6 +151,41 @@ export async function removeStaleRunners(nowMs = Date.now()): Promise<number> {
   return removed
 }
 
+/** How far back the reconcile pass looks; older rows are history, a restart must not ask GitHub about a month of jobs. */
+const RECONCILE_WINDOW_MS = 24 * 3_600_000
+/** Job id → when this process last asked GitHub about it and whether GitHub reported it completed (then never again). */
+const reconciled = new Map<number, { at: number; final: boolean }>()
+
+/** Tests only: forget which jobs this process already reconciled. */
+export function resetReconciled(): void {
+  reconciled.clear()
+}
+
+/**
+ * Leader pass: rows a missing webhook may have left wrong (`jobsToReconcile`: open with no live runner, or completed
+ * with a guessed conclusion, within the last 24 h) are reconciled with GitHub's job API, at most `max` calls per pass.
+ * A job GitHub reports completed is asked about once per process; an open one again after `poll_interval_s`.
+ * Returns how many rows changed.
+ */
+export async function reconcileJobs(max = 10, nowMs = Date.now()): Promise<number> {
+  const windowStart = nowMs - RECONCILE_WINDOW_MS
+  for (const [id, seen] of reconciled) if (seen.at < windowStart) reconciled.delete(id)
+  const recheckMs = (await settings.fetchInt('poll_interval_s', 300)) * 1000
+  let calls = 0
+  let changed = 0
+  for (const job of await jobsToReconcile(new Date(windowStart).toISOString(), max + reconciled.size)) {
+    if (calls >= max) break
+    const seen = reconciled.get(job.id)
+    if (seen && (seen.final || nowMs - seen.at < recheckMs)) continue
+    calls++
+    const r = await reconcileJob(job)
+    reconciled.set(job.id, { at: nowMs, final: r?.github.status === 'completed' })
+    if (r?.changed) changed++
+  }
+  if (changed) logger.info(`reconciled ${changed} job(s) with GitHub`)
+  return changed
+}
+
 /** Finished jobs, runners, events and image pulls older than `retention_days` are deleted. */
 export async function purgeRetention(nowMs = Date.now()): Promise<{ jobs: number; runners: number; events: number; pulls: number }> {
   const days = await settings.fetchInt('retention_days', 30)
@@ -174,6 +210,7 @@ export async function sweepOnce(): Promise<void> {
     if (!(await electLeader())) return
     await removeStaleRunners()
     await purgeRetention()
+    await reconcileJobs()
     const pollEvery = (await settings.fetchInt('poll_interval_s', 300)) * 1000
     if (Date.now() - lastPollAt >= pollEvery) {
       lastPollAt = Date.now()

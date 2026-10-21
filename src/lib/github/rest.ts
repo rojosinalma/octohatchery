@@ -232,6 +232,7 @@ export function restClient(
         conclusion: j.conclusion ?? null,
         startedAt: j.started_at ?? null,
         completedAt: j.completed_at ?? null,
+        runnerName: j.runner_name ?? null,
         steps: (j.steps ?? [])
           .map((s) => ({ number: s.number, name: s.name, status: s.status, conclusion: s.conclusion ?? null, startedAt: s.started_at ?? null, completedAt: s.completed_at ?? null }))
           .sort((a, b) => a.number - b.number),

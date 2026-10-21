@@ -7,7 +7,8 @@ import { githubCredential } from './github/credential'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
-import { insertJobIfNew, jobByGitHubId, rebindJob, repoByName, runnerById, updateJob, updateRunner, type JobRow } from './store'
+import { followGitHub } from './reconcile'
+import { insertJobIfNew, jobByGitHubId, repoByName, runnerById, updateJob, updateRunner } from './store'
 import type { JobStep } from './types'
 
 const logger = log('http')
@@ -90,20 +91,6 @@ export async function handleWebhook(event: string | undefined, rawBody: string):
   const outcome = await applyWorkflowJob(parsed.data)
   metrics.webhooks.inc({ outcome: outcome.status < 300 ? 'ok' : 'rejected' })
   return outcome
-}
-
-/**
- * Moves the job to the runner GitHub says runs it (see `rebindJob`); one audit event per move. A runner name that
- * is not ours (or no name) leaves the binding as it is.
- */
-async function followGitHub(job: JobRow, runnerName: string | null | undefined): Promise<JobRow> {
-  if (!runnerName) return job
-  const moved = await rebindJob(job.id, runnerName)
-  if (!moved) return job
-  const target = `${job.repo}#${job.githubJobId}`
-  logger.info(`${target} "${job.name}" runs on ${runnerName}, not on runner ${job.runnerId ?? 'none'}: binding moved${moved.displacedJobId !== null ? ` (job ${moved.displacedJobId} → runner ${moved.previousRunnerId ?? 'none'})` : ''}`)
-  await recordEvent('webhook', 'job.rebound', target, { runner: runnerName, from: job.runnerId, displacedJob: moved.displacedJobId })
-  return moved.job
 }
 
 export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOutcome> {

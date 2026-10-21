@@ -13,7 +13,8 @@ import { metrics } from './metrics'
 import { refreshGitHubCredential } from './octoforge/github'
 import { settings } from './settings'
 import { materialise, removeRunnerContainers } from './spawn'
-import { activeRunners, insertRunner, listHosts, listRunnerTypes, slotsView, updateJob, updateRunner, type JobRow, type RunnerRow } from './store'
+import { reconcileJob } from './reconcile'
+import { activeRunners, insertRunner, jobById, listHosts, listRunnerTypes, runnerById, slotsView, updateJob, updateRunner, type JobRow, type RunnerRow } from './store'
 import type { RunnerType } from './types'
 
 const logger = log('scheduler')
@@ -45,21 +46,42 @@ export async function reap(host = config().hostName): Promise<number> {
       continue
     }
     const exitedAt = new Date().toISOString()
+    // Settled while the runner still counts as live, so a rebind can hand it the job it really ran.
+    if (runner.jobId !== null) await settleJob(runner, exitedAt)
     await updateRunner(runner.id, { state: 'exited', exitedAt })
-    if (runner.jobId !== null) {
-      const [row] = await db().all(sql`select * from jobs where id = ${runner.jobId}`)
-      const job = row ? toJob(row) : undefined
-      if (job && job.status !== 'completed') {
-        // Container is gone but GitHub has not told us yet (or the webhook was lost): close the job.
-        await updateJob(job.id, { status: 'completed', conclusion: info?.exitCode === 0 ? 'unknown' : 'failure', completedAt: exitedAt })
-      }
-    }
     await removeRunnerContainers(runner)
     metrics.runnerExits.inc()
     await recordEvent('scheduler', 'runner.exit', runner.name, { exitCode: info?.exitCode ?? null, status: info?.status ?? 'missing' })
     reaped++
   }
   return reaped
+}
+
+/**
+ * The runner's container is gone and its job is not closed: no `completed` webhook came (late, lost, or never sent).
+ * GitHub's job API decides (`reconcileJob`, releasing the job from this runner unless GitHub reports it completed).
+ * When GitHub moved the job to another runner, the job this runner holds after the rebind is settled next (at most
+ * two jobs per runner; the leader's sweep reconciles anything left open). Only when GitHub cannot be asked is the job
+ * closed as `unknown`: the runner's exit code says nothing about the job, an ephemeral runner exits 0 after any job
+ * and non-zero only for its own errors (actions/runner `ReturnCode`: 1 terminated, 2 retryable, 3 and 4 updating,
+ * 5 session conflict).
+ */
+async function settleJob(runner: RunnerRow, exitedAt: string): Promise<void> {
+  const seen = new Set<number>()
+  while (seen.size < 2) {
+    const jobId = (await runnerById(runner.id))?.jobId ?? null
+    if (jobId === null || seen.has(jobId)) return
+    seen.add(jobId)
+    const job = await jobById(jobId)
+    if (!job || job.status === 'completed' || job.status === 'ignored') return
+    const r = await reconcileJob(job, { release: runner.id })
+    if (!r) {
+      logger.warn(`${runner.name} exited, GitHub not asked about job ${job.id} (${job.repo}#${job.githubJobId}): closed as unknown, the sweep asks again`)
+      await updateJob(job.id, { status: 'completed', conclusion: 'unknown', completedAt: exitedAt })
+      return
+    }
+    if (r.job.runnerId === runner.id) return
+  }
 }
 
 /** (b) Claim: for each (type, this host) with a free slot take the oldest matching queued job, inside one transaction. */

@@ -160,6 +160,8 @@ Common failures:
 
 **Runners stuck in `spawning` or `idle`** The container started but the runner did not pick up the job, usually because the JIT configuration expired or GitHub gave the job to another runner. The sweep removes them after `stale_runner_minutes`. If it happens often, look at `[github]` log lines for the JIT call and at the container's own log with `docker logs <container>`.
 
+**A finished job shows conclusion `unknown`** Its runner exited, no `completed` webhook had arrived, and GitHub's job API did not answer either (rate limit, outage, missing permission). OctoHatchery never guesses `failure` from the runner's exit code: an ephemeral runner exits 0 after any job and non-zero only for its own errors. The leader asks GitHub again on its next sweep (newest first, at most 10 jobs per pass, rows from the last 24 hours) and records a `job.reconciled` event on the Events page when the row changes. The same pass fixes jobs left `claimed` or `in_progress` after their runner was gone, which happens when an installation's webhooks arrive late: GitHub names the runner that ran each job, and the row follows it.
+
 **Runner exits immediately** Run `docker logs` on the container before the reaper removes it, or spawn one by hand from the Runner types page and watch it. Typical causes: a secret env name the host does not have (the spawn fails with the name in the reason), an image that cannot be pulled, or a mount path that does not exist on the host.
 
 **Container builds inside jobs fail to reach BuildKit** The runner must be on the same compose network as the `buildkitd` sidecar and `buildkit_host` must match the sidecar's name and port. `docker compose ps` shows whether the sidecar is up.

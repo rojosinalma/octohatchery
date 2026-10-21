@@ -42,7 +42,7 @@ async function multi(opts: { defaultId?: number } = { defaultId: ROJO.id }) {
   w.github.kind = 'app'
   w.github.reposByInstallation.set(ROJO.id, [{ fullName: 'rojo/site', isPrivate: true, defaultBranch: 'main' }])
   w.github.reposByInstallation.set(UMBRELLA.id, [
-    { fullName: 'umbrella/web', isPrivate: true, defaultBranch: 'dev' },
+    { fullName: 'umbrella/billing', isPrivate: true, defaultBranch: 'dev' },
     { fullName: 'umbrella/docs', isPrivate: false, defaultBranch: 'main' },
   ])
   return w
@@ -107,17 +107,17 @@ describe('installation index', () => {
   test('every repo call uses the installation of the repo owner', async () => {
     const w = await multi({})
     await settings.set('github_accounts', 'rojo,umbrella')
-    await service.adoptRepo('umbrella/web', 'user')
+    await service.adoptRepo('umbrella/billing', 'user')
     await service.adoptRepo('rojo/site', 'user')
     await service.setSlots({ host: TEST_HOST, type: 'generic', count: 2 }, 'user')
-    expect((await deliver(payload('umbrella/web', 1, UMBRELLA.id))).json.message).toBe('job queued')
+    expect((await deliver(payload('umbrella/billing', 1, UMBRELLA.id))).json.message).toBe('job queued')
     expect((await deliver(payload('rojo/site', 2, ROJO.id))).json.message).toBe('job queued')
     await claim()
-    expect(w.github.installationCalls).toContain('createJitConfig umbrella/web → 22')
+    expect(w.github.installationCalls).toContain('createJitConfig umbrella/billing → 22')
     expect(w.github.installationCalls).toContain('createJitConfig rojo/site → 11')
-    expect(w.github.installationCalls).toContain('getRepo umbrella/web → 22')
-    await w.github.getJob('umbrella/web', 1)
-    expect(w.github.installationCalls).toContain('getJob umbrella/web → 22')
+    expect(w.github.installationCalls).toContain('getRepo umbrella/billing → 22')
+    await w.github.getJob('umbrella/billing', 1)
+    expect(w.github.installationCalls).toContain('getJob umbrella/billing → 22')
     await expect(w.github.getJob('stranger/x', 1)).rejects.toMatchObject({ status: 404, message: expect.stringContaining('not installed on stranger') })
   })
 })
@@ -141,33 +141,33 @@ describe('github_accounts allowlist', () => {
     const w = await multi()
     // Adopted while it was served, then the account is unticked: still no job row.
     await settings.set('github_accounts', 'rojo,umbrella')
-    await service.adoptRepo('umbrella/web', 'user')
+    await service.adoptRepo('umbrella/billing', 'user')
     await service.setSetting('github_accounts', 'rojo', 'user')
-    const r = await deliver(payload('umbrella/web', 7, UMBRELLA.id))
+    const r = await deliver(payload('umbrella/billing', 7, UMBRELLA.id))
     expect(r.status).toBe(200)
     expect(r.json.message).toMatch(/^ignored: account umbrella is not in github_accounts/)
     expect(await service.listJobs()).toHaveLength(0)
     const ev = (await service.listEvents()).find((e) => e.action === 'webhook.ignored')
-    expect(ev).toMatchObject({ actor: 'github', target: 'umbrella/web' })
+    expect(ev).toMatchObject({ actor: 'github', target: 'umbrella/billing' })
     // Default policy (setting empty, GITHUB_APP_INSTALLATION_ID = rojo): decided by the delivery's installation id.
     await service.setSetting('github_accounts', '', 'user')
     const calls = w.github.installationFetches()
-    expect((await deliver(payload('umbrella/web', 8, UMBRELLA.id))).json.message).toMatch(/not the default installation/)
+    expect((await deliver(payload('umbrella/billing', 8, UMBRELLA.id))).json.message).toMatch(/not the default installation/)
     expect(w.github.installationFetches()).toBe(calls) // no GitHub call needed
     expect(await service.listJobs()).toHaveLength(0)
     // The poll fallback skips the repo as well.
-    w.github.queued.set('umbrella/web', [{ githubJobId: 9, runId: 1, name: 'b', labels: ['self-hosted'], htmlUrl: '', queuedAt: '2026-01-01T00:00:00Z' }])
+    w.github.queued.set('umbrella/billing', [{ githubJobId: 9, runId: 1, name: 'b', labels: ['self-hosted'], htmlUrl: '', queuedAt: '2026-01-01T00:00:00Z' }])
     expect(await pollQueuedJobs()).toBe(0)
     expect(w.github.calls.some((c) => c.method === 'listQueuedJobs')).toBe(false)
   })
 
   test('adopt refuses an account that is not served or where the App is not installed', async () => {
     await multi()
-    await expect(service.adoptRepo('umbrella/web', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('umbrella/web is not served: account umbrella is not the default installation') })
+    await expect(service.adoptRepo('umbrella/billing', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('umbrella/billing is not served: account umbrella is not the default installation') })
     await expect(service.adoptRepo('stranger/x', 'user')).rejects.toMatchObject({ code: 'invalid', message: expect.stringContaining('not installed on stranger') })
     expect((await service.adoptRepo('rojo/site', 'user')).fullName).toBe('rojo/site')
     await service.setSetting('github_accounts', 'rojo,umbrella', 'user')
-    expect((await service.adoptRepo('umbrella/web', 'user')).adopted).toBe(true)
+    expect((await service.adoptRepo('umbrella/billing', 'user')).adopted).toBe(true)
     expect(await notServedReason(undefined, 'anyone')).toBeNull() // sources without installations serve their one account
   })
 
@@ -198,8 +198,8 @@ describe('status and repository list across installations', () => {
     expect(s2.missing).toEqual(['workflows:write'])
     expect(s2.ok).toBe(false)
     // apply_runs_on checks the installation of the repo's owner
-    await service.adoptRepo('umbrella/web', 'user')
-    await expect(service.applyRunsOn({ fullName: 'umbrella/web', mode: 'commit', type: 'generic' }, 'user')).rejects.toMatchObject({
+    await service.adoptRepo('umbrella/billing', 'user')
+    await expect(service.applyRunsOn({ fullName: 'umbrella/billing', mode: 'commit', type: 'generic' }, 'user')).rejects.toMatchObject({
       message: expect.stringContaining('GitHub access on umbrella lacks workflows:write'),
     })
   })
@@ -216,7 +216,7 @@ describe('status and repository list across installations', () => {
     const w = await multi()
     expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site'])
     await service.setSetting('github_accounts', 'rojo,umbrella', 'user')
-    expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site', 'umbrella/docs', 'umbrella/web'])
+    expect((await service.listGitHubRepos()).map((r) => r.fullName)).toEqual(['rojo/site', 'umbrella/billing', 'umbrella/docs'])
     const before = w.github.installationFetches()
     await service.recheckGitHub('user')
     expect(w.github.installationFetches()).toBe(before + 1)

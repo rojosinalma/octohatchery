@@ -11,6 +11,7 @@ import { configureJobLog } from '../../src/lib/joblog'
 import { resetGitHubCaches } from '../../src/lib/service'
 import { settings } from '../../src/lib/settings'
 import { upsertHost } from '../../src/lib/store'
+import { resetReconciled } from '../../src/lib/sweep'
 
 export const TEST_HOST = 'node-a'
 
@@ -32,6 +33,7 @@ export async function fresh(env: Record<string, string> = {}): Promise<TestWorld
   settings.reset()
   resetGitHubCaches()
   resetImagePulls()
+  resetReconciled()
   configureJobLog({ retryDelaysMs: [], flushMs: 10 })
   const config = loadConfig({ ...TEST_ENV, ...env })
   setConfig(config)
