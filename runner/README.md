@@ -11,6 +11,7 @@ with the tools most workflows expect on top.
 - `build-essential` and `pkg-config`, so native gems and npm/pip packages with C extensions install
   (Ruby's `nio4r`, `puma`, `bigdecimal`, for example).
 - Passwordless `sudo` for `runner`, as on GitHub-hosted runners, so `sudo apt-get install` steps work.
+- `LANG=C.UTF-8` and `LC_ALL=C.UTF-8`, as on GitHub-hosted runners, so tools read source files as UTF-8.
 - Docker CLI and the buildx plugin. No Docker daemon: builds go to a remote buildkitd over `BUILDKIT_HOST`.
 - `RUNNER_TOOL_CACHE=/opt/hostedtoolcache`, owned by `runner`. The orchestrator mounts a per-host volume
   there so `actions/setup-node`, `setup-python` and friends download each version once per host.
