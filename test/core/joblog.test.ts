@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { sql } from 'drizzle-orm'
 import { fresh, TEST_HOST } from './helpers'
-import { backfillStepLines, backfillSteps, configureJobLog, ensureFollower, finalise, isFollowing, parseGitHubLog, settled, TRUNCATED_NOTICE } from '../../src/lib/joblog'
+import { backfillSteps, configureJobLog, ensureFollower, finalise, isFollowing, parseGitHubLog, settled, TRUNCATED_NOTICE } from '../../src/lib/joblog'
 import { stepBlocks } from '../../src/views/log-steps'
-import { comparableLines, pickJobSteps } from '../../src/lib/github/log-archive'
-import { job87Details, job87Flat, job87Zip } from './job87'
+import { job87Details, job87Flat } from './job87'
 import { parseTimestampedLine } from '../../src/lib/backends/docker'
 import { claim, reap, tick } from '../../src/lib/scheduler'
 import { service } from '../../src/lib/service'
@@ -269,22 +268,14 @@ describe('job log follower', () => {
   })
 })
 
-/** Lines stored for `jobId`, grouped by their step number (`null` = no step). */
-async function linesByStep(jobId: number): Promise<Map<number | null, string[]>> {
-  const out = new Map<number | null, string[]>()
-  for (const l of (await service.getJobLog(jobId)).lines) out.set(l.step ?? null, [...(out.get(l.step ?? null) ?? []), l.line])
-  return out
-}
-
-/** Job 87 on GitHub: its details, its flat log and (unless `archive: false`) its run's archive. */
-function serveJob87(w: Awaited<ReturnType<typeof fresh>>, githubJobId: number, opts: { archive?: boolean } = {}) {
+/** Job 87 on GitHub: its details and its flat log. */
+function serveJob87(w: Awaited<ReturnType<typeof fresh>>, githubJobId: number) {
   w.github.jobDetails.set(`acme/app#${githubJobId}`, job87Details())
   w.github.jobLogs.set(`acme/app#${githubJobId}`, job87Flat())
-  if (opts.archive !== false) w.github.runArchives.set('acme/app#9001#1', job87Zip())
 }
 
-describe('per-step logs from the run archive', () => {
-  test('job 87: Standard gets its 96 lines with the ##[error], Complete job gets 1; system.txt is not stored', async () => {
+describe('job 87: the flat log split by time and step openers', () => {
+  test('Standard gets its 96 lines with the ##[error], Complete job gets 1; annotations are stored', async () => {
     const w = await fresh()
     const { runner, feed, jobId } = await spawnOne(w, 87)
     serveJob87(w, 87)
@@ -292,119 +283,34 @@ describe('per-step logs from the run archive', () => {
     feed.push('live line')
     w.docker.exit(runner.containerId!)
     await settled()
-    const byStep = await linesByStep(jobId)
-    expect([...byStep.keys()]).toEqual([1, 2, 3, 4, 8, 9])
-    expect(byStep.get(4)).toHaveLength(96)
-    expect(byStep.get(4)!.at(-1)).toBe('##[error]Process completed with exit code 1.')
-    expect(byStep.get(9)).toEqual(['Cleaning up orphan processes'])
-    expect([...byStep.values()].flat().some((l) => l.includes('Evaluating lint.if'))).toBe(false)
+    const log = await service.getJobLog(jobId)
+    expect(log.source).toBe('github')
+    expect(log.lines).toHaveLength(509)
+    expect(log.lines.every((l) => l.step === undefined)).toBe(true)
     const job = await service.getJob(jobId)
-    expect(job.logSource).toBe('github')
     expect(job.annotations).toEqual([{ level: 'failure', message: 'Process completed with exit code 1.', title: null, path: '.github', startLine: 1, endLine: 1 }])
-    expect(w.github.calls.filter((c) => c.method === 'getRunAttemptLogs')).toEqual([{ method: 'getRunAttemptLogs', args: ['acme/app', 9001, 1] }])
-    // the view follows the step numbers: the lint output and its error sit under Standard, not under Complete job
-    const blocks = stepBlocks(job, (await service.getJobLog(jobId)).lines)
+    // standardrb printed its output in the second Post and Complete job started: it stays under Standard until the
+    // next step's opener line; every step gets the lines GitHub shows under it
+    const blocks = stepBlocks(job, log.lines)
+    expect(blocks.map((b) => [b.step.number, b.lines.length])).toEqual([[1, 16], [2, 86], [3, 272], [4, 96], [8, 32], [9, 1]])
     const standard = blocks.find((b) => b.step.name === 'Standard')!
+    expect(standard.lines.at(-1)!.line).toBe('##[error]Process completed with exit code 1.')
     expect(standard.errors).toBe(1)
     expect(standard.open).toBe(true)
     expect(blocks.find((b) => b.step.name === 'Complete job')!.lines.map((l) => l.line)).toEqual(['Cleaning up orphan processes'])
   })
 
-  test('no archive (404 while the run goes on, or no step files): the flat log is stored without steps; time + step openers split it as GitHub does', async () => {
-    const w = await fresh()
-    const { runner, jobId } = await spawnOne(w, 88)
-    serveJob87(w, 88, { archive: false })
-    w.docker.exit(runner.containerId!)
-    await settled()
-    const log = await service.getJobLog(jobId)
-    expect(log.source).toBe('github')
-    expect(log.lines).toHaveLength(509)
-    expect(log.lines.every((l) => l.step === undefined)).toBe(true)
-    // standardrb printed its output in the second Post and Complete job started: it stays under Standard until the
-    // next step's opener line; every step gets exactly the lines of GitHub's own per-step file
-    const blocks = stepBlocks(await service.getJob(jobId), log.lines)
-    const pick = pickJobSteps(job87Zip(), 'lint')
-    if (!pick.ok) throw new Error(pick.reason)
-    expect(blocks.map((b) => [b.step.number, b.lines.map((l) => l.line)])).toEqual(pick.steps.map((f) => [f.number, comparableLines(f.text)]))
-    expect(blocks.find((b) => b.step.name === 'Standard')!.lines).toHaveLength(96)
-    expect(blocks.find((b) => b.step.name === 'Complete job')!.lines.map((l) => l.line)).toEqual(['Cleaning up orphan processes'])
-  })
-
-  test('an archive without step files (what GitHub hands out for most runs today) or a broken one keeps the flat lines, and is not asked again', async () => {
-    const w = await fresh()
-    const { runner, jobId } = await spawnOne(w, 93)
-    serveJob87(w, 93, { archive: false })
-    const { zipSync, strToU8 } = await import('fflate')
-    w.github.runArchives.set('acme/app#9001#1', zipSync({ '0_lint.txt': strToU8(job87Flat()), 'lint/system.txt': strToU8('x') }))
-    w.docker.exit(runner.containerId!)
-    await settled()
-    expect((await linesByStep(jobId)).get(null)).toHaveLength(509)
-    await updateJob(jobId, { status: 'completed', completedAt: new Date().toISOString() })
-    expect(await backfillStepLines(5, Date.now() + 86_400_000 - 1000)).toBe(0)
-    expect(w.github.calls.filter((c) => c.method === 'getRunAttemptLogs')).toHaveLength(1)
-  })
-
-  test('a broken archive keeps the flat lines; a failed annotations call keeps the log', async () => {
+  test('a failed annotations call keeps the log', async () => {
     const w = await fresh()
     const { runner, jobId } = await spawnOne(w, 89)
-    serveJob87(w, 89, { archive: false })
-    w.github.runArchives.set('acme/app#9001#1', new TextEncoder().encode('<Error>AuthenticationFailed</Error>'))
+    serveJob87(w, 89)
     w.github.failOn.set('listJobAnnotations', 'Resource not accessible by integration')
     w.docker.exit(runner.containerId!)
     await settled()
     const log = await service.getJobLog(jobId)
     expect(log.source).toBe('github')
     expect(log.lines).toHaveLength(509)
-    expect(log.lines.some((l) => l.step !== undefined)).toBe(false)
     expect((await service.getJob(jobId)).annotations).toEqual([])
-  })
-
-  test('backfillStepLines: asks again after the archive waits, fills the steps once the archive is there, then leaves the job alone', async () => {
-    const w = await fresh()
-    configureJobLog({ retryDelaysMs: [], flushMs: 10, archiveDelaysMs: [60_000, 60_000] })
-    const { runner, jobId } = await spawnOne(w, 90)
-    serveJob87(w, 90, { archive: false })
-    w.docker.exit(runner.containerId!)
-    await settled()
-    expect((await linesByStep(jobId)).get(null)).toHaveLength(509)
-    await updateJob(jobId, { status: 'completed', conclusion: 'failure', completedAt: new Date().toISOString() }) // the `completed` webhook
-    const t0 = Date.now()
-    const archiveCalls = () => w.github.calls.filter((c) => c.method === 'getRunAttemptLogs').length
-    expect(archiveCalls()).toBe(1) // the finaliser tried
-    expect(await backfillStepLines(5, t0 + 1_000)).toBe(0) // too early: not asked
-    expect(archiveCalls()).toBe(1)
-    expect(await backfillStepLines(5, t0 + 61_000)).toBe(0) // asked, still 404
-    expect(archiveCalls()).toBe(2)
-    w.github.runArchives.set('acme/app#9001#1', job87Zip())
-    expect(await backfillStepLines(5, t0 + 200_000)).toBe(1)
-    expect((await linesByStep(jobId)).get(4)).toHaveLength(96)
-    expect(await backfillStepLines(5, t0 + 900_000)).toBe(0) // done: the job has step lines now
-    expect(archiveCalls()).toBe(3)
-    // the finaliser's details are reused: no second job lookup for the archive
-    expect(w.github.calls.filter((c) => c.method === 'getJob')).toHaveLength(1)
-  })
-
-  test('backfillStepLines on rows from before: only the last day, a job lookup finds the run, at most `max` jobs per pass, the cap still holds', async () => {
-    const w = await fresh()
-    await service.setSetting('log_max_kb', '8', 'user')
-    for (const id of [91, 92]) {
-      await w.db.run(sql`insert into jobs (repo, github_job_id, run_id, name, labels, status, html_url, queued_at, completed_at, log_source)
-        values ('acme/app', ${id}, 9001, 'lint', '[]', 'completed', '', '2026-01-01T00:00:00Z', ${`2026-01-01T00:0${id - 90}:00Z`}, 'github')`)
-      serveJob87(w, id)
-    }
-    await w.db.run(sql`insert into job_logs (job_id, seq, at, line) values (1, 1, '2026-01-01T00:00:00Z', 'old'), (2, 1, '2026-01-01T00:00:00Z', 'old')`)
-    expect(await backfillStepLines(5, Date.parse('2026-01-03T00:00:00Z'))).toBe(0) // ended more than a day ago: left alone
-    expect(w.github.calls.filter((c) => c.method === 'getRunAttemptLogs')).toHaveLength(0)
-    const soon = Date.parse('2026-01-01T01:00:00Z')
-    expect(await backfillStepLines(1, soon)).toBe(1)
-    const newest = await jobById(2)
-    expect(newest!.logTruncated).toBe(true)
-    const lines = (await service.getJobLog(2)).lines
-    expect(lines.at(-1)!.line).toBe(TRUNCATED_NOTICE(8))
-    expect(lines.every((l) => l.step !== undefined)).toBe(true)
-    expect((await service.getJobLog(1)).lines.map((l) => l.line)).toEqual(['old'])
-    expect(await backfillStepLines(1, soon)).toBe(1)
-    expect((await service.getJobLog(1)).lines.length).toBeGreaterThan(1)
   })
 })
 

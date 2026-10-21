@@ -31,7 +31,6 @@ export function unconfiguredGitHub(): GitHubClient {
     listWorkflowFiles: refuse,
     getJobLog: refuse,
     getJob: refuse,
-    getRunAttemptLogs: refuse,
     listJobAnnotations: refuse,
   }
 }

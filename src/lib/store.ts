@@ -163,18 +163,6 @@ export async function jobsWithoutSteps(limit: number, d: Db = db()): Promise<Job
   return rows.map(toJob)
 }
 
-/**
- * Completed jobs (ended at or after `since`) with a stored GitHub log none of whose lines carries a step number yet
- * (rows from before per-step logs, or whose archive was not available), newest first.
- */
-export async function jobsWithoutStepLines(limit: number, since: string, d: Db = db()): Promise<JobRow[]> {
-  const rows = await d.all(sql`select * from jobs j where status = 'completed' and log_source = 'github' and completed_at >= ${since}
-    and exists (select 1 from job_logs l where l.job_id = j.id)
-    and not exists (select 1 from job_logs l where l.job_id = j.id and l.step is not null)
-    order by completed_at desc limit ${limit}`)
-  return rows.map(toJob)
-}
-
 // job logs
 
 /** Lines after `after` (exclusive) in order, at most `limit`. */

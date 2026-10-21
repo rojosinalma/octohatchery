@@ -2,9 +2,9 @@ import type { Job, JobAnnotation, JobStep, LogLine } from '../lib/types'
 import { classify, groupLines, plainText, type LogBlock } from './log-groups'
 
 /*
- * Steps view of a job log, the way GitHub shows it: one collapsible row per step. A line that carries its step
- * number (GitHub's per-step log files) goes to that step; any other line (live runner output, the flat log when the
- * archive was not available) goes to the step whose time window holds its timestamp. Inside a step lines are
+ * Steps view of a job log, the way GitHub shows it: one collapsible row per step. A line goes to the step whose
+ * time window holds its timestamp, refined by the steps' opener lines (live runner output and GitHub's flat job log
+ * alike); a line that carries a step number (none do today, the column is reserved) goes to that step. Inside a step lines are
  * numbered from 1 (a group header counts, its hidden markers do not). Pure functions; `src/views/job.tsx` renders the result and
  * `public/app.js` keeps the same rules for lines that arrive over the stream: change one, change the other.
  */
@@ -90,8 +90,8 @@ export const stepOpener = (line: string): string | null => {
 }
 
 /**
- * Lines → steps, keeping GitHub's order (`number`). A line that carries its step (GitHub's per-step files) goes to
- * that step. Every other line is placed by time, never going back to an earlier step: GitHub's step times are cut
+ * Lines → steps, keeping GitHub's order (`number`). A line that carries its step (`job_logs.step`, reserved, null
+ * today) goes to that step. Every other line is placed by time, never going back to an earlier step: GitHub's step times are cut
  * to the second, so a step's own last lines and the next steps' starts often share one second. Inside that second
  * the current step keeps its lines until a step opener (`stepOpener`) shows up, which moves on to the started step
  * whose name matches the opener (`Run actions/checkout@v7`) or else the next started one; a stamp one second or more

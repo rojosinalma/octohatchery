@@ -1,0 +1,509 @@
+2026-10-21T11:28:42.2472379Z Current runner version: '2.338.0'
+2026-10-21T11:28:42.2481945Z Runner name: 'generic-node-a-1'
+2026-10-21T11:28:42.2483304Z Runner group name: 'Default'
+2026-10-21T11:28:42.2484537Z Machine name: 'd8eb6c5e9921'
+2026-10-21T11:28:42.2488017Z ##[group]GITHUB_TOKEN Permissions
+2026-10-21T11:28:42.2491374Z Contents: read
+2026-10-21T11:28:42.2492081Z Metadata: read
+2026-10-21T11:28:42.2492724Z ##[endgroup]
+2026-10-21T11:28:42.2496125Z Secret source: Actions
+2026-10-21T11:28:42.2497654Z Cache mode: write
+2026-10-21T11:28:42.2499016Z Prepare workflow directory
+2026-10-21T11:28:42.2941264Z Prepare all required actions
+2026-10-21T11:28:42.3004316Z Getting action download info
+2026-10-21T11:28:42.8156992Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-21T11:28:43.2638225Z Download action repository 'ruby/setup-ruby@v1' (SHA:824c0e29fdfc7d689c191c27acc969d2d04b7dd8)
+2026-10-21T11:28:43.8768022Z Complete job name: lint
+﻿2026-10-21T11:28:43.9725144Z ##[group]Run actions/checkout@v7
+2026-10-21T11:28:43.9726542Z with:
+2026-10-21T11:28:43.9727266Z   repository: acme/widgets
+2026-10-21T11:28:43.9737246Z   token: ***
+2026-10-21T11:28:43.9738067Z   ssh-strict: true
+2026-10-21T11:28:43.9738794Z   ssh-user: git
+2026-10-21T11:28:43.9739538Z   persist-credentials: true
+2026-10-21T11:28:43.9740409Z   clean: true
+2026-10-21T11:28:43.9741197Z   sparse-checkout-cone-mode: true
+2026-10-21T11:28:43.9742148Z   fetch-depth: 1
+2026-10-21T11:28:43.9742852Z   fetch-tags: false
+2026-10-21T11:28:43.9743586Z   show-progress: true
+2026-10-21T11:28:43.9744348Z   lfs: false
+2026-10-21T11:28:43.9745041Z   submodules: false
+2026-10-21T11:28:43.9745799Z   set-safe-directory: true
+2026-10-21T11:28:43.9746717Z   allow-unsafe-pr-checkout: false
+2026-10-21T11:28:43.9747838Z ##[endgroup]
+2026-10-21T11:28:44.0915620Z Syncing repository: acme/widgets
+2026-10-21T11:28:44.0918141Z ##[group]Getting Git version info
+2026-10-21T11:28:44.0919293Z Working directory is '/home/runner/_work/widgets/widgets'
+2026-10-21T11:28:44.0921232Z [command]/usr/bin/git version
+2026-10-21T11:28:44.0922009Z git version 2.55.0
+2026-10-21T11:28:44.0924404Z ##[endgroup]
+2026-10-21T11:28:44.0930622Z Temporarily overriding HOME='/home/runner/_work/_temp/fd2ab1cb-e543-4855-960a-ab87d572d6a1' before making global git config changes
+2026-10-21T11:28:44.0933319Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T11:28:44.0935477Z [command]/usr/bin/git config --global --add safe.directory /home/runner/_work/widgets/widgets
+2026-10-21T11:28:44.0967551Z Deleting the contents of '/home/runner/_work/widgets/widgets'
+2026-10-21T11:28:44.0970968Z ##[group]Determining repository object format
+2026-10-21T11:28:44.0972697Z ##[endgroup]
+2026-10-21T11:28:44.0973744Z ##[group]Initializing the repository
+2026-10-21T11:28:44.0976783Z [command]/usr/bin/git init /home/runner/_work/widgets/widgets
+2026-10-21T11:28:44.1018447Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-21T11:28:44.1020249Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-21T11:28:44.1021991Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-21T11:28:44.1023272Z hint: call:
+2026-10-21T11:28:44.1023798Z hint:
+2026-10-21T11:28:44.1024524Z hint: 	git config --global init.defaultBranch <name>
+2026-10-21T11:28:44.1025504Z hint:
+2026-10-21T11:28:44.1026400Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-21T11:28:44.1028061Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-21T11:28:44.1029317Z hint:
+2026-10-21T11:28:44.1029878Z hint: 	git branch -m <name>
+2026-10-21T11:28:44.1030597Z hint:
+2026-10-21T11:28:44.1031687Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-21T11:28:44.1033612Z Initialized empty Git repository in /home/runner/_work/widgets/widgets/.git/
+2026-10-21T11:28:44.1036376Z [command]/usr/bin/git remote add origin https://github.com/acme/widgets
+2026-10-21T11:28:44.1059285Z ##[endgroup]
+2026-10-21T11:28:44.1060437Z ##[group]Disabling automatic garbage collection
+2026-10-21T11:28:44.1062273Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-21T11:28:44.1092667Z ##[endgroup]
+2026-10-21T11:28:44.1093813Z ##[group]Setting up auth
+2026-10-21T11:28:44.1094624Z Removing SSH command configuration
+2026-10-21T11:28:44.1098846Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T11:28:44.1132799Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T11:28:44.1419701Z Removing HTTP extra header
+2026-10-21T11:28:44.1421488Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T11:28:44.1426416Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T11:28:44.1707377Z Removing includeIf entries pointing to credentials config files
+2026-10-21T11:28:44.1709199Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T11:28:44.1712823Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T11:28:44.1924656Z [command]/usr/bin/git config --file /home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-21T11:28:44.1966938Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/_work/widgets/widgets/.git.path /home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:28:44.1994683Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/_work/widgets/widgets/.git/worktrees/*.path /home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:28:44.2038178Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:28:44.2164279Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:28:44.2171592Z ##[endgroup]
+2026-10-21T11:28:44.2173459Z ##[group]Fetching the repository
+2026-10-21T11:28:44.2177848Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +7ee8ad3bd3304aa625437f77dfe5a2bdb3dab013:refs/remotes/origin/main
+2026-10-21T11:28:45.1246119Z From https://github.com/acme/widgets
+2026-10-21T11:28:45.1248235Z  * [new ref]         7ee8ad3bd3304aa625437f77dfe5a2bdb3dab013 -> origin/main
+2026-10-21T11:28:45.1252134Z [command]/usr/bin/git branch --list --remote origin/main
+2026-10-21T11:28:45.1253598Z   origin/main
+2026-10-21T11:28:45.1256263Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+2026-10-21T11:28:45.1275445Z 7ee8ad3bd3304aa625437f77dfe5a2bdb3dab013
+2026-10-21T11:28:45.1280538Z ##[endgroup]
+2026-10-21T11:28:45.1282361Z ##[group]Determining the checkout info
+2026-10-21T11:28:45.1284323Z ##[endgroup]
+2026-10-21T11:28:45.1285789Z [command]/usr/bin/git sparse-checkout disable
+2026-10-21T11:28:45.1327239Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-21T11:28:45.1358818Z ##[group]Checking out the ref
+2026-10-21T11:28:45.1360647Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-21T11:28:45.1757509Z Switched to a new branch 'main'
+2026-10-21T11:28:45.1760550Z branch 'main' set up to track 'origin/main'.
+2026-10-21T11:28:45.1772872Z ##[endgroup]
+2026-10-21T11:28:45.1834490Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T11:28:45.1863829Z 7ee8ad3bd3304aa625437f77dfe5a2bdb3dab013
+﻿2026-10-21T11:28:45.2381104Z ##[group]Run ruby/setup-ruby@v1
+2026-10-21T11:28:45.2383067Z with:
+2026-10-21T11:28:45.2384515Z   ruby-version: 3.3
+2026-10-21T11:28:45.2386108Z   bundler-cache: true
+2026-10-21T11:28:45.2401086Z   token: ***
+2026-10-21T11:28:45.2402605Z ##[endgroup]
+2026-10-21T11:28:45.3997177Z ##[group]Modifying PATH
+2026-10-21T11:28:45.3999412Z Entries added to PATH to use selected Ruby:
+2026-10-21T11:28:45.4001485Z   /opt/hostedtoolcache/Ruby/3.3.12/x64/bin
+2026-10-21T11:28:45.4004459Z ##[endgroup]
+2026-10-21T11:28:45.4007082Z ##[group]Print Ruby version
+2026-10-21T11:28:45.4024430Z [command]/opt/hostedtoolcache/Ruby/3.3.12/x64/bin/ruby --version
+2026-10-21T11:28:45.4145935Z ruby 3.3.12 (2026-07-16 revision 0581089df9) [x86_64-linux]
+2026-10-21T11:28:45.4163320Z Took   0.02 seconds
+2026-10-21T11:28:45.4165424Z ##[endgroup]
+2026-10-21T11:28:45.4167316Z ##[group]Installing Bundler
+2026-10-21T11:28:45.4170754Z Using Bundler 2.5.22 from Gemfile.lock BUNDLED WITH 2.5.22
+2026-10-21T11:28:45.4175255Z [command]/opt/hostedtoolcache/Ruby/3.3.12/x64/bin/gem install bundler -v 2.5.22
+2026-10-21T11:28:45.9987176Z Successfully installed bundler-2.5.22
+2026-10-21T11:28:45.9987766Z 1 gem installed
+2026-10-21T11:28:46.0036801Z Took   0.59 seconds
+2026-10-21T11:28:46.0037700Z ##[endgroup]
+2026-10-21T11:28:46.0039481Z > bundle install
+2026-10-21T11:28:46.0045090Z Setting BUNDLER_VERSION=2.5.22 for "bundle config|lock" commands below to ensure Bundler 2.5.22 is used
+2026-10-21T11:28:46.0102580Z [command]/opt/hostedtoolcache/Ruby/3.3.12/x64/bin/bundle config set --local path /home/runner/_work/widgets/widgets/vendor/bundle
+2026-10-21T11:28:46.1476741Z [command]/opt/hostedtoolcache/Ruby/3.3.12/x64/bin/bundle config set --local deployment true
+2026-10-21T11:28:46.3084219Z ##[group]Print lockfile
+2026-10-21T11:28:46.3092444Z [command]/usr/bin/cat Gemfile.lock
+2026-10-21T11:28:46.3130321Z GEM
+2026-10-21T11:28:46.3131346Z   remote: https://rubygems.org/
+2026-10-21T11:28:46.3132391Z   specs:
+2026-10-21T11:28:46.3132883Z     ast (2.4.3)
+2026-10-21T11:28:46.3133363Z     base64 (0.3.0)
+2026-10-21T11:28:46.3133828Z     bigdecimal (4.1.2)
+2026-10-21T11:28:46.3134285Z     hana (1.3.7)
+2026-10-21T11:28:46.3134808Z     json (2.21.2)
+2026-10-21T11:28:46.3135347Z     json_schemer (2.5.0)
+2026-10-21T11:28:46.3135784Z       bigdecimal
+2026-10-21T11:28:46.3136119Z       hana (~> 1.3)
+2026-10-21T11:28:46.3136475Z       regexp_parser (~> 2.0)
+2026-10-21T11:28:46.3136864Z       simpleidn (~> 0.2)
+2026-10-21T11:28:46.3137273Z     language_server-protocol (3.17.0.6)
+2026-10-21T11:28:46.3137705Z     lint_roller (1.1.0)
+2026-10-21T11:28:46.3138071Z     logger (1.7.0)
+2026-10-21T11:28:46.3138407Z     mcp (1.2.0)
+2026-10-21T11:28:46.3138933Z       json_schemer (>= 2.4)
+2026-10-21T11:28:46.3139369Z     minitest (5.27.0)
+2026-10-21T11:28:46.3139822Z     multi_json (1.21.1)
+2026-10-21T11:28:46.3140285Z     mustermann (3.1.1)
+2026-10-21T11:28:46.3140633Z     net-ssh (7.3.3)
+2026-10-21T11:28:46.3141078Z     nio4r (2.7.5)
+2026-10-21T11:28:46.3141409Z     parallel (2.3.0)
+2026-10-21T11:28:46.3141761Z     parser (3.3.12.0)
+2026-10-21T11:28:46.3142098Z       ast (~> 2.4.1)
+2026-10-21T11:28:46.3142420Z       racc
+2026-10-21T11:28:46.3142724Z     prism (1.9.0)
+2026-10-21T11:28:46.3143050Z     puma (8.0.2)
+2026-10-21T11:28:46.3143378Z       nio4r (~> 2.0)
+2026-10-21T11:28:46.3143700Z     racc (1.8.1)
+2026-10-21T11:28:46.3144008Z     rack (3.2.7)
+2026-10-21T11:28:46.3144340Z     rack-protection (4.2.1)
+2026-10-21T11:28:46.3144713Z       base64 (>= 0.1.0)
+2026-10-21T11:28:46.3145058Z       logger (>= 1.6.0)
+2026-10-21T11:28:46.3145400Z       rack (>= 3.0.0, < 4)
+2026-10-21T11:28:46.3145762Z     rack-session (2.1.2)
+2026-10-21T11:28:46.3146115Z       base64 (>= 0.1.0)
+2026-10-21T11:28:46.3146443Z       rack (>= 3.0.0)
+2026-10-21T11:28:46.3146778Z     rack-test (2.2.0)
+2026-10-21T11:28:46.3147110Z       rack (>= 1.3)
+2026-10-21T11:28:46.3147424Z     rainbow (3.1.1)
+2026-10-21T11:28:46.3148374Z     rake (13.4.2)
+2026-10-21T11:28:46.3148706Z     regexp_parser (2.12.0)
+2026-10-21T11:28:46.3149059Z     rubocop (1.91.0)
+2026-10-21T11:28:46.3149675Z       json (>= 2.3)
+2026-10-21T11:28:46.3150044Z       language_server-protocol (~> 3.17.0.2)
+2026-10-21T11:28:46.3150469Z       lint_roller (~> 1.1.0)
+2026-10-21T11:28:46.3150893Z       parallel (>= 1.10)
+2026-10-21T11:28:46.3151255Z       parser (>= 3.3.0.2)
+2026-10-21T11:28:46.3151610Z       rainbow (>= 2.2.2, < 4.0)
+2026-10-21T11:28:46.3151999Z       regexp_parser (>= 2.9.3, < 3.0)
+2026-10-21T11:28:46.3152407Z       rubocop-ast (>= 1.49.0, < 2.0)
+2026-10-21T11:28:46.3152810Z       ruby-progressbar (~> 1.7)
+2026-10-21T11:28:46.3153218Z       unicode-display_width (>= 2.4.0, < 4.0)
+2026-10-21T11:28:46.3153633Z     rubocop-ast (1.50.0)
+2026-10-21T11:28:46.3153990Z       parser (>= 3.3.7.2)
+2026-10-21T11:28:46.3154330Z       prism (~> 1.7)
+2026-10-21T11:28:46.3154691Z     rubocop-performance (1.26.1)
+2026-10-21T11:28:46.3155070Z       lint_roller (~> 1.1)
+2026-10-21T11:28:46.3155442Z       rubocop (>= 1.75.0, < 2.0)
+2026-10-21T11:28:46.3155822Z       rubocop-ast (>= 1.47.1, < 2.0)
+2026-10-21T11:28:46.3156232Z     ruby-progressbar (1.13.0)
+2026-10-21T11:28:46.3156650Z     sequel (5.107.0)
+2026-10-21T11:28:46.3157180Z       bigdecimal
+2026-10-21T11:28:46.3157508Z     simpleidn (0.2.3)
+2026-10-21T11:28:46.3157848Z     sinatra (4.2.1)
+2026-10-21T11:28:46.3158193Z       logger (>= 1.6.0)
+2026-10-21T11:28:46.3158548Z       mustermann (~> 3.0)
+2026-10-21T11:28:46.3158928Z       rack (>= 3.0.0, < 4)
+2026-10-21T11:28:46.3159299Z       rack-protection (= 4.2.1)
+2026-10-21T11:28:46.3159694Z       rack-session (>= 2.0.0, < 3)
+2026-10-21T11:28:46.3160071Z       tilt (~> 2.0)
+2026-10-21T11:28:46.3160409Z     sinatra-contrib (4.2.1)
+2026-10-21T11:28:46.3160829Z       multi_json (>= 0.0.2)
+2026-10-21T11:28:46.3161233Z       mustermann (~> 3.0)
+2026-10-21T11:28:46.3161616Z       rack-protection (= 4.2.1)
+2026-10-21T11:28:46.3161984Z       sinatra (= 4.2.1)
+2026-10-21T11:28:46.3162377Z       tilt (~> 2.0)
+2026-10-21T11:28:46.3272784Z     sqlite3 (2.9.6-aarch64-linux-gnu)
+2026-10-21T11:28:46.3273560Z     sqlite3 (2.9.6-aarch64-linux-musl)
+2026-10-21T11:28:46.3274008Z     sqlite3 (2.9.6-arm-linux-gnu)
+2026-10-21T11:28:46.3274457Z     sqlite3 (2.9.6-arm-linux-musl)
+2026-10-21T11:28:46.3274903Z     sqlite3 (2.9.6-arm64-darwin)
+2026-10-21T11:28:46.3275327Z     sqlite3 (2.9.6-x86-linux-gnu)
+2026-10-21T11:28:46.3275723Z     sqlite3 (2.9.6-x86-linux-musl)
+2026-10-21T11:28:46.3276120Z     sqlite3 (2.9.6-x86_64-darwin)
+2026-10-21T11:28:46.3276520Z     sqlite3 (2.9.6-x86_64-linux-gnu)
+2026-10-21T11:28:46.3276932Z     sqlite3 (2.9.6-x86_64-linux-musl)
+2026-10-21T11:28:46.3277322Z     standard (1.57.0)
+2026-10-21T11:28:46.3277733Z       language_server-protocol (~> 3.17.0.2)
+2026-10-21T11:28:46.3278174Z       lint_roller (~> 1.0)
+2026-10-21T11:28:46.3278543Z       rubocop (~> 1.91.0)
+2026-10-21T11:28:46.3278921Z       standard-custom (~> 1.0.0)
+2026-10-21T11:28:46.3279339Z       standard-performance (~> 1.8)
+2026-10-21T11:28:46.3279770Z     standard-custom (1.0.2)
+2026-10-21T11:28:46.3280150Z       lint_roller (~> 1.0)
+2026-10-21T11:28:46.3280513Z       rubocop (~> 1.50)
+2026-10-21T11:28:46.3280926Z     standard-performance (1.9.0)
+2026-10-21T11:28:46.3281315Z       lint_roller (~> 1.1)
+2026-10-21T11:28:46.3281697Z       rubocop-performance (~> 1.26.0)
+2026-10-21T11:28:46.3282089Z     tilt (2.9.0)
+2026-10-21T11:28:46.3282439Z     unicode-display_width (3.3.0)
+2026-10-21T11:28:46.3282841Z       unicode-emoji (~> 4.3)
+2026-10-21T11:28:46.3283214Z     unicode-emoji (4.3.0)
+2026-10-21T11:28:46.3283425Z 
+2026-10-21T11:28:46.3283581Z PLATFORMS
+2026-10-21T11:28:46.3283897Z   aarch64-linux-gnu
+2026-10-21T11:28:46.3284237Z   aarch64-linux-musl
+2026-10-21T11:28:46.3284576Z   arm-linux-gnu
+2026-10-21T11:28:46.3284895Z   arm-linux-musl
+2026-10-21T11:28:46.3285211Z   arm64-darwin
+2026-10-21T11:28:46.3285515Z   x86-linux-gnu
+2026-10-21T11:28:46.3285821Z   x86-linux-musl
+2026-10-21T11:28:46.3286432Z   x86_64-darwin
+2026-10-21T11:28:46.3286745Z   x86_64-linux-gnu
+2026-10-21T11:28:46.3287067Z   x86_64-linux-musl
+2026-10-21T11:28:46.3287389Z 
+2026-10-21T11:28:46.3287532Z DEPENDENCIES
+2026-10-21T11:28:46.3287836Z   json (~> 2.21)
+2026-10-21T11:28:46.3288142Z   mcp (~> 1.2)
+2026-10-21T11:28:46.3288451Z   minitest (~> 5.25)
+2026-10-21T11:28:46.3288787Z   net-ssh (~> 7.3)
+2026-10-21T11:28:46.3289098Z   puma (~> 8.0)
+2026-10-21T11:28:46.3289412Z   rack-test (~> 2.2)
+2026-10-21T11:28:46.3289730Z   rake (~> 13.3)
+2026-10-21T11:28:46.3290039Z   sequel (~> 5.107)
+2026-10-21T11:28:46.3290356Z   sinatra (~> 4.2)
+2026-10-21T11:28:46.3290702Z   sinatra-contrib (~> 4.2)
+2026-10-21T11:28:46.3291089Z   sqlite3 (~> 2.9)
+2026-10-21T11:28:46.3291417Z   standard (~> 1.51)
+2026-10-21T11:28:46.3291615Z 
+2026-10-21T11:28:46.3291759Z RUBY VERSION
+2026-10-21T11:28:46.3292076Z    ruby 3.3.12p206
+2026-10-21T11:28:46.3292275Z 
+2026-10-21T11:28:46.3292418Z BUNDLED WITH
+2026-10-21T11:28:46.3292710Z    2.5.22
+2026-10-21T11:28:46.3293574Z ##[endgroup]
+2026-10-21T11:28:46.3294861Z Cache key: setup-ruby-bundler-cache-v6-ubuntu-24.04-x64-ruby-3.3.12-wd-/home/runner/_work/widgets/widgets-with--without--only--Gemfile.lock-ed70b8426a71c5f93eadcdd710dce986c66e9b79680b2d6a8088d8febdee9122
+2026-10-21T11:28:46.7201708Z [command]/opt/hostedtoolcache/Ruby/3.3.12/x64/bin/bundle install --jobs 2
+2026-10-21T11:28:49.5477765Z Fetching gem metadata from https://rubygems.org/.........
+2026-10-21T11:28:49.5569912Z Fetching rake 13.4.2
+2026-10-21T11:28:49.7293876Z Installing rake 13.4.2
+2026-10-21T11:28:49.7435503Z Fetching ast 2.4.3
+2026-10-21T11:28:49.7436783Z Fetching base64 0.3.0
+2026-10-21T11:28:49.7696938Z Installing ast 2.4.3
+2026-10-21T11:28:49.7733848Z Fetching bigdecimal 4.1.2
+2026-10-21T11:28:49.7886557Z Installing base64 0.3.0
+2026-10-21T11:28:49.7915193Z Fetching hana 1.3.7
+2026-10-21T11:28:49.8181960Z Installing bigdecimal 4.1.2 with native extensions
+2026-10-21T11:28:49.8367897Z Installing hana 1.3.7
+2026-10-21T11:28:49.8406860Z Fetching json 2.21.2
+2026-10-21T11:28:49.8671264Z Installing json 2.21.2 with native extensions
+2026-10-21T11:28:59.6073964Z Fetching regexp_parser 2.12.0
+2026-10-21T11:28:59.7344043Z Installing regexp_parser 2.12.0
+2026-10-21T11:28:59.7960518Z Fetching simpleidn 0.2.3
+2026-10-21T11:28:59.8672373Z Installing simpleidn 0.2.3
+2026-10-21T11:28:59.8758906Z Fetching language_server-protocol 3.17.0.6
+2026-10-21T11:28:59.9151024Z Installing language_server-protocol 3.17.0.6
+2026-10-21T11:28:59.9309715Z Fetching lint_roller 1.1.0
+2026-10-21T11:28:59.9614809Z Installing lint_roller 1.1.0
+2026-10-21T11:28:59.9691687Z Fetching logger 1.7.0
+2026-10-21T11:28:59.9976045Z Installing logger 1.7.0
+2026-10-21T11:29:00.0054808Z Fetching minitest 5.27.0
+2026-10-21T11:29:00.0475176Z Installing minitest 5.27.0
+2026-10-21T11:29:00.0691714Z Fetching multi_json 1.21.1
+2026-10-21T11:29:00.0753038Z Fetching mustermann 3.1.1
+2026-10-21T11:29:00.0970837Z Installing multi_json 1.21.1
+2026-10-21T11:29:00.1029269Z Fetching net-ssh 7.3.3
+2026-10-21T11:29:00.1270926Z Installing mustermann 3.1.1
+2026-10-21T11:29:00.1725583Z Fetching nio4r 2.7.5
+2026-10-21T11:29:00.1783149Z Installing net-ssh 7.3.3
+2026-10-21T11:29:00.2233636Z Installing nio4r 2.7.5 with native extensions
+2026-10-21T11:29:00.2887286Z Fetching parallel 2.3.0
+2026-10-21T11:29:00.3133572Z Installing parallel 2.3.0
+2026-10-21T11:29:00.3174569Z Fetching racc 1.8.1
+2026-10-21T11:29:00.3499521Z Installing racc 1.8.1 with native extensions
+2026-10-21T11:29:01.0213591Z Fetching prism 1.9.0
+2026-10-21T11:29:01.1054278Z Installing prism 1.9.0 with native extensions
+2026-10-21T11:29:04.5809496Z Fetching rack 3.2.7
+2026-10-21T11:29:04.7224423Z Installing rack 3.2.7
+2026-10-21T11:29:04.7344172Z Fetching rainbow 3.1.1
+2026-10-21T11:29:04.7607465Z Installing rainbow 3.1.1
+2026-10-21T11:29:04.7652009Z Fetching ruby-progressbar 1.13.0
+2026-10-21T11:29:04.7929772Z Installing ruby-progressbar 1.13.0
+2026-10-21T11:29:04.7995638Z Fetching unicode-emoji 4.3.0
+2026-10-21T11:29:04.8569837Z Installing unicode-emoji 4.3.0
+2026-10-21T11:29:04.8706217Z Fetching tilt 2.9.0
+2026-10-21T11:29:04.8991877Z Installing tilt 2.9.0
+2026-10-21T11:29:04.9101951Z Fetching sqlite3 2.9.6 (x86_64-linux-gnu)
+2026-10-21T11:29:05.3095055Z Installing sqlite3 2.9.6 (x86_64-linux-gnu)
+2026-10-21T11:29:05.3785803Z Fetching sequel 5.107.0
+2026-10-21T11:29:05.5035948Z Installing sequel 5.107.0
+2026-10-21T11:29:05.5885008Z Fetching json_schemer 2.5.0
+2026-10-21T11:29:05.6283898Z Installing json_schemer 2.5.0
+2026-10-21T11:29:05.6407180Z Fetching parser 3.3.12.0
+2026-10-21T11:29:05.8009618Z Installing parser 3.3.12.0
+2026-10-21T11:29:05.8672366Z Fetching puma 8.0.2
+2026-10-21T11:29:05.9302235Z Installing puma 8.0.2 with native extensions
+2026-10-21T11:29:06.9598309Z Fetching rack-protection 4.2.1
+2026-10-21T11:29:06.9909525Z Installing rack-protection 4.2.1
+2026-10-21T11:29:06.9942689Z Fetching rack-session 2.1.2
+2026-10-21T11:29:07.0480952Z Installing rack-session 2.1.2
+2026-10-21T11:29:07.0505257Z Fetching rack-test 2.2.0
+2026-10-21T11:29:07.0834252Z Installing rack-test 2.2.0
+2026-10-21T11:29:07.0858493Z Fetching unicode-display_width 3.3.0
+2026-10-21T11:29:07.1209023Z Installing unicode-display_width 3.3.0
+2026-10-21T11:29:07.1232345Z Fetching mcp 1.2.0
+2026-10-21T11:29:07.1720523Z Installing mcp 1.2.0
+2026-10-21T11:29:07.1843901Z Fetching sinatra 4.2.1
+2026-10-21T11:29:07.2306609Z Installing sinatra 4.2.1
+2026-10-21T11:29:07.2362873Z Fetching sinatra-contrib 4.2.1
+2026-10-21T11:29:07.2688588Z Installing sinatra-contrib 4.2.1
+2026-10-21T11:29:26.5072990Z Fetching rubocop-ast 1.50.0
+2026-10-21T11:29:26.6423276Z Installing rubocop-ast 1.50.0
+2026-10-21T11:29:26.6727247Z Fetching rubocop 1.91.0
+2026-10-21T11:29:26.9245285Z Installing rubocop 1.91.0
+2026-10-21T11:29:27.0666204Z Fetching rubocop-performance 1.26.1
+2026-10-21T11:29:27.0666875Z Fetching standard-custom 1.0.2
+2026-10-21T11:29:27.1121121Z Installing rubocop-performance 1.26.1
+2026-10-21T11:29:27.1215986Z Fetching standard-performance 1.9.0
+2026-10-21T11:29:27.1429354Z Installing standard-custom 1.0.2
+2026-10-21T11:29:27.1837256Z Installing standard-performance 1.9.0
+2026-10-21T11:29:27.1887418Z Fetching standard 1.57.0
+2026-10-21T11:29:27.2474697Z Installing standard 1.57.0
+2026-10-21T11:29:27.2636387Z Bundle complete! 12 Gemfile dependencies, 43 gems now installed.
+2026-10-21T11:29:27.2636899Z Bundled gems are installed into `./vendor/bundle`
+2026-10-21T11:29:27.2637255Z Post-install message from minitest:
+2026-10-21T11:29:27.2637630Z NOTE: minitest 5 will be the last in the minitest family to support
+2026-10-21T11:29:27.2638070Z       ruby 1.8 to 2.7. If you need to keep using these versions,
+2026-10-21T11:29:27.2638479Z       you need to pin your dependency to minitest with something
+2026-10-21T11:29:27.2638866Z       like "~> 5.0". See History.rdoc to locate compatible
+2026-10-21T11:29:27.2639172Z       versions.
+2026-10-21T11:29:27.2639310Z 
+2026-10-21T11:29:27.2639464Z       Further, minitest 6 will be dropping the following:
+2026-10-21T11:29:27.2639707Z 
+2026-10-21T11:29:27.2639831Z       + MiniTest (it's been Minitest for >10 years)
+2026-10-21T11:29:27.2647704Z       + MiniTest::Unit
+2026-10-21T11:29:27.2647988Z       + MiniTest::Unit::TestCase
+2026-10-21T11:29:27.2648280Z       + assert_send (unless you argue for it well)
+2026-10-21T11:29:27.2648603Z       + assert_equal nil, obj
+2026-10-21T11:29:27.2648925Z       + mocks and stubs: moving minitest/mock.rb to its own gem
+2026-10-21T11:29:27.3153545Z Saving cache
+2026-10-21T11:29:27.3224911Z [command]/usr/bin/tar --posix -cf cache.tgz --exclude cache.tgz -P -C /home/runner/_work/widgets/widgets --files-from manifest.txt -z
+2026-10-21T11:29:31.2601043Z Sent 1245184 of 22662405 (5.5%), 1.2 MBs/sec
+2026-10-21T11:29:32.2600956Z Sent 8519680 of 22662405 (37.6%), 4.1 MBs/sec
+2026-10-21T11:29:33.2596373Z Sent 14811136 of 22662405 (65.4%), 4.7 MBs/sec
+2026-10-21T11:29:34.2603627Z Sent 19070976 of 22662405 (84.2%), 4.5 MBs/sec
+2026-10-21T11:29:35.2609285Z Sent 22662405 of 22662405 (100.0%), 4.3 MBs/sec
+2026-10-21T11:29:36.4178233Z Took  50.41 seconds
+﻿2026-10-21T11:29:36.4368823Z ##[group]Run bundle exec standardrb
+2026-10-21T11:29:36.4369308Z [36;1mbundle exec standardrb[0m
+2026-10-21T11:29:36.4393911Z shell: /usr/bin/bash -e {0}
+2026-10-21T11:29:36.4394321Z ##[endgroup]
+2026-10-21T11:29:51.3539739Z WARNING: this project is being migrated to standard gradually via `/home/runner/_work/widgets/widgets/.standard_todo.yml` and is ignoring these files:
+2026-10-21T11:29:51.3540684Z   agent/lib/compose_rename.rb
+2026-10-21T11:29:51.3541066Z   agent/lib/docker_api.rb
+2026-10-21T11:29:51.3541340Z   app/routes/mcp.rb
+2026-10-21T11:29:51.3541578Z   app/routes/monitors.rb
+2026-10-21T11:29:51.3541835Z   app/routes/proxy.rb
+2026-10-21T11:29:51.3542087Z   app/routes/requests.rb
+2026-10-21T11:29:51.3542359Z   db/migrations/006_schema_cleanup_v90.rb
+2026-10-21T11:29:51.3542684Z   lib/widgets/agent/bootstrap.rb
+2026-10-21T11:29:51.3542980Z   lib/widgets/agent/client.rb
+2026-10-21T11:29:51.3543271Z   lib/widgets/agent/service_containers.rb
+2026-10-21T11:29:51.3543602Z   lib/widgets/catalog/fetcher.rb
+2026-10-21T11:29:51.3544069Z   lib/widgets/catalog/icons.rb
+2026-10-21T11:29:51.3544358Z   lib/widgets/cf/access_apps.rb
+2026-10-21T11:29:51.3544638Z   lib/widgets/cf/client.rb
+2026-10-21T11:29:51.3544894Z   lib/widgets/cf/dns.rb
+2026-10-21T11:29:51.3545192Z   lib/widgets/cf/manager.rb
+2026-10-21T11:29:51.3545464Z   lib/widgets/cf/policies.rb
+2026-10-21T11:29:51.3545728Z   lib/widgets/cf/tokens.rb
+2026-10-21T11:29:51.3545998Z   lib/widgets/change_warnings.rb
+2026-10-21T11:29:51.3546291Z   lib/widgets/compose/generator.rb
+2026-10-21T11:29:51.3546593Z   lib/widgets/compose/override.rb
+2026-10-21T11:29:51.3546888Z   lib/widgets/fleet/event_stream.rb
+2026-10-21T11:29:51.3547185Z   lib/widgets/fleet/events.rb
+2026-10-21T11:29:51.3547481Z   lib/widgets/fleet/image_updates.rb
+2026-10-21T11:29:51.3547766Z   lib/widgets/fleet/poller.rb
+2026-10-21T11:29:51.3548034Z   lib/widgets/fleet/state.rb
+2026-10-21T11:29:51.3548303Z   lib/widgets/gatus/manager.rb
+2026-10-21T11:29:51.3548578Z   lib/widgets/http_client.rb
+2026-10-21T11:29:51.3548861Z   lib/widgets/ingressi/renderer.rb
+2026-10-21T11:29:51.3549173Z   lib/widgets/ingressi/renderer/fallback.rb
+2026-10-21T11:29:51.3549510Z   lib/widgets/ingressi/renderer/reconcile.rb
+2026-10-21T11:29:51.3549846Z   lib/widgets/jobs/scheduler.rb
+2026-10-21T11:29:51.3550131Z   lib/widgets/jobs/work_pool.rb
+2026-10-21T11:29:51.3550406Z   lib/widgets/log.rb
+2026-10-21T11:29:51.3550656Z   lib/widgets/mcp/server.rb
+2026-10-21T11:29:51.3551026Z   lib/widgets/mcp/tools/proxy.rb
+2026-10-21T11:29:51.3551320Z   lib/widgets/mcp/tools/requests.rb
+2026-10-21T11:29:51.3551614Z   lib/widgets/mcp/tools/services.rb
+2026-10-21T11:29:51.3551898Z   lib/widgets/mcp/tools/settings.rb
+2026-10-21T11:29:51.3552176Z   lib/widgets/notify.rb
+2026-10-21T11:29:51.3552434Z   lib/widgets/pihole/client.rb
+2026-10-21T11:29:51.3552728Z   lib/widgets/pihole/manager.rb
+2026-10-21T11:29:51.3552996Z   lib/widgets/routes/builder.rb
+2026-10-21T11:29:51.3553276Z   lib/widgets/scan/family_hints.rb
+2026-10-21T11:29:51.3553579Z   lib/widgets/scan/naming_report.rb
+2026-10-21T11:29:51.3553897Z   lib/widgets/scan/proxy_drift.rb
+2026-10-21T11:29:51.3554192Z   lib/widgets/scan/unregistered.rb
+2026-10-21T11:29:51.3554473Z   lib/widgets/threads.rb
+2026-10-21T11:29:51.3554728Z   lib/lifecycle/access.rb
+2026-10-21T11:29:51.3554986Z   lib/lifecycle/adopt.rb
+2026-10-21T11:29:51.3555238Z   lib/lifecycle/deploy.rb
+2026-10-21T11:29:51.3555480Z   lib/lifecycle/hosts.rb
+2026-10-21T11:29:51.3555727Z   lib/lifecycle/logs.rb
+2026-10-21T11:29:51.3555978Z   lib/lifecycle/override.rb
+2026-10-21T11:29:51.3556245Z   lib/lifecycle/patch.rb
+2026-10-21T11:29:51.3556518Z   lib/lifecycle/proxy.rb
+2026-10-21T11:29:51.3556828Z   lib/lifecycle/remove.rb
+2026-10-21T11:29:51.3557099Z   lib/lifecycle/rolling.rb
+2026-10-21T11:29:51.3557371Z   lib/lifecycle/routes.rb
+2026-10-21T11:29:51.3557651Z   lib/lifecycle/settings_forms.rb
+2026-10-21T11:29:51.3557931Z   lib/lifecycle/update.rb
+2026-10-21T11:29:51.3559037Z   models/health_check.rb
+2026-10-21T11:29:51.3559488Z   models/job.rb
+2026-10-21T11:29:51.3559779Z   spec/access_session_spec.rb
+2026-10-21T11:29:51.3560102Z   spec/agent_bootstrap_spec.rb
+2026-10-21T11:29:51.3560419Z   spec/app_spec_helper.rb
+2026-10-21T11:29:51.3560908Z   spec/catalog_fetcher_spec.rb
+2026-10-21T11:29:51.3561220Z   spec/cf_dns_spec.rb
+2026-10-21T11:29:51.3561500Z   spec/cf_fleet_spec.rb
+2026-10-21T11:29:51.3561800Z   spec/cf_sync_gating_spec.rb
+2026-10-21T11:29:51.3562110Z   spec/fleet_events_spec.rb
+2026-10-21T11:29:51.3562414Z   spec/route_builder_spec.rb
+2026-10-21T11:29:51.3562715Z   spec/route_lifecycle_spec.rb
+2026-10-21T11:29:51.3563023Z   spec/spec_helper.rb
+2026-10-21T11:29:51.3563483Z standard: Use Ruby Standard Style (https://github.com/standardrb/standard)
+2026-10-21T11:29:51.3564124Z   app/helpers/web_helpers.rb:143:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3564772Z   app/helpers/web_helpers.rb:151:5: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3565414Z   app/routes/services.rb:138:3: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3566208Z   app/routes/services.rb:140:27: Style/TernaryParentheses: Use parentheses for ternary expressions with complex conditions.
+2026-10-21T11:29:51.3567015Z   lib/widgets/cf/bypass_apps.rb:46:9: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3567908Z   lib/widgets/cf/bypass_apps.rb:58:39: Style/NestedTernaryOperator: Ternary operators must not be nested. Prefer `if` or `else` constructs instead.
+2026-10-21T11:29:51.3568787Z   lib/widgets/cf/bypass_apps.rb:59:11: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3569513Z   lib/widgets/cf/bypass_apps.rb:77:11: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3570374Z   lib/lifecycle/remove.rb:188:43: Style/NestedTernaryOperator: Ternary operators must not be nested. Prefer `if` or `else` constructs instead.
+2026-10-21T11:29:51.3571290Z   lib/lifecycle/tokens.rb:24:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3571917Z   lib/lifecycle/tokens.rb:38:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3572518Z   lib/lifecycle/tokens.rb:45:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3573235Z   spec/widgets_core_spec.rb:69:34: Performance/StringIdentifierArgument: Use `:plain` instead of `"plain"`.
+2026-10-21T11:29:51.3574043Z   spec/widgets_core_spec.rb:72:47: Performance/StringIdentifierArgument: Use `:off` instead of `"off"`.
+2026-10-21T11:29:51.3574673Z standard: Run `standardrb --fix` to fix up to 5 problems.
+2026-10-21T11:29:51.3832747Z ##[error]Process completed with exit code 1.
+﻿2026-10-21T11:29:51.4313104Z Post job cleanup.
+2026-10-21T11:29:51.5490304Z [command]/usr/bin/git version
+2026-10-21T11:29:51.5546470Z git version 2.55.0
+2026-10-21T11:29:51.5642187Z Temporarily overriding HOME='/home/runner/_work/_temp/bb537d57-13d4-4e7c-9ee5-fc16fb93bea8' before making global git config changes
+2026-10-21T11:29:51.5643991Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T11:29:51.5645082Z [command]/usr/bin/git config --global --add safe.directory /home/runner/_work/widgets/widgets
+2026-10-21T11:29:51.5646752Z Removing SSH command configuration
+2026-10-21T11:29:51.5647722Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-21T11:29:51.5675821Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-21T11:29:51.5896799Z Removing HTTP extra header
+2026-10-21T11:29:51.5901125Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-21T11:29:51.5924593Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-21T11:29:51.6033559Z Removing includeIf entries pointing to credentials config files
+2026-10-21T11:29:51.6036961Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-21T11:29:51.6048857Z includeif.gitdir:/home/runner/_work/widgets/widgets/.git.path
+2026-10-21T11:29:51.6049243Z includeif.gitdir:/home/runner/_work/widgets/widgets/.git/worktrees/*.path
+2026-10-21T11:29:51.6049489Z includeif.gitdir:/github/workspace/.git.path
+2026-10-21T11:29:51.6049694Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-21T11:29:51.6053158Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/_work/widgets/widgets/.git.path
+2026-10-21T11:29:51.6063919Z /home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:29:51.6069198Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/_work/widgets/widgets/.git.path \/home\/runner\/_work\/_temp\/git\-credentials\-3d452b91\-3570\-4edb\-95e8\-116e324c2475\.config
+2026-10-21T11:29:51.6084968Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/_work/widgets/widgets/.git/worktrees/*.path
+2026-10-21T11:29:51.6094978Z /home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:29:51.6099559Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/_work/widgets/widgets/.git/worktrees/*.path \/home\/runner\/_work\/_temp\/git\-credentials\-3d452b91\-3570\-4edb\-95e8\-116e324c2475\.config
+2026-10-21T11:29:51.6114683Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-21T11:29:51.6125059Z /github/runner_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:29:51.6128408Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-3d452b91\-3570\-4edb\-95e8\-116e324c2475\.config
+2026-10-21T11:29:51.6147136Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-21T11:29:51.6156931Z /github/runner_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config
+2026-10-21T11:29:51.6159929Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-3d452b91\-3570\-4edb\-95e8\-116e324c2475\.config
+2026-10-21T11:29:51.6176323Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-21T11:29:51.6308971Z Removing credentials config '/home/runner/_work/_temp/git-credentials-3d452b91-3570-4edb-95e8-116e324c2475.config'
+﻿2026-10-21T11:29:51.6413405Z Cleaning up orphan processes

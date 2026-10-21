@@ -263,23 +263,20 @@ export const makeService = (store: { data: FixtureSet }) => ({
 })
 
 /**
- * Job 87 as the job page gets it after the finaliser stored GitHub's per-step files (test/fixtures/job87): every line
- * carries its step, the check run reported two annotations.
+ * Job 87 as the job page gets it after the finaliser stored GitHub's flat job log (test/fixtures/job87): the view
+ * splits it into steps, the check run reported two annotations.
  */
 export async function job87Set(): Promise<FixtureSet> {
-  const { pickJobSteps } = await import('../../src/lib/github/log-archive')
   const { parseGitHubLog } = await import('../../src/lib/joblog')
-  const { job87Details, job87Zip } = await import('../core/job87')
+  const { job87Details, job87Flat } = await import('../core/job87')
   const d = job87Details()
-  const pick = pickJobSteps(job87Zip(), d.name)
-  if (!pick.ok) throw new Error(pick.reason)
-  const lines = pick.steps.flatMap((s) => parseGitHubLog(s.text).map((l) => ({ ...l, step: s.number }))).map((l, i) => ({ seq: i + 1, ...l }))
+  const lines = parseGitHubLog(job87Flat()).map((l, i) => ({ seq: i + 1, ...l }))
   const job: Job = {
     id: 87,
     repo: 'acme/widgets',
     githubJobId: 870,
-    runId: d.runId,
-    name: d.name,
+    runId: 9001,
+    name: 'lint',
     labels: ['self-hosted', 'generic'],
     status: 'completed',
     conclusion: 'failure',

@@ -3,11 +3,9 @@ import { backend } from './backends'
 import { bus } from './bus'
 import { config } from './config'
 import { github } from './github/auth'
-import { MAX_ARCHIVE_BYTES, pickJobSteps } from './github/log-archive'
-import type { JobDetails } from './github/types'
 import { log } from './log'
 import { settings } from './settings'
-import { appendLogLines, deleteLogLines, jobById, jobsWithoutStepLines, jobsWithoutSteps, logLinesAfter, logCursor, runnerById, updateJob, type JobRow, type RunnerRow } from './store'
+import { appendLogLines, deleteLogLines, jobById, jobsWithoutSteps, logCursor, runnerById, updateJob, type JobRow, type RunnerRow } from './store'
 
 // Job log follower: one responsibility — follow a runner container's output, store it in batches,
 // announce each batch on the bus, and when the container exits replace it with GitHub's final log.
@@ -23,34 +21,18 @@ const DEFAULT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 30_000, 60_000]
 export const FINALISE_GRACE_MS = DEFAULT_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) + 30_000
 export const TRUNCATED_NOTICE = (capKb: number) => `[octohatchery] log truncated at ${capKb} KB (setting log_max_kb); the full log is on GitHub`
 
-/**
- * GitHub hands out a run's log archive only once the whole run has finished, so the first job of a run to end gets a
- * 404; the sweep asks again after these waits (≈4 h in total), then this process gives up on the job.
- */
-const DEFAULT_ARCHIVE_DELAYS_MS = [1, 2, 5, 10, 20, 30, 60, 120].map((m) => m * 60_000)
-/**
- * Only jobs that ended this recently are backfilled from the archive: older rows keep the time-and-opener split
- * instead of every restart downloading a month of archives again.
- */
-const ARCHIVE_BACKFILL_WINDOW_MS = 24 * 3600_000
-/** Jobs tracked for a later archive try, at most; the oldest entry goes first. */
-const ARCHIVE_TRIES_MAX = 2000
-
 let retryDelays = DEFAULT_RETRY_DELAYS_MS
 let flushMs = FLUSH_MS
-let archiveDelays = DEFAULT_ARCHIVE_DELAYS_MS
 
 /** Followers in flight on this node, by runner id; the promise settles when finalisation is done. */
 const active = new Map<number, Promise<void>>()
 
 /** Tests only: shorter waits and a clean follower table (followers of a closed database are abandoned). */
-export function configureJobLog(opts: { retryDelaysMs?: number[]; flushMs?: number; archiveDelaysMs?: number[] } = {}): void {
+export function configureJobLog(opts: { retryDelaysMs?: number[]; flushMs?: number } = {}): void {
   retryDelays = opts.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
   flushMs = opts.flushMs ?? FLUSH_MS
   active.clear()
   backfilled.clear()
-  archiveTries.clear()
-  archiveDelays = opts.archiveDelaysMs ?? DEFAULT_ARCHIVE_DELAYS_MS
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -172,60 +154,20 @@ async function follow(runnerId: number, jobId: number, containerId: string, runn
 }
 
 /**
- * Asks GitHub for `job` and stores the steps it reports (authoritative timestamps, the webhook's copy may be older or
- * missing). A failure is logged and swallowed: steps are a reading aid, never a reason to lose the log. Returns the
- * details (they also locate the job in its run's log archive), or null when the call failed.
+ * Stores the steps GitHub reports for `job` (authoritative timestamps, the webhook's copy may be older or missing).
+ * A failure is logged and swallowed: steps are a reading aid, never a reason to lose the log. Returns true when stored.
  */
-async function fetchDetails(job: Pick<JobRow, 'id' | 'repo' | 'githubJobId'>): Promise<JobDetails | null> {
+export async function storeSteps(job: Pick<JobRow, 'id' | 'repo' | 'githubJobId'>): Promise<boolean> {
   try {
     const details = await github().getJob(job.repo, job.githubJobId)
-    if (details.steps.length) {
-      await updateJob(job.id, { steps: details.steps })
-      logger.debug(`job ${job.id} (${job.repo}#${job.githubJobId}): stored ${details.steps.length} steps`)
-    }
-    return details
+    if (!details.steps.length) return false
+    await updateJob(job.id, { steps: details.steps })
+    logger.debug(`job ${job.id} (${job.repo}#${job.githubJobId}): stored ${details.steps.length} steps`)
+    return true
   } catch (err) {
     logger.warn(`job ${job.id} (${job.repo}#${job.githubJobId}): steps not fetched`, err instanceof Error ? err.message : String(err))
-    return null
+    return false
   }
-}
-
-/** Stores the steps GitHub reports for `job`; true when there were steps to store. */
-export async function storeSteps(job: Pick<JobRow, 'id' | 'repo' | 'githubJobId'>): Promise<boolean> {
-  return Boolean((await fetchDetails(job))?.steps.length)
-}
-
-export type StepLine = { at: string; line: string; step: number }
-
-/**
- * The job's lines from GitHub's run-attempt archive, one file per step, each line carrying its step number. `flatLog`
- * (GitHub's job log, or the stored lines) settles which folder is the job's when its name does not. Null when the
- * archive is not available (404 while other jobs of the run still run, or expired), not readable or holds no folder
- * for the job: the reason is logged and the caller keeps the flat log and the timestamp split.
- */
-export async function archiveLines(job: Pick<JobRow, 'id' | 'repo' | 'githubJobId'>, details: Pick<JobDetails, 'runId' | 'runAttempt' | 'name'>, flatLog?: string): Promise<{ lines: StepLine[] } | { lines: null; retry: boolean }> {
-  const where = `job ${job.id} (${job.repo}#${job.githubJobId}, run ${details.runId} attempt ${details.runAttempt})`
-  let zip: Uint8Array
-  try {
-    zip = await github().getRunAttemptLogs(job.repo, details.runId, details.runAttempt, MAX_ARCHIVE_BYTES)
-  } catch (err) {
-    const status = (err as { status?: number }).status
-    logger.info(`${where}: step logs not available${status === 404 ? ' yet (the run is still going, or its logs expired)' : ''}: ${err instanceof Error ? err.message : String(err)}`)
-    return { lines: null, retry: true }
-  }
-  const pick = pickJobSteps(zip, details.name, flatLog)
-  if (!pick.ok) {
-    // The same archive gives the same answer: not asked again by this process.
-    logger.info(`${where}: step logs not used, the view splits the job log by time and step openers: ${pick.reason}`)
-    return { lines: null, retry: false }
-  }
-  const lines = pick.steps.flatMap((s) => parseGitHubLog(s.text).map((l) => ({ ...l, step: s.number })))
-  if (!lines.length) {
-    logger.info(`${where}: folder "${pick.folder}" holds no lines, the view splits the job log by time and step openers`)
-    return { lines: null, retry: false }
-  }
-  logger.debug(`${where}: ${lines.length} lines in ${pick.steps.length} step files of "${pick.folder}"`)
-  return { lines }
 }
 
 /** Fetches and stores the job's check-run annotations; a failure is logged and leaves what is stored. */
@@ -243,68 +185,6 @@ export async function storeAnnotations(job: Pick<JobRow, 'id' | 'repo' | 'github
 
 /** Annotations kept per job; GitHub itself caps them per step, a job rarely carries more. */
 const ANNOTATIONS_MAX = 50
-
-/** Jobs waiting for their run's archive: when to ask next, how often it was asked, where the job sits in the run. */
-const archiveTries = new Map<number, { tries: number; nextAt: number; details: Pick<JobDetails, 'runId' | 'runAttempt' | 'name'> | null }>()
-
-/** Schedules the next archive try for `jobId`; `retry: false` or used-up waits leave the job alone for this process. */
-function scheduleArchiveTry(jobId: number, details: Pick<JobDetails, 'runId' | 'runAttempt' | 'name'> | null, nowMs = Date.now(), retry = true): void {
-  const tries = (archiveTries.get(jobId)?.tries ?? 0) + 1
-  const delay = retry ? archiveDelays[tries - 1] : undefined
-  archiveTries.delete(jobId)
-  if (delay === undefined) {
-    archiveTries.set(jobId, { tries, nextAt: Number.POSITIVE_INFINITY, details })
-    return
-  }
-  archiveTries.set(jobId, { tries, nextAt: nowMs + delay, details })
-  while (archiveTries.size > ARCHIVE_TRIES_MAX) archiveTries.delete(archiveTries.keys().next().value!)
-}
-
-/** A stored log as text again, one line per row: what the archive's folders are compared with. */
-async function storedText(jobId: number): Promise<string> {
-  const out: string[] = []
-  for (let after = 0; ; ) {
-    const page = await logLinesAfter(jobId, after, 5000)
-    if (!page.length) break
-    for (const l of page) out.push(l.line)
-    after = page[page.length - 1]!.seq
-  }
-  return out.join('\n')
-}
-
-/**
- * Jobs that ended in the last 24 hours and whose stored GitHub log has no step numbers yet: fetches the run's
- * archive and replaces the lines with the per-step ones (annotations too when none are stored). At most `max` jobs
- * per pass; a job whose archive is not there yet (404 while other jobs of the run still run) is asked again after the
- * archive waits; one whose archive holds no step files for it is left alone by this process.
- */
-export async function backfillStepLines(max = 5, nowMs = Date.now()): Promise<number> {
-  let n = 0
-  let tried = 0
-  for (const job of await jobsWithoutStepLines(max + archiveTries.size, new Date(nowMs - ARCHIVE_BACKFILL_WINDOW_MS).toISOString())) {
-    if (tried >= max) break
-    const seen = archiveTries.get(job.id)
-    if (seen && seen.nextAt > nowMs) continue
-    tried++
-    const details = seen?.details ?? (await fetchDetails(job))
-    if (!details) {
-      scheduleArchiveTry(job.id, null, nowMs)
-      continue
-    }
-    const out = await archiveLines(job, details, await storedText(job.id))
-    if (!out.lines) {
-      scheduleArchiveTry(job.id, details, nowMs, out.retry)
-      continue
-    }
-    archiveTries.delete(job.id)
-    if (!job.annotations.length) await storeAnnotations(job)
-    const fresh = await jobById(job.id)
-    if (fresh) await replaceWithGitHubLog(fresh, out.lines)
-    n++
-  }
-  if (n) logger.info(`backfilled step logs for ${n} job(s)`)
-  return n
-}
 
 /** Jobs this process already asked GitHub about (bounded by the rows the retention window holds). */
 const backfilled = new Set<number>()
@@ -328,24 +208,20 @@ export async function backfillSteps(max = 5): Promise<number> {
 }
 
 /**
- * Replaces the live lines with GitHub's log: the per-step files of the run's archive when GitHub hands them out (each
- * line knows its step), else the job's flat log (the view splits it by timestamp). After the retry budget the live
- * lines stay and the source is marked `runner`.
+ * Replaces the live lines with GitHub's flat job log (the view splits it into steps by time and step openers) and
+ * stores the job's annotations. After the retry budget the live lines stay and the source is marked `runner`.
  */
 export async function finalise(job: JobRow): Promise<void> {
-  const details = await fetchDetails(job)
-  /** Per-step lines, fetched once the flat log is there (it settles an ambiguous folder); null = not available. */
-  let stepped: StepLine[] | null | undefined
+  await storeSteps(job)
+  let annotated = false
   for (let attempt = 0; ; attempt++) {
     try {
       const text = await github().getJobLog(job.repo, job.githubJobId)
-      if (stepped === undefined) {
-        const out = details ? await archiveLines(job, details, text) : { lines: null, retry: true }
-        stepped = out.lines
-        if (!out.lines) scheduleArchiveTry(job.id, details, Date.now(), out.retry)
+      if (!annotated) {
+        annotated = true
         await storeAnnotations(job)
       }
-      await replaceWithGitHubLog(job, stepped ?? parseGitHubLog(text))
+      await replaceWithGitHubLog(job, parseGitHubLog(text))
       return
     } catch (err) {
       const status = (err as { status?: number }).status
@@ -385,17 +261,17 @@ export function parseGitHubLog(text: string): { at: string; line: string }[] {
 }
 
 /** Stores `lines` (capped by `log_max_kb`) in place of the job's lines in one transaction and marks the source `github`. */
-async function replaceWithGitHubLog(job: JobRow, lines: { at: string; line: string; step?: number }[]): Promise<void> {
+async function replaceWithGitHubLog(job: JobRow, lines: { at: string; line: string }[]): Promise<void> {
   const capKb = await settings.fetchInt('log_max_kb', 2048)
   const cap = capKb * KB
-  const keep: { at: string; line: string; step?: number }[] = []
+  const keep: { at: string; line: string }[] = []
   let bytes = 0
   let truncated = false
   for (const l of lines) {
     const size = byteLength(l.line)
     if (bytes + size > cap) {
       truncated = true
-      keep.push({ at: l.at, line: TRUNCATED_NOTICE(capKb), step: l.step })
+      keep.push({ at: l.at, line: TRUNCATED_NOTICE(capKb) })
       break
     }
     bytes += size
@@ -407,7 +283,6 @@ async function replaceWithGitHubLog(job: JobRow, lines: { at: string; line: stri
     for (let i = 0; i < keep.length; i += 500) await appendLogLines(job.id, i + 1, keep.slice(i, i + 500), tx)
     await updateJob(job.id, { logSource: 'github', logBytes: bytes, logTruncated: truncated }, tx, { silent: true })
   })
-  const steps = new Set(keep.map((l) => l.step).filter((n) => n !== undefined)).size
-  logger.info(`job ${job.id} (${job.repo}#${job.githubJobId}): stored GitHub log, ${keep.length} lines${steps ? ` in ${steps} step files` : ' (flat)'}, ${Math.round(bytes / KB)} KB${truncated ? ', truncated' : ''}`)
+  logger.info(`job ${job.id} (${job.repo}#${job.githubJobId}): stored GitHub log, ${keep.length} lines, ${Math.round(bytes / KB)} KB${truncated ? ', truncated' : ''}`)
   bus.emit('log', { jobId: job.id, lines: [], done: true, replaced: true })
 }

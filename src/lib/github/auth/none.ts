@@ -15,8 +15,6 @@ export type FakeGitHub = GitHubClient & {
   jobLogs: Map<string, string>
   /** `repo#githubJobId` → job details; a missing entry answers a deterministic two-step job built from the log's timestamps. */
   jobDetails: Map<string, JobDetails>
-  /** `repo#runId#attempt` → zip bytes of the run attempt's log archive; a missing entry answers 404 (expired logs). */
-  runArchives: Map<string, Uint8Array>
   /** `repo#githubJobId` → the job's check-run annotations; a missing entry answers an empty list. */
   annotations: Map<string, JobAnnotation[]>
   /** Branches created by `createBranch` and not yet deleted (`repo:name`). */
@@ -46,7 +44,6 @@ export function createFakeGitHub(): FakeGitHub {
   const busyRunners = new Set<number>()
   const jobLogs = new Map<string, string>()
   const jobDetails = new Map<string, JobDetails>()
-  const runArchives = new Map<string, Uint8Array>()
   const annotations = new Map<string, JobAnnotation[]>()
   const branches = new Set<string>()
   const failOn = new Map<string, string>()
@@ -75,7 +72,6 @@ export function createFakeGitHub(): FakeGitHub {
     busyRunners,
     jobLogs,
     jobDetails,
-    runArchives,
     annotations,
     branches,
     failOn,
@@ -187,15 +183,6 @@ export function createFakeGitHub(): FakeGitHub {
       if (failOn.has('getJob')) throw Object.assign(new Error(failOn.get('getJob')), { status: 403 })
       return jobDetails.get(`${repo}#${githubJobId}`) ?? fakeJobDetails()
     },
-    async getRunAttemptLogs(repo, runId, attempt, maxBytes) {
-      await via(this, 'getRunAttemptLogs', repo)
-      rec('getRunAttemptLogs', repo, runId, attempt)
-      if (failOn.has('getRunAttemptLogs')) throw Object.assign(new Error(failOn.get('getRunAttemptLogs')), { status: 403 })
-      const zip = runArchives.get(`${repo}#${runId}#${attempt}`)
-      if (!zip) throw Object.assign(new Error(`Not Found: logs of run ${runId} attempt ${attempt}`), { status: 404 })
-      if (zip.byteLength > maxBytes) throw new Error(`run ${runId} attempt ${attempt} logs: over the ${maxBytes} byte cap`)
-      return zip
-    },
     async listJobAnnotations(repo, githubJobId, max = 50) {
       await via(this, 'listJobAnnotations', repo)
       rec('listJobAnnotations', repo, githubJobId)
@@ -216,9 +203,6 @@ export function fakeJobDetails(): JobDetails {
     conclusion: 'success',
     startedAt: '2026-01-01T00:00:00Z',
     completedAt: '2026-01-01T00:02:00Z',
-    runId: 1,
-    runAttempt: 1,
-    name: 'build',
     steps: [
       { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:01:00Z' },
       { number: 2, name: 'Run tests', status: 'completed', conclusion: 'success', startedAt: '2026-01-01T00:01:00Z', completedAt: '2026-01-01T00:02:00Z' },
