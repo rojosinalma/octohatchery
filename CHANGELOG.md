@@ -4,6 +4,8 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
 ### Added
 
 - Octoforge member contract v1 ([docs/octoforge.md](docs/octoforge.md)): `octoforge.json` at the repository root, and with the new `OCTOFORGE_TOKEN` the routes `GET /api/octoforge/manifest`, `GET /api/octoforge/status`, `PUT`/`DELETE /api/octoforge/github`, `POST /api/octoforge/database/adopt` and `DELETE /api/octoforge/database`. Every route except the manifest needs the token as a bearer. Without `OCTOFORGE_TOKEN` nothing changes.
@@ -89,5 +91,6 @@ First scaffold.
 - Runner image `ghcr.io/rojosinalma/octohatchery-runner` based on GitHub's `actions-runner`, with `gh`, Docker CLI and buildx, git-lfs, jq, curl and unzip, plus a `buildkitd` sidecar in the compose file for container builds inside jobs.
 - Audit log (`events`) and retention purge for finished jobs, runners and events.
 
-[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.1.0
