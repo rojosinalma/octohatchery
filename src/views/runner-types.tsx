@@ -654,8 +654,8 @@ const TypeDialog = ({
               placeholder="/srv/cache:/cache:ro"
             ></textarea>
             <p class="t-hint">
-              One <code>src:dst[:ro]</code> per line. The tool cache volume is
-              mounted on every runner anyway.
+              One <code>src:dst[:ro]</code> per line. Tools come baked into the
+              runner image, so no tool cache mount is needed.
             </p>
           </div>
           <div class="t-field" data-span="12">

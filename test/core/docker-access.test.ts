@@ -20,8 +20,8 @@ describe('runner docker access', () => {
   })
 
   test('mounts: the socket is added only for socket types', () => {
-    expect(runnerMounts({ ...base, id: 1, createdAt: '', updatedAt: '' }, '/var/run/docker.sock')).toEqual(['octohatchery-tool-cache:/opt/hostedtoolcache'])
-    expect(runnerMounts({ ...base, id: 1, createdAt: '', updatedAt: '', docker: 'socket' }, '/run/docker.sock')).toEqual(['octohatchery-tool-cache:/opt/hostedtoolcache', '/run/docker.sock:/var/run/docker.sock'])
+    expect(runnerMounts({ ...base, id: 1, createdAt: '', updatedAt: '' }, '/var/run/docker.sock')).toEqual([])
+    expect(runnerMounts({ ...base, id: 1, createdAt: '', updatedAt: '', docker: 'socket' }, '/run/docker.sock')).toEqual(['/run/docker.sock:/var/run/docker.sock'])
   })
 
   test('upsert validates and stores the option; default none; the seeded types stay none', async () => {

@@ -51,7 +51,8 @@ describe('scheduler', () => {
     const input = w.docker.spawns[0]!
     expect(input.env.RUNNER_TOOL_CACHE).toBe('/opt/hostedtoolcache')
     expect(input.env.BUILDKIT_HOST).toBe('tcp://octohatchery-buildkitd:1234')
-    expect(input.mounts[0]).toBe('octohatchery-tool-cache:/opt/hostedtoolcache')
+    // tools are baked into the image; a shared volume there would hide them and let concurrent jobs race
+    expect(input.mounts).toEqual([])
     expect(input.jitconfig).toStartWith('fake-jit-')
     expect(w.github.calls.find((c) => c.method === 'createJitConfig')?.args[0]).toMatchObject({ repo: 'acme/app', labels: ['self-hosted', 'generic', TEST_HOST] })
 
