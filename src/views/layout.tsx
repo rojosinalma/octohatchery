@@ -1,7 +1,7 @@
 import { type PropsWithChildren } from '@kitajs/html'
 import type { GitHubStatus } from '../lib/github/permissions'
 import type { Switcher } from '../lib/octoforge/siblings'
-import { BrandMark, Icon, RelTime } from './parts'
+import { BrandMark, Icon } from './parts'
 
 export type NavKey = 'overview' | 'repos' | 'jobs' | 'templates' | 'hosts' | 'events' | 'settings'
 
@@ -60,17 +60,6 @@ export const MemberSwitcher = ({ siblings }: { siblings?: Switcher }) => {
             </a>
           </li>
         ))}
-        {siblings.staleSince ? (
-          <>
-            <li class="t-menu-divider"></li>
-            <li class="t-menu-desc member-stale" id="member-switcher-stale">
-              <Icon id="bi-exclamation-triangle" size="xs" />
-              <span>
-                Octoforge has not updated this list since <RelTime at={siblings.staleSince} />
-              </span>
-            </li>
-          </>
-        ) : null}
       </ul>
     </details>
   )

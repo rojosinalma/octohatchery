@@ -146,8 +146,8 @@ export const SETTING_GROUPS: Group[] = [
     items: [
       {
         key: 'siblings_stale_minutes',
-        label: 'Member list counts as old after',
-        help: 'Octoforge resends the list of its tools every hour. When no list arrives for this long, the switcher in the navbar keeps its links and says the list is old. 0 never marks it.',
+        label: 'Hide the member switcher after',
+        help: 'Octoforge resends the list of its tools every hour. When the newest list is older than this, Octoforge counts as gone and the switcher in the navbar is hidden until the next list arrives. 0 never hides it.',
         control: { kind: 'duration', scale: 60 },
         default: '180',
       },
