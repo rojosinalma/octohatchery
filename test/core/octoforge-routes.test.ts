@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { sign } from '@octokit/webhooks-methods'
 import { generateKeyPairSync } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { Elysia } from 'elysia'
 import { fresh } from './helpers'
 import manifestFile from '../../octoforge.json'
 import appManifest from '../../docs/github-app-manifest.json'
-import { ConfigError, loadConfig } from '../../src/lib/config'
+import { ConfigError, config, loadConfig } from '../../src/lib/config'
 import { github, setGitHub } from '../../src/lib/github/auth'
 import { githubCredential } from '../../src/lib/github/credential'
 import { refreshGitHubCredential, setGitHubVerifier } from '../../src/lib/octoforge/github'
@@ -287,6 +288,8 @@ describe('octoforge routes', () => {
   test('database routes: adopt and drop answer {ok}, never echo the url', async () => {
     await world()
     const a = app()
+    // DELETE removes DATA_DIR/octoforge-database.json; on a live node that is the adopted database.
+    expect(config().dataDir).toStartWith(tmpdir())
     const url = 'postgres://octohatchery:s3cret-pass@db.invalid:5432/forge'
     const r = await call(a, 'POST', '/api/octoforge/database/adopt', { url, schema: 'octohatchery', copy: false }, AUTH)
     expect(typeof r.json.ok).toBe('boolean')

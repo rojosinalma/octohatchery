@@ -1,4 +1,7 @@
 // Shared test bootstrap: fake GitHub, fake containers, SQLite in memory. Import this first in every core test.
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { closeDb, connectDb, type Db } from '../../src/db'
 import { setBackend, backend } from '../../src/lib/backends'
 import { createFakeBackend, type FakeBackend } from '../../src/lib/backends/fake'
@@ -15,7 +18,13 @@ import { resetReconciled } from '../../src/lib/sweep'
 
 export const TEST_HOST = 'node-a'
 
+// Tests never touch the real DATA_DIR: bin/verify runs them inside a live container, where ./data holds the
+// adopted database file.
+const TEST_DATA_DIR = mkdtempSync(join(tmpdir(), 'octohatchery-test-'))
+process.on('exit', () => rmSync(TEST_DATA_DIR, { recursive: true, force: true }))
+
 export const TEST_ENV: Record<string, string> = {
+  DATA_DIR: TEST_DATA_DIR,
   GITHUB_AUTH: 'none',
   CONTAINER_BACKEND: 'fake',
   DATABASE_URL: 'sqlite::memory:',
