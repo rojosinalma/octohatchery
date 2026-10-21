@@ -8,7 +8,7 @@ import { db } from '../../src/db'
 import { toRunnerType } from '../../src/db/rows'
 import { runnerContainerOptions } from '../../src/lib/backends/docker'
 import { service } from '../../src/lib/service'
-import { ROOT_USER, runnerUser } from '../../src/lib/spawn'
+import { ROOT_USER, runnerEnv, runnerUser } from '../../src/lib/spawn'
 import { api } from '../../src/routes/api'
 import type { RunnerType } from '../../src/lib/types'
 
@@ -86,5 +86,11 @@ describe('runner type run_as', () => {
     expect(r.status).toBe(400)
     r = await call('GET', '/api/runner-types')
     expect(r.json.runnerTypes.every((t: RunnerType) => t.runAs === 'image')).toBe(true)
+  })
+  test('a root template tells the Actions runner it may run as root; the image user does not', async () => {
+    await fresh()
+    const t = { ...base, id: 1, createdAt: '', updatedAt: '' }
+    expect((await runnerEnv({ ...t, runAs: 'root' }, {})).RUNNER_ALLOW_RUNASROOT).toBe('1')
+    expect((await runnerEnv(t, {})).RUNNER_ALLOW_RUNASROOT).toBeUndefined()
   })
 })

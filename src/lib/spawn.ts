@@ -66,6 +66,8 @@ export async function runnerEnv(type: RunnerType, env: Record<string, string | u
     BUILDKIT_HOST: await settings.fetch('buildkit_host', 'tcp://octohatchery-buildkitd:1234'),
     ...type.env,
   }
+  // The Actions runner refuses to start as root unless told it may.
+  if (type.runAs === 'root') out.RUNNER_ALLOW_RUNASROOT = '1'
   const missing = type.secretEnv.filter((name) => !env[name])
   if (missing.length) throw new Error(`runner type "${type.name}" needs ${missing.join(', ')} in this node's environment`)
   for (const name of type.secretEnv) out[name] = env[name]!
