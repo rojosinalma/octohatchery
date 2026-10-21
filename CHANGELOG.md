@@ -4,6 +4,16 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Added
+
+- Job page, GitHub's log viewer and more: line numbers that restart in every step, each a link to its line (`/jobs/87#step-4-12` opens the step and marks the line); a **Show timestamps** toggle (off by default, remembered by the browser); ANSI colours, bold, italic and underline mapped to the palette; `##[error]`, `##[warning]`, `##[notice]` and `##[debug]` lines with an icon and the word instead of the marker; error and warning counts on every step row; a failed job opens on its first error line; a search box that highlights, counts and walks the matches in the open steps.
+- Job annotations: the check run's errors and warnings (exit code, linter findings with file and line) are stored when a job ends (`jobs.annotations`, migration `0007_job_log_step`) and listed above the steps, each linked to its line in the log. The GitHub App needs the new **Checks: read** permission for them; without it the list stays empty and nothing else changes.
+- Per-step log lines: when the run's log archive (`GET /repos/{o}/{r}/actions/runs/{id}/attempts/{n}/logs`) holds one file per step, the finaliser stores the job's lines from those files and each line keeps its step (`job_logs.step`, same migration); `GET /api/jobs/:id/log` and the log stream carry `step` on those lines. The sweep asks again for runs that were still going and for jobs from the last 24 hours. New dependency: `fflate` (zip reader).
+
+### Changed
+
+- Job page: lines without a step from GitHub are placed by time without going back to an earlier step, and inside the second a step started they stay with the step before until that step's first line (`##[group]Run …`, `Post job cleanup.`, `Cleaning up orphan processes`). Output a step printed in the same second the next steps started (a linter's findings and its `##[error]`, for example) now sits under that step instead of under "Complete job". The gutter shows the line number instead of the time since the job started; **Copy** copies the text without numbers and times.
+
 ## [0.2.1] - 2026-10-21
 
 ### Added

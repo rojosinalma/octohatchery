@@ -1,0 +1,96 @@
+﻿2026-10-21T11:29:36.4368823Z ##[group]Run bundle exec standardrb
+2026-10-21T11:29:36.4369308Z [36;1mbundle exec standardrb[0m
+2026-10-21T11:29:36.4393911Z shell: /usr/bin/bash -e {0}
+2026-10-21T11:29:36.4394321Z ##[endgroup]
+2026-10-21T11:29:51.3539739Z WARNING: this project is being migrated to standard gradually via `/home/runner/_work/widgets/widgets/.standard_todo.yml` and is ignoring these files:
+2026-10-21T11:29:51.3540684Z   agent/lib/part_01.rb
+2026-10-21T11:29:51.3541066Z   agent/lib/part_02.rb
+2026-10-21T11:29:51.3541340Z   app/routes/route_04.rb
+2026-10-21T11:29:51.3541578Z   app/routes/route_05.rb
+2026-10-21T11:29:51.3541835Z   app/routes/route_06.rb
+2026-10-21T11:29:51.3542087Z   app/routes/route_07.rb
+2026-10-21T11:29:51.3542359Z   db/migrations/006_schema_cleanup_v90.rb
+2026-10-21T11:29:51.3542684Z   lib/widgets/part_23.rb
+2026-10-21T11:29:51.3542980Z   lib/widgets/part_24.rb
+2026-10-21T11:29:51.3543271Z   lib/widgets/part_25.rb
+2026-10-21T11:29:51.3543602Z   lib/widgets/part_26.rb
+2026-10-21T11:29:51.3544069Z   lib/widgets/part_27.rb
+2026-10-21T11:29:51.3544358Z   lib/widgets/part_28.rb
+2026-10-21T11:29:51.3544638Z   lib/widgets/part_30.rb
+2026-10-21T11:29:51.3544894Z   lib/widgets/part_31.rb
+2026-10-21T11:29:51.3545192Z   lib/widgets/part_32.rb
+2026-10-21T11:29:51.3545464Z   lib/widgets/part_33.rb
+2026-10-21T11:29:51.3545728Z   lib/widgets/part_34.rb
+2026-10-21T11:29:51.3545998Z   lib/widgets/part_35.rb
+2026-10-21T11:29:51.3546291Z   lib/widgets/part_36.rb
+2026-10-21T11:29:51.3546593Z   lib/widgets/part_37.rb
+2026-10-21T11:29:51.3546888Z   lib/widgets/part_38.rb
+2026-10-21T11:29:51.3547185Z   lib/widgets/part_39.rb
+2026-10-21T11:29:51.3547481Z   lib/widgets/part_40.rb
+2026-10-21T11:29:51.3547766Z   lib/widgets/part_41.rb
+2026-10-21T11:29:51.3548034Z   lib/widgets/part_42.rb
+2026-10-21T11:29:51.3548303Z   lib/widgets/part_43.rb
+2026-10-21T11:29:51.3548578Z   lib/widgets/part_44.rb
+2026-10-21T11:29:51.3548861Z   lib/widgets/part_45.rb
+2026-10-21T11:29:51.3549173Z   lib/widgets/part_46.rb
+2026-10-21T11:29:51.3549510Z   lib/widgets/part_47.rb
+2026-10-21T11:29:51.3549846Z   lib/widgets/part_48.rb
+2026-10-21T11:29:51.3550131Z   lib/widgets/part_49.rb
+2026-10-21T11:29:51.3550406Z   lib/widgets/part_50.rb
+2026-10-21T11:29:51.3550656Z   lib/widgets/part_51.rb
+2026-10-21T11:29:51.3551026Z   lib/widgets/part_52.rb
+2026-10-21T11:29:51.3551320Z   lib/widgets/part_53.rb
+2026-10-21T11:29:51.3551614Z   lib/widgets/part_54.rb
+2026-10-21T11:29:51.3551898Z   lib/widgets/part_55.rb
+2026-10-21T11:29:51.3552176Z   lib/widgets/part_56.rb
+2026-10-21T11:29:51.3552434Z   lib/widgets/part_57.rb
+2026-10-21T11:29:51.3552728Z   lib/widgets/part_58.rb
+2026-10-21T11:29:51.3552996Z   lib/widgets/part_59.rb
+2026-10-21T11:29:51.3553276Z   lib/widgets/part_60.rb
+2026-10-21T11:29:51.3553579Z   lib/widgets/part_61.rb
+2026-10-21T11:29:51.3553897Z   lib/widgets/part_62.rb
+2026-10-21T11:29:51.3554192Z   lib/widgets/part_63.rb
+2026-10-21T11:29:51.3554473Z   lib/widgets/part_64.rb
+2026-10-21T11:29:51.3554728Z   lib/widgets/part_09.rb
+2026-10-21T11:29:51.3554986Z   lib/widgets/part_10.rb
+2026-10-21T11:29:51.3555238Z   lib/widgets/part_11.rb
+2026-10-21T11:29:51.3555480Z   lib/widgets/part_12.rb
+2026-10-21T11:29:51.3555727Z   lib/widgets/part_13.rb
+2026-10-21T11:29:51.3555978Z   lib/widgets/part_14.rb
+2026-10-21T11:29:51.3556245Z   lib/widgets/part_15.rb
+2026-10-21T11:29:51.3556518Z   lib/widgets/part_16.rb
+2026-10-21T11:29:51.3556828Z   lib/widgets/part_17.rb
+2026-10-21T11:29:51.3557099Z   lib/widgets/part_18.rb
+2026-10-21T11:29:51.3557371Z   lib/widgets/part_19.rb
+2026-10-21T11:29:51.3557651Z   lib/widgets/part_20.rb
+2026-10-21T11:29:51.3557931Z   lib/widgets/part_22.rb
+2026-10-21T11:29:51.3559037Z   models/model_65.rb
+2026-10-21T11:29:51.3559488Z   models/model_66.rb
+2026-10-21T11:29:51.3559779Z   spec/unit_67_spec.rb
+2026-10-21T11:29:51.3560102Z   spec/unit_68_spec.rb
+2026-10-21T11:29:51.3560419Z   spec/unit_69_spec.rb
+2026-10-21T11:29:51.3560908Z   spec/unit_70_spec.rb
+2026-10-21T11:29:51.3561220Z   spec/unit_71_spec.rb
+2026-10-21T11:29:51.3561500Z   spec/unit_72_spec.rb
+2026-10-21T11:29:51.3561800Z   spec/unit_73_spec.rb
+2026-10-21T11:29:51.3562110Z   spec/unit_74_spec.rb
+2026-10-21T11:29:51.3562414Z   spec/unit_75_spec.rb
+2026-10-21T11:29:51.3562715Z   spec/unit_76_spec.rb
+2026-10-21T11:29:51.3563023Z   spec/unit_77_spec.rb
+2026-10-21T11:29:51.3563483Z standard: Use Ruby Standard Style (https://github.com/standardrb/standard)
+2026-10-21T11:29:51.3564124Z   app/helpers/helper_03.rb:143:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3564772Z   app/helpers/helper_03.rb:151:5: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3565414Z   app/routes/route_08.rb:138:3: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3566208Z   app/routes/route_08.rb:140:27: Style/TernaryParentheses: Use parentheses for ternary expressions with complex conditions.
+2026-10-21T11:29:51.3567015Z   lib/widgets/part_29.rb:46:9: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3567908Z   lib/widgets/part_29.rb:58:39: Style/NestedTernaryOperator: Ternary operators must not be nested. Prefer `if` or `else` constructs instead.
+2026-10-21T11:29:51.3568787Z   lib/widgets/part_29.rb:59:11: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3569513Z   lib/widgets/part_29.rb:77:11: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3570374Z   lib/widgets/part_17.rb:188:43: Style/NestedTernaryOperator: Ternary operators must not be nested. Prefer `if` or `else` constructs instead.
+2026-10-21T11:29:51.3571290Z   lib/widgets/part_21.rb:24:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3571917Z   lib/widgets/part_21.rb:38:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3572518Z   lib/widgets/part_21.rb:45:7: Style/GlobalVars: Do not introduce global variables.
+2026-10-21T11:29:51.3573235Z   spec/unit_78_spec.rb:69:34: Performance/StringIdentifierArgument: Use `:plain` instead of `"plain"`.
+2026-10-21T11:29:51.3574043Z   spec/unit_78_spec.rb:72:47: Performance/StringIdentifierArgument: Use `:off` instead of `"off"`.
+2026-10-21T11:29:51.3574673Z standard: Run `standardrb --fix` to fix up to 5 problems.
+2026-10-21T11:29:51.3832747Z ##[error]Process completed with exit code 1.

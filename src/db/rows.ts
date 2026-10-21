@@ -1,4 +1,4 @@
-import { RUNNER_DOCKER_OPTIONS, RUNNER_RUN_AS_OPTIONS, type Event, type Host, type HostImage, type ImagePull, type ImagePullStatus, type Job, type JobStatus, type JobStep, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerRunAs, type RunnerState, type RunnerType } from '../lib/types'
+import { RUNNER_DOCKER_OPTIONS, RUNNER_RUN_AS_OPTIONS, type Event, type Host, type HostImage, type ImagePull, type ImagePullStatus, type Job, type JobStatus, type JobAnnotation, type JobStep, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerRunAs, type RunnerState, type RunnerType } from '../lib/types'
 import type { Row } from './driver'
 
 // Row → domain mappers. SQLite returns booleans as 0/1 and JSON as text; Postgres returns booleans natively.
@@ -98,11 +98,15 @@ export function toJob(r: Row): Job & { retries: number } {
     logBytes: num(r.log_bytes ?? 0),
     logTruncated: bool(r.log_truncated),
     steps: json<JobStep[]>(r.steps, []).filter((s) => s && typeof s === 'object'),
+    annotations: json<JobAnnotation[]>(r.annotations, []).filter((a) => a && typeof a === 'object'),
   }
 }
 
 export function toLogLine(r: Row): LogLine {
-  return { seq: num(r.seq), at: str(r.at), line: str(r.line) }
+  const out: LogLine = { seq: num(r.seq), at: str(r.at), line: str(r.line) }
+  const step = numOrNull(r.step)
+  if (step !== null) out.step = step
+  return out
 }
 
 export function toRunner(r: Row): Runner & { githubRunnerId: number | null } {

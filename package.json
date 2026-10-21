@@ -6,7 +6,7 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "test": "for d in test/*/; do bun test \"$d\" || exit 1; done",
+    "test": "for d in test/*/; do ls \"$d\"*.test.ts >/dev/null 2>&1 || continue; bun test \"$d\" || exit 1; done",
     "db:generate": "drizzle-kit generate",
     "verify": "bin/verify"
   },
@@ -27,6 +27,7 @@
     "dockerode": "5.0.1",
     "drizzle-orm": "0.45.4",
     "elysia": "1.4.30",
+    "fflate": "0.8.3",
     "postgres": "3.4.9",
     "prom-client": "15.1.3",
     "zod": "4.6.7"

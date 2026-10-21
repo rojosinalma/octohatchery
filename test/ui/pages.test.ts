@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { empty, full, githubMulti, githubOk, githubStatus, makeService, type FixtureSet } from './fixtures'
+import { empty, full, githubMulti, githubOk, githubStatus, job87Set, makeService, type FixtureSet } from './fixtures'
 
 const store: { data: FixtureSet } = { data: full }
 mock.module('../../src/lib/service', () => ({ service: makeService(store) }))
@@ -368,17 +368,19 @@ describe('job page', () => {
     expect(body).toContain('data-action="log-follow" aria-pressed="true"')
     expect(body).toContain('data-action="log-copy"')
     expect(body).toContain('class="log-text">##[group]Run &lt;script&gt;alert(1)&lt;/script&gt;<')
-    // mm:ss since the job started, the absolute stamp on hover
-    expect(body).toContain('class="log-time" data-tip="2026-10-19T10:00:32.000000000Z">00:02<')
+    // gutter: a line number linking to the line's anchor, the time of day (shown with "Show timestamps") with the full stamp on hover
+    expect(body).toContain('<span class="log-line" id="step-1-1" data-seq="1" data-at="2026-10-19T10:00:31.000000000Z" data-n="1"><a class="log-num" href="#step-1-1" tabindex="-1">1</a><time class="log-ts" datetime="2026-10-19T10:00:31.000000000Z" data-tip="2026-10-19T10:00:31.000000000Z">10:00:31</time><span class="log-text">Current runner version: 2.3</span>')
+    expect(body).toContain('data-action="log-timestamps" aria-pressed="false"')
+    expect(body).toContain('<input class="t-input" type="search" id="log-search"')
     expect(body).toContain('id="log-truncated" hidden')
     expect(body).toContain('<div class="log-steps" id="log-view"')
     // outcome line under the title and one row per step: the finished one closed, the running one open with a spinner
     expect(body).toContain('<p class="job-outcome t-muted" id="job-outcome"><span>running</span> <time class="t-time" data-relative datetime="2026-10-19T10:00:30Z">')
-    expect(body).toMatch(/<details class="log-step" data-number="1" data-status="completed" data-conclusion="success" data-started="2026-10-19T10:00:30Z" data-completed="2026-10-19T10:00:40Z" data-count="1"><summary class="log-step-head"><span class="log-step-chevron" aria-hidden="true"><svg[^>]*><use href="\/tailor\/icons.svg#bi-chevron-right"><\/use><\/svg><\/span><span class="log-step-icon" data-tone="success" role="img" aria-label="succeeded" data-tip="Succeeded"><svg[^>]*><use href="\/tailor\/icons.svg#bi-check-circle-fill">/)
-    expect(body).toContain('<span class="log-step-name">Set up job</span><span class="log-step-count t-muted t-small">1 lines</span><span class="log-step-duration t-muted" data-tip="2026-10-19T10:00:30Z → 2026-10-19T10:00:40Z">10s</span>')
-    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="in_progress" data-started="2026-10-19T10:00:40Z" data-count="0"><summary class="log-step-head">.*?<span class="t-spinner log-step-icon" data-size="sm" data-tone="accent" role="img" aria-label="running"/)
+    expect(body).toMatch(/<details class="log-step" data-number="1" data-status="completed" data-conclusion="success" data-started="2026-10-19T10:00:30Z" data-completed="2026-10-19T10:00:40Z" data-count="1" data-next="3"><summary class="log-step-head"><span class="log-step-chevron" aria-hidden="true"><svg[^>]*><use href="\/tailor\/icons.svg#bi-chevron-right"><\/use><\/svg><\/span><span class="log-step-icon" data-tone="success" role="img" aria-label="succeeded" data-tip="Succeeded"><svg[^>]*><use href="\/tailor\/icons.svg#bi-check-circle-fill">/)
+    expect(body).toContain('<span class="log-step-name">Set up job</span><span class="log-step-count t-muted t-small">1 line</span><span class="log-step-duration t-muted" data-tip="2026-10-19T10:00:30Z → 2026-10-19T10:00:40Z">10s</span>')
+    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="in_progress" data-started="2026-10-19T10:00:40Z" data-count="0" data-next="1"><summary class="log-step-head">.*?<span class="t-spinner log-step-icon" data-size="sm" data-tone="accent" role="img" aria-label="running"/)
     // the unterminated group is open (still receiving lines), its marker line hidden, its title escaped
-    expect(body).toContain('<details class="log-group" open data-first="2026-10-19T10:00:32.000000000Z" data-count="0"><summary class="log-summary">')
+    expect(body).toContain('<details class="log-group" open data-first="2026-10-19T10:00:32.000000000Z" data-count="0"><summary class="log-summary" id="step-1-2" data-n="2">')
     expect(body).toContain('<span class="log-group-title">Run &lt;script&gt;alert(1)&lt;/script&gt;</span><span class="log-group-meta t-muted">0 lines · 0 s</span>')
     // the `job` partial carries lead, outcome and the steps view for the browser to swap by id
     const live = (await get('/jobs/7?partial=log')).body
@@ -400,15 +402,21 @@ describe('job page', () => {
     store.data = { ...full, logs: { 8: { ...full.logs[8]!, lines: text.map((line, i) => ({ seq: i + 1, at: at(String(10 + i)), line })) } } }
     const { body } = await get('/jobs/8')
     // the fixture's lines (08:00:10–18) all fall in the first step's window; the failed step opens, the others are closed
-    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="5">/)
-    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="completed" data-conclusion="failure"[^>]*data-count="0">/)
-    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="0">/)
+    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="5" data-next="8">/)
+    expect(body).toMatch(/<details class="log-step" open data-number="2" data-status="completed" data-conclusion="failure"[^>]*data-count="0" data-next="1">/)
+    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="0" data-next="1">/)
+    // the step row counts its errors and warnings
+    expect(body).toContain('<span class="t-badge log-step-tally" data-tone="danger" data-size="xs" data-kind="errors" data-tip="1 error">')
+    expect(body).toContain('<span class="t-badge log-step-tally" data-tone="warning" data-size="xs" data-kind="warnings" data-tip="1 warning">')
     expect(body).toContain('<p class="job-outcome t-muted" id="job-outcome"><span>failed</span> <time class="t-time" data-relative datetime="2026-10-19T08:05:10Z">19 Oct 2026, 08:05 UTC</time> in <span class="t-mono">5m 0s</span></p>')
-    expect(body).toMatch(/<details class="log-group" data-closed="" data-first="[^"]+" data-count="1"><summary class="log-summary"><span class="log-time" data-tip="2026-10-19T08:00:11Z">00:01<\/span><span class="log-chevron" aria-hidden="true"><\/span><span class="log-group-title">Run build<\/span><span class="log-group-meta t-muted">1 lines · 2 s<\/span><\/summary>/)
-    expect(body).toMatch(/<details class="log-group" open data-tone="danger" data-closed=""[^>]*><summary class="log-summary">/)
-    expect(body).toMatch(/<span class="log-line" data-seq="6"[^>]*data-tone="danger">/)
-    expect(body).toMatch(/<span class="log-line" data-seq="8"[^>]*data-tone="warning">/)
-    expect(body).toMatch(/<span class="log-line" data-seq="9" data-at="[^"]+"><span class="log-time" data-tip="[^"]+">00:08<\/span><span class="log-text">done<\/span>/)
+    // a group header is a numbered line of its own; its content continues the numbering, the hidden markers do not count
+    expect(body).toMatch(/<details class="log-group" data-closed="" data-first="[^"]+" data-count="1"><summary class="log-summary" id="step-1-2" data-n="2"><a class="log-num" href="#step-1-2" tabindex="-1">2<\/a><time class="log-ts"[^>]*>08:00:11<\/time><span class="log-chevron" aria-hidden="true"><\/span><span class="log-group-title">Run build<\/span><span class="log-group-meta t-muted">1 line · 2 s<\/span><\/summary>/)
+    expect(body).toContain('id="step-1-3" data-seq="3"')
+    expect(body).toMatch(/<details class="log-group" open data-tone="danger" data-closed=""[^>]*><summary class="log-summary" id="step-1-4"/)
+    // ##[error] / ##[warning]: toned, icon and word in front, marker stripped
+    expect(body).toMatch(/<span class="log-line" id="step-1-5" data-seq="6"[^>]*data-tone="danger"><a class="log-num"[^>]*>5<\/a><time[^>]*>[^<]*<\/time><span class="log-mark"><svg[^>]*><use href="\/tailor\/icons.svg#bi-x-circle-fill"><\/use><\/svg>Error:<\/span><span class="log-text">boom<\/span>/)
+    expect(body).toMatch(/<span class="log-line" id="step-1-6" data-seq="8"[^>]*data-tone="warning">.*?Warning:<\/span><span class="log-text">slow<\/span>/)
+    expect(body).toMatch(/<span class="log-line" id="step-1-7" data-seq="9" data-at="[^"]+" data-n="7"><a class="log-num" href="#step-1-7" tabindex="-1">7<\/a><time class="log-ts"[^>]*>08:00:18<\/time><span class="log-text">done<\/span>/)
     expect((body.match(/<details class="log-group"/g) ?? []).length).toBe(2)
     // every stored line is in the DOM (markers hidden), so Copy keeps the markers
     expect((body.match(/<span class="log-line"/g) ?? []).length).toBe(9)
@@ -422,17 +430,20 @@ describe('job page', () => {
       ['2026-10-19T08:00:13Z', ''],
       ['2026-10-19T08:00:14Z', 'Received 0 of 100 (0.0%), 0.0 MBs/sec'],
       ['2026-10-19T08:00:15Z', 'Received 100 of 100 (100.0%), 1.0 MBs/sec'],
-      ['2026-10-19T08:00:20Z', 'first of step 2'],
+      ['2026-10-19T08:00:21Z', 'first of step 2'],
       ['2026-10-19T08:04:00Z', '##[error]boom'],
-      ['2026-10-19T08:05:00Z', 'complete job'],
+      ['2026-10-19T08:05:01Z', 'complete job'],
       ['2026-10-19T08:09:00Z', 'after the last step'],
     ].map(([at, line], i) => ({ seq: i + 1, at: at!, line: line! }))
     store.data = { ...full, logs: { 8: { ...full.logs[8]!, lines } } }
     const { body } = await get('/jobs/8')
-    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="3">/)
-    expect(body).toMatch(/<details class="log-step" open data-number="2"[^>]*data-count="2">/)
-    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="2">/)
-    expect(body).toContain('<span class="log-line" data-seq="2" data-at="2026-10-19T08:00:12Z" data-cmd=""><span class="log-time" data-tip="2026-10-19T08:00:12Z">00:02</span><span class="log-text">/usr/bin/git version</span>')
+    expect(body).toMatch(/<details class="log-step" data-number="1"[^>]*data-count="3"/)
+    expect(body).toMatch(/<details class="log-step" open data-number="2"[^>]*data-count="2"/)
+    expect(body).toMatch(/<details class="log-step" data-number="3"[^>]*data-count="2"/)
+    // line numbers restart at 1 in every step
+    expect(body).toContain('id="step-2-1" data-seq="6"')
+    expect(body).toContain('id="step-3-1" data-seq="8"')
+    expect(body).toContain('<span class="log-line" id="step-1-2" data-seq="2" data-at="2026-10-19T08:00:12Z" data-n="2" data-cmd=""><a class="log-num" href="#step-1-2" tabindex="-1">2</a><time class="log-ts" datetime="2026-10-19T08:00:12Z" data-tip="2026-10-19T08:00:12Z">08:00:12</time><span class="log-text">/usr/bin/git version</span>')
     expect(body).not.toContain('data-seq="3"')
     expect(body).not.toContain('data-seq="4"')
     expect(body).toContain('data-seq="5"')
@@ -441,8 +452,38 @@ describe('job page', () => {
     // no steps known yet: one pseudo-step "Log" holds everything and takes the job's state
     store.data = { ...full, jobs: full.jobs.map((j) => (j.id === 8 ? { ...j, steps: [] } : j)), logs: { 8: { ...full.logs[8]!, lines } } }
     const pseudo = (await get('/jobs/8')).body
-    expect(pseudo).toMatch(/<details class="log-step" open data-number="0" data-status="completed" data-conclusion="failure" data-started="2026-10-19T08:00:10Z" data-completed="2026-10-19T08:05:10Z" data-count="7"><summary class="log-step-head">.*?<span class="log-step-name">Log<\/span>/)
+    expect(pseudo).toMatch(/<details class="log-step" open data-number="0" data-status="completed" data-conclusion="failure" data-started="2026-10-19T08:00:10Z" data-completed="2026-10-19T08:05:10Z" data-count="7" data-next="8"><summary class="log-step-head">.*?<span class="log-step-name">Log<\/span>/)
     expect((pseudo.match(/<details class="log-step"/g) ?? []).length).toBe(1)
+  })
+
+  test('job 87 with per-step lines: Standard holds the lint output and its error, Complete job one line; annotations above the steps', async () => {
+    store.data = await job87Set()
+    const { body } = await get('/jobs/87')
+    const step = (n: number) => {
+      const from = body.indexOf(`data-number="${n}"`)
+      const to = body.indexOf('<details class="log-step"', from)
+      return body.slice(from, to < 0 ? undefined : to)
+    }
+    // the failed step opens with its error badge; counts are the lines in view (blank lines dropped)
+    expect(body).toMatch(/<details class="log-step" open data-number="4" data-status="completed" data-conclusion="failure"[^>]*data-count="\d+"/)
+    expect(step(4)).toContain('<span class="log-step-name">Standard</span><span class="t-badge log-step-tally" data-tone="danger" data-size="xs" data-kind="errors" data-tip="1 error">')
+    expect(step(4)).toContain('<span class="log-text">Process completed with exit code 1.</span>')
+    expect(step(4)).toContain('spec/unit_78_spec.rb:72:47')
+    expect(body).toMatch(/<details class="log-step" data-number="9"[^>]*data-count="1" data-next="2">/)
+    // GitHub's command echo: cyan bold, escaped, a known class only
+    expect(body).toContain('<span class="log-text"><span class="ansi-fg-6 ansi-bold">bundle exec standardrb</span></span>')
+    // annotations: level icon, message linked to its line in the log, path:line; GitHub's `.github` placeholder shows no path
+    expect(body).toContain('<div class="log-annotations" id="log-annotations"><h3 class="log-annotations-title">Annotations <span class="t-counter">2</span></h3>')
+    expect(body).toMatch(/<li class="log-annotation" data-level="failure"><span class="log-annotation-icon" data-tone="danger" role="img" aria-label="Error">.*?<a class="log-annotation-msg" href="#step-4-\d+" data-tip="Show the line in the log">Process completed with exit code 1.<\/a><\/span><\/li>/)
+    expect(body).toContain('<b class="log-annotation-title">Style/GlobalVars</b><span class="log-annotation-msg">Do not introduce global variables.</span></span><span class="log-annotation-where t-mono t-muted t-small">lib/widgets/part_21.rb:45</span>')
+    // the partial carries the annotations for the live re-render
+    expect((await get('/jobs/87?partial=log')).body).toContain('id="log-annotations"')
+    // every numbered line links to its own anchor
+    const ids = [...body.matchAll(/ id="(step-\d+-\d+)"/g)].map((m) => m[1]!)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const id of ids.slice(0, 50)) expect(body).toContain(`href="#${id}"`)
+    expect(body).not.toContain('\x1b')
+    expect(body).not.toMatch(/\stitle="/)
   })
 
   test('?raw=1 renders the flat view with a Steps link and no step buttons', async () => {

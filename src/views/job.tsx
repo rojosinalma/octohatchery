@@ -1,7 +1,11 @@
-import type { Job, JobLog, Runner } from '../lib/types'
-import { formatDuration, groupCount, groupDurationMs, groupLines, groupOpen, plainText, type GroupedLine, type LogGroup } from './log-groups'
-import { commandText, elapsed, outcomeVerb, shortDuration, stepBlocks, stepDurationMs, stepIcon, type StepBlock } from './log-steps'
+import type { Job, JobAnnotation, JobLog, Runner } from '../lib/types'
+import { ansiSegments } from './log-ansi'
+import { formatDuration, groupCount, groupDurationMs, groupOpen, plainText, type GroupedLine, type LogBlock, type LogGroup } from './log-groups'
+import { annotationTarget, lineAnchor, lineView, outcomeVerb, shortDuration, stepBlocks, stepDurationMs, stepIcon, type LineView, type StepBlock } from './log-steps'
 import { Icon, JobBadge, RelTime, RunnerBadge, e } from './parts'
+
+/** `1 line`, `3 lines`. */
+const linesLabel = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`
 
 export type JobData = { job: Job; runner: Runner | null; log: JobLog; raw?: boolean }
 export { plainText }
@@ -44,60 +48,121 @@ export const SourceBadge = ({ log }: { log: JobLog }) => {
   )
 }
 
-/**
- * One stored line. In the steps view (`base` given) the gutter shows `mm:ss` since the job started with the absolute
- * stamp on hover, and `##[command]` lines render as commands with the marker stripped; the raw view shows the clock.
- */
-const LogLine = ({ line, tone, marker, base }: GroupedLine & { base?: string | null }) => {
-  const cmd = base !== undefined ? commandText(line.line) : null
-  return (
-    <span class="log-line" data-seq={String(line.seq)} data-at={line.at} data-tone={tone} data-marker={marker ? '' : undefined} data-cmd={cmd !== null ? '' : undefined} hidden={marker}>
-      <span class="log-time" data-tip={base !== undefined ? line.at : undefined} safe>
-        {base !== undefined ? elapsed(line.at, base) : clock(line.at)}
-      </span>
-      <span class="log-text" safe>
-        {cmd ?? plainText(line.line)}
-      </span>
-      {'\n'}
+/** Flat view (`?raw=1`): every line as stored, markers included, tones kept, the clock in the gutter. */
+const RawLine = ({ line, tone }: GroupedLine) => (
+  <span class="log-line" data-seq={String(line.seq)} data-at={line.at} data-tone={tone}>
+    <span class="log-time" safe>
+      {clock(line.at)}
     </span>
-  )
-}
-
-/** One collapsible group: the summary carries title, line count and span; the marker lines stay in the DOM, hidden, so Copy keeps them. */
-const LogGroupBlock = ({ group, base }: { group: LogGroup; base?: string | null }) => {
-  const first = group.lines[0]!
-  return (
-    <details class="log-group" open={groupOpen(group)} data-tone={group.tone} data-closed={group.closed ? '' : undefined} data-first={first.line.at} data-count={String(groupCount(group))}>
-      <summary class="log-summary">
-        <span class="log-time" data-tip={base !== undefined ? first.line.at : undefined} safe>
-          {base !== undefined ? elapsed(first.line.at, base) : clock(first.line.at)}
-        </span>
-        <span class="log-chevron" aria-hidden="true"></span>
-        <span class="log-group-title" safe>
-          {group.title}
-        </span>
-        <span class="log-group-meta t-muted">{e(`${groupCount(group)} lines · ${formatDuration(groupDurationMs(group))}`)}</span>
-      </summary>
-      {group.lines.map((l) => (
-        <LogLine {...l} base={base} />
-      ))}
-    </details>
-  )
-}
+    <span class="log-text" safe>
+      {plainText(line.line)}
+    </span>
+    {'\n'}
+  </span>
+)
 
 /** Flat view (`?raw=1`): every line as stored, markers included, tones kept. */
 export const LogLines = ({ lines }: { lines: JobLog['lines'] }) => (
   <>
     {lines.map((l) => (
-      <LogLine line={l} />
+      <RawLine line={l} />
     ))}
   </>
 )
 
-/** Grouped view: `##[group]` … `##[endgroup]` blocks fold into `<details>`, everything else stays flat. */
-export const LogBlocks = ({ lines, base }: { lines: JobLog['lines']; base?: string | null }) => (
+/** Coloured text: each ANSI segment escaped, its classes from the known SGR set only (`log-ansi.ts`). */
+export const ansiHtml = (raw: string): string => ansiSegments(raw)
+  .map((seg) => (seg.cls ? `<span class="${seg.cls}">${e(seg.text)}</span>` : e(seg.text)))
+  .join('')
+
+/** Icon and word GitHub shows in front of an `##[error]`, `##[warning]`, `##[notice]` line; `##[debug]` gets the word only. */
+const MARKS: Partial<Record<LineView['kind'], { icon?: string; word: string }>> = {
+  danger: { icon: 'bi-x-circle-fill', word: 'Error:' },
+  warning: { icon: 'bi-exclamation-triangle', word: 'Warning:' },
+  notice: { icon: 'bi-info-circle', word: 'Notice:' },
+  debug: { word: 'Debug:' },
+}
+
+/** Line number (a link to the line) and the time of day, shown only with timestamps on, the full stamp on hover. */
+const Gutter = ({ id, n, at }: { id?: string; n?: number; at: string }) => (
   <>
-    {groupLines(lines).map((b) => (b.kind === 'group' ? <LogGroupBlock group={b} base={base} /> : <LogLine line={b.line} tone={b.tone} marker={b.marker} base={base} />))}
+    {id && n !== undefined ? (
+      <a class="log-num" href={`#${id}`} tabindex="-1">
+        {String(n)}
+      </a>
+    ) : (
+      <span class="log-num"></span>
+    )}
+    <time class="log-ts" datetime={at} data-tip={at} safe>
+      {clock(at)}
+    </time>
+  </>
+)
+
+/**
+ * One line of the steps view: number (the anchor `step-<n>-<line>`), time, the marker's icon and word, the text with
+ * its colours. Marker lines (`##[group]`/`##[endgroup]`) stay in the DOM hidden, so Copy keeps them.
+ */
+const StepLine = ({ line, tone, marker, n, step }: GroupedLine & { step: number }) => {
+  const view = lineView(line.line)
+  const mark = MARKS[view.kind]
+  const id = n !== undefined ? lineAnchor(step, n) : undefined
+  return (
+    <span class="log-line" id={id} data-seq={String(line.seq)} data-at={line.at} data-n={n !== undefined ? String(n) : undefined} data-tone={tone} data-marker={marker ? '' : undefined} data-cmd={view.kind === 'cmd' ? '' : undefined} hidden={marker}>
+      <Gutter id={id} n={n} at={line.at} />
+      {mark ? (
+        <span class="log-mark">
+          {mark.icon ? <Icon id={mark.icon} size="xs" /> : null}
+          {e(mark.word)}
+        </span>
+      ) : null}
+      <span class="log-text">{marker ? e(plainText(line.line)) : ansiHtml(view.raw)}</span>
+      {'\n'}
+    </span>
+  )
+}
+
+/** One collapsible group: the summary is the group's numbered header line; the marker lines stay in the DOM, hidden. */
+const LogGroupBlock = ({ group, step }: { group: LogGroup; step: number }) => {
+  const first = group.lines[0]!
+  const id = group.n !== undefined ? lineAnchor(step, group.n) : undefined
+  return (
+    <details class="log-group" open={groupOpen(group)} data-tone={group.tone} data-closed={group.closed ? '' : undefined} data-first={first.line.at} data-count={String(groupCount(group))}>
+      <summary class="log-summary" id={id} data-n={group.n !== undefined ? String(group.n) : undefined}>
+        <Gutter id={id} n={group.n} at={first.line.at} />
+        <span class="log-chevron" aria-hidden="true"></span>
+        <span class="log-group-title" safe>
+          {group.title}
+        </span>
+        <span class="log-group-meta t-muted">{e(`${linesLabel(groupCount(group))} · ${formatDuration(groupDurationMs(group))}`)}</span>
+      </summary>
+      {group.lines.map((l) => (
+        <StepLine {...l} step={step} />
+      ))}
+    </details>
+  )
+}
+
+/** A step's body: `##[group]` … `##[endgroup]` blocks fold into `<details>`, everything else stays flat. */
+const StepBody = ({ blocks, step }: { blocks: LogBlock[]; step: number }) => (
+  <>{blocks.map((b) => (b.kind === 'group' ? <LogGroupBlock group={b} step={step} /> : <StepLine {...b} step={step} />))}</>
+)
+
+/** Small toned badges on a step row: how many errors and warnings the step printed. */
+const StepTally = ({ block }: { block: StepBlock }) => (
+  <>
+    {block.errors ? (
+      <span class="t-badge log-step-tally" data-tone="danger" data-size="xs" data-kind="errors" data-tip={`${block.errors} ${block.errors === 1 ? 'error' : 'errors'}`}>
+        <Icon id="bi-x-circle-fill" size="xs" />
+        {String(block.errors)}
+      </span>
+    ) : null}
+    {block.warnings ? (
+      <span class="t-badge log-step-tally" data-tone="warning" data-size="xs" data-kind="warnings" data-tip={`${block.warnings} ${block.warnings === 1 ? 'warning' : 'warnings'}`}>
+        <Icon id="bi-exclamation-triangle" size="xs" />
+        {String(block.warnings)}
+      </span>
+    ) : null}
   </>
 )
 
@@ -113,13 +178,14 @@ const StepStatus = ({ block }: { block: StepBlock }) => {
 }
 
 /**
- * One step: the row carries chevron, status, name, duration and line count; the body holds the step's lines with the
- * `##[group]` folding as a second level. `data-started`/`data-completed` let the browser place streamed lines.
+ * One step: the row carries chevron, status, name, error and warning badges, line count and duration; the body holds
+ * the step's numbered lines with the `##[group]` folding as a second level. `data-started`/`data-completed` let the
+ * browser place streamed lines, `data-next` is the number the next streamed line of the step gets.
  */
-const LogStepBlock = ({ block, base }: { block: StepBlock; base: string | null }) => {
+const LogStepBlock = ({ block }: { block: StepBlock }) => {
   const { step } = block
   return (
-    <details class="log-step" open={block.open} data-number={String(step.number)} data-status={step.status} data-conclusion={step.conclusion ?? undefined} data-started={step.startedAt ?? undefined} data-completed={step.completedAt ?? undefined} data-count={String(block.count)}>
+    <details class="log-step" open={block.open} data-number={String(step.number)} data-status={step.status} data-conclusion={step.conclusion ?? undefined} data-started={step.startedAt ?? undefined} data-completed={step.completedAt ?? undefined} data-count={String(block.count)} data-next={String(block.next)}>
       <summary class="log-step-head">
         <span class="log-step-chevron" aria-hidden="true">
           <Icon id="bi-chevron-right" size="xs" />
@@ -128,24 +194,86 @@ const LogStepBlock = ({ block, base }: { block: StepBlock; base: string | null }
         <span class="log-step-name" safe>
           {step.name}
         </span>
-        <span class="log-step-count t-muted t-small">{e(`${block.count} lines`)}</span>
+        <StepTally block={block} />
+        <span class="log-step-count t-muted t-small">{e(linesLabel(block.count))}</span>
         <span class="log-step-duration t-muted" data-tip={step.startedAt ? `${step.startedAt} → ${step.completedAt ?? 'running'}` : undefined}>
           {e(step.startedAt ? shortDuration(stepDurationMs(step)) : '')}
         </span>
       </summary>
       <div class="log-step-body t-code-pre">
-        <LogBlocks lines={block.lines} base={base} />
+        <StepBody blocks={block.blocks} step={step.number} />
       </div>
     </details>
   )
 }
 
-/** Steps view: GitHub's step list with the lines placed by timestamp (one pseudo-step while no steps are known). */
+/** Steps view: GitHub's step list with each step's lines (one pseudo-step while no steps are known). */
 export const LogSteps = ({ job, blocks, lastSeq }: { job: Job; blocks: StepBlock[]; lastSeq: number }) => (
   <div class="log-steps" id="log-view" tabindex="0" aria-label="Job log by step" aria-live="off" data-last-seq={String(lastSeq)} data-started={job.startedAt ?? undefined} hidden={!blocks.some((b) => b.lines.length)}>
     {blocks.map((b) => (
-      <LogStepBlock block={b} base={job.startedAt} />
+      <LogStepBlock block={b} />
     ))}
+  </div>
+)
+
+const ANNOTATION_LOOK: Record<JobAnnotation['level'], { icon: string; tone: string; label: string }> = {
+  failure: { icon: 'bi-x-circle-fill', tone: 'danger', label: 'Error' },
+  warning: { icon: 'bi-exclamation-triangle', tone: 'warning', label: 'Warning' },
+  notice: { icon: 'bi-info-circle', tone: 'info', label: 'Notice' },
+}
+
+/** `path:line` (or `path:start-end`); GitHub's `.github` placeholder for annotations without a file shows nothing. */
+const annotationWhere = (a: JobAnnotation): string | null => {
+  if (!a.path || a.path === '.github') return null
+  if (a.startLine === null) return a.path
+  return a.endLine !== null && a.endLine !== a.startLine ? `${a.path}:${a.startLine}-${a.endLine}` : `${a.path}:${a.startLine}`
+}
+
+/**
+ * The job's check-run annotations above the steps: level icon, title and message, `path:line`. A message that also
+ * appears as an error or warning line in the log links to that line. Always in the DOM (hidden when empty) so the
+ * live re-render can swap it by id.
+ */
+export const LogAnnotations = ({ annotations, blocks }: { annotations: JobAnnotation[]; blocks: StepBlock[] }) => (
+  <div class="log-annotations" id="log-annotations" hidden={!annotations.length}>
+    <h3 class="log-annotations-title">
+      Annotations <span class="t-counter">{String(annotations.length)}</span>
+    </h3>
+    <ul class="log-annotation-list">
+      {annotations.map((a) => {
+        const look = ANNOTATION_LOOK[a.level]
+        const target = annotationTarget(blocks, a)
+        const where = annotationWhere(a)
+        return (
+          <li class="log-annotation" data-level={a.level}>
+            <span class="log-annotation-icon" data-tone={look.tone} role="img" aria-label={look.label}>
+              <Icon id={look.icon} size="sm" />
+            </span>
+            <span class="log-annotation-body">
+              {a.title ? (
+                <b class="log-annotation-title" safe>
+                  {a.title}
+                </b>
+              ) : null}
+              {target ? (
+                <a class="log-annotation-msg" href={`#${target}`} data-tip="Show the line in the log" safe>
+                  {a.message}
+                </a>
+              ) : (
+                <span class="log-annotation-msg" safe>
+                  {a.message}
+                </span>
+              )}
+            </span>
+            {where ? (
+              <span class="log-annotation-where t-mono t-muted t-small" safe>
+                {where}
+              </span>
+            ) : null}
+          </li>
+        )
+      })}
+    </ul>
   </div>
 )
 
@@ -183,15 +311,17 @@ export const JobOutcome = ({ job }: { job: Job }) => {
   )
 }
 
-/** `?partial=log`: what `public/app.js` swaps on a `job` event — lead, outcome line and the steps view, by id. */
+/** `?partial=log`: what `public/app.js` swaps on a `job` event — lead, outcome line, annotations and the steps view, by id. */
 export const JobLive = ({ job, log }: Pick<JobData, 'job' | 'log'>) => {
   const shown = log.lines.slice(-LOG_DOM_LINES)
   const lastSeq = shown.length ? shown[shown.length - 1]!.seq : 0
+  const blocks = stepBlocks(job, shown)
   return (
     <div id="job-live">
       <JobLead job={job} />
       <JobOutcome job={job} />
-      <LogSteps job={job} blocks={stepBlocks(job, shown)} lastSeq={lastSeq} />
+      <LogAnnotations annotations={job.annotations} blocks={blocks} />
+      <LogSteps job={job} blocks={blocks} lastSeq={lastSeq} />
     </div>
   )
 }
@@ -284,14 +414,31 @@ export const JobPage = ({ job, runner, log, raw = false }: JobData) => {
           </span>
           <span class="t-toolbar-spacer"></span>
           <span class="t-muted t-small" id="log-count" data-tip="Lines in view">
-            {e(`${lineCount} lines`)}
+            {e(linesLabel(lineCount))}
           </span>
+          {raw ? null : (
+            <span class="log-search" role="search">
+              <input class="t-input" type="search" id="log-search" data-size="sm" data-width="auto" placeholder="Search open steps" aria-label="Search the lines of open steps" autocomplete="off" data-tip="Enter: next match · Shift+Enter: previous" />
+              <span class="t-muted t-small" id="log-matches" aria-live="polite" hidden></span>
+              <button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" data-action="log-search-prev" aria-label="Previous match" data-tip="Previous match" disabled>
+                <Icon id="bi-chevron-down" />
+              </button>
+              <button class="t-btn" data-size="sm" data-variant="ghost" data-icon="only" data-action="log-search-next" aria-label="Next match" data-tip="Next match" disabled>
+                <Icon id="bi-chevron-down" />
+              </button>
+            </span>
+          )}
           <button class="t-btn" data-size="sm" data-action="log-follow" aria-pressed={live ? 'true' : 'false'} disabled={!live} data-tip={live ? 'Keep the newest lines in view' : 'The log is complete'}>
             <Icon id="bi-arrow-down-circle" /> Follow
           </button>
           <button class="t-btn" data-size="sm" data-action="log-copy" data-tip="Copy every line in view to the clipboard, group markers included">
             <Icon id="bi-copy" /> Copy
           </button>
+          {raw ? null : (
+            <button class="t-btn" data-size="sm" data-action="log-timestamps" aria-pressed="false" data-tip="Show the time of day of every line (UTC)">
+              <Icon id="bi-clock" /> Show timestamps
+            </button>
+          )}
           {raw ? null : (
             <div class="t-btn-group" role="group" aria-label="Steps">
               <button class="t-btn" data-size="sm" data-action="log-expand" data-tip="Open every step">
@@ -319,6 +466,7 @@ export const JobPage = ({ job, runner, log, raw = false }: JobData) => {
           <h3 class="t-empty-title">{log.complete ? 'No log stored for this job' : 'Waiting for the runner to start…'}</h3>
           <p>{log.complete ? 'The job finished without a runner on this cluster, or its log was purged.' : 'Lines appear here as soon as the runner prints its first step.'}</p>
         </div>
+        {raw ? null : <LogAnnotations annotations={job.annotations} blocks={blocks} />}
         {raw ? (
           <div class="t-code-pre log-view" id="log-view" tabindex="0" aria-label="Job log" aria-live="off" hidden={shown.length === 0}>
             <LogLines lines={shown} />

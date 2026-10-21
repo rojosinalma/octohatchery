@@ -1,8 +1,70 @@
 import type { Octokit } from '@octokit/rest'
+import { z } from 'zod'
 import { log } from '../log'
+import type { JobAnnotation } from '../types'
 import { splitRepo, type FileContents, type GitHubClient, type JobDetails, type QueuedJob, type RepoInfo } from './types'
 
 const logger = log('github')
+
+/** One check-run annotation as GitHub returns it; items that do not fit are dropped, not fatal. */
+export const AnnotationPayload = z.object({
+  path: z.string().nullable().optional(),
+  start_line: z.number().nullable().optional(),
+  end_line: z.number().nullable().optional(),
+  annotation_level: z.enum(['failure', 'warning', 'notice']),
+  title: z.string().nullable().optional(),
+  message: z.string(),
+})
+
+/** Longest annotation message kept; GitHub allows 64 KB, the page shows a line. */
+const ANNOTATION_MESSAGE_MAX = 2000
+
+/** GitHub's annotation list → ours: schema-checked per item, capped at `max`, messages cut at 2000 characters. */
+export function parseAnnotations(data: unknown, max: number): JobAnnotation[] {
+  if (!Array.isArray(data)) throw new Error(`annotations: expected a list, got ${typeof data}`)
+  const out: JobAnnotation[] = []
+  for (const item of data) {
+    const a = AnnotationPayload.safeParse(item)
+    if (!a.success) continue
+    out.push({
+      level: a.data.annotation_level,
+      message: a.data.message.slice(0, ANNOTATION_MESSAGE_MAX),
+      title: a.data.title || null,
+      path: a.data.path || null,
+      startLine: a.data.start_line ?? null,
+      endLine: a.data.end_line ?? null,
+    })
+    if (out.length >= max) break
+  }
+  return out
+}
+
+/** Reads a response body up to `maxBytes`; stops and throws as soon as it passes the cap. */
+async function readCapped(res: Response, maxBytes: number, what: string): Promise<Uint8Array> {
+  const declared = Number(res.headers.get('content-length') ?? NaN)
+  if (declared > maxBytes) throw new Error(`${what}: ${declared} bytes, over the ${maxBytes} byte cap`)
+  if (!res.body) return new Uint8Array(await res.arrayBuffer())
+  const chunks: Uint8Array[] = []
+  let total = 0
+  const reader = res.body.getReader()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel()
+      throw new Error(`${what}: over the ${maxBytes} byte cap`)
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.byteLength
+  }
+  return out
+}
 
 /**
  * REST calls shared by the `app` and `pat` adapters. `getOctokit` yields a client authorised for the repo;
@@ -197,10 +259,35 @@ export function restClient(
         conclusion: j.conclusion ?? null,
         startedAt: j.started_at ?? null,
         completedAt: j.completed_at ?? null,
+        runId: j.run_id,
+        runAttempt: j.run_attempt ?? 1,
+        name: j.name,
         steps: (j.steps ?? [])
           .map((s) => ({ number: s.number, name: s.name, status: s.status, conclusion: s.conclusion ?? null, startedAt: s.started_at ?? null, completedAt: s.completed_at ?? null }))
           .sort((a, b) => a.number - b.number),
       }
+    },
+
+    async getRunAttemptLogs(fullName, runId, attempt, maxBytes) {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      const what = `GET ${fullName} run ${runId} attempt ${attempt} logs`
+      return call(what, async () => {
+        // GitHub answers with a short-lived redirect to the zip; fetching it here keeps the download under the cap.
+        const res = await o.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/logs', { owner, repo, run_id: runId, attempt_number: attempt, request: { redirect: 'manual' } })
+        const location = (res.headers as Record<string, string | undefined>).location
+        if (!location) throw new Error(`${what}: no redirect to the archive (HTTP ${res.status})`)
+        const zip = await fetch(location)
+        if (!zip.ok) throw Object.assign(new Error(`${what}: archive download answered HTTP ${zip.status}`), { status: zip.status })
+        return readCapped(zip, maxBytes, what)
+      })
+    },
+
+    async listJobAnnotations(fullName, githubJobId, max = 50) {
+      const o = await getOctokit(fullName)
+      const { owner, repo } = splitRepo(fullName)
+      const res = await call(`GET ${fullName} check-run ${githubJobId} annotations`, () => o.request('GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations', { owner, repo, check_run_id: githubJobId, per_page: Math.min(100, max) }))
+      return parseAnnotations(res.data, max)
     },
 
     async listWorkflowFiles(fullName, ref) {

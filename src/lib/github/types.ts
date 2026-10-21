@@ -1,5 +1,5 @@
 import type { Octokit } from '@octokit/rest'
-import type { JobStep } from '../types'
+import type { JobAnnotation, JobStep } from '../types'
 import type { InstallationSource } from './installations'
 import type { PermissionReport } from './permissions'
 
@@ -9,7 +9,17 @@ export type RepoInfo = { fullName: string; isPrivate: boolean; defaultBranch: st
 export type FileContents = { content: string; sha: string }
 export type WebhookResult = { id: number; created: boolean }
 /** `GET /repos/{o}/{r}/actions/jobs/{id}`: the fields the orchestrator stores. */
-export type JobDetails = { status: string; conclusion: string | null; startedAt: string | null; completedAt: string | null; steps: JobStep[] }
+export type JobDetails = {
+  status: string
+  conclusion: string | null
+  startedAt: string | null
+  completedAt: string | null
+  steps: JobStep[]
+  /** The workflow run and attempt the job belongs to, and its name: what finds the job in the run's log archive. */
+  runId: number
+  runAttempt: number
+  name: string
+}
 
 /** Everything the app asks of GitHub, behind one interface so `app` and `pat` (and `none` in tests) are interchangeable. */
 export type GitHubClient = {
@@ -53,6 +63,13 @@ export type GitHubClient = {
   getJobLog(repo: string, githubJobId: number): Promise<string>
   /** Status, conclusion and steps (with GitHub's timestamps) of one job. */
   getJob(repo: string, githubJobId: number): Promise<JobDetails>
+  /**
+   * The zip archive of every job's logs in one run attempt (follows GitHub's redirect). Throws with `status: 404` when
+   * GitHub has no logs (expired or deleted) and with a reason when the archive is larger than `maxBytes`.
+   */
+  getRunAttemptLogs(repo: string, runId: number, attempt: number, maxBytes: number): Promise<Uint8Array>
+  /** Check-run annotations of a job (its check run id is the job id), at most `max`; schema-checked. */
+  listJobAnnotations(repo: string, githubJobId: number, max?: number): Promise<JobAnnotation[]>
 }
 
 export type GitHubAuthAdapter = {

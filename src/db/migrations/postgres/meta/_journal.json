@@ -50,6 +50,13 @@
       "when": 1792545684773,
       "tag": "0006_runner_type_run_as",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792587289156,
+      "tag": "0007_job_log_step",
+      "breakpoints": true
     }
   ]
 }

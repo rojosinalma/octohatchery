@@ -1,9 +1,11 @@
-import type { Job, JobStep, LogLine } from '../lib/types'
+import type { Job, JobAnnotation, JobStep, LogLine } from '../lib/types'
 import { classify, groupLines, plainText, type LogBlock } from './log-groups'
 
 /*
- * Steps view of a job log, the way GitHub shows it: one collapsible row per step, the lines placed under the step
- * whose time window holds their timestamp. Pure functions; `src/views/job.tsx` renders the result and
+ * Steps view of a job log, the way GitHub shows it: one collapsible row per step. A line that carries its step
+ * number (GitHub's per-step log files) goes to that step; any other line (live runner output, the flat log when the
+ * archive was not available) goes to the step whose time window holds its timestamp. Inside a step lines are
+ * numbered from 1 (a group header counts, its hidden markers do not). Pure functions; `src/views/job.tsx` renders the result and
  * `public/app.js` keeps the same rules for lines that arrive over the stream: change one, change the other.
  */
 
@@ -15,6 +17,11 @@ export type StepBlock = {
   lines: LogLine[]
   blocks: LogBlock[]
   count: number
+  /** `##[error]` and `##[warning]` lines in the step. */
+  errors: number
+  warnings: number
+  /** Number the next streamed line of this step gets. */
+  next: number
   open: boolean
 }
 
@@ -26,6 +33,20 @@ export const ms = (at: string | null | undefined): number => (at ? Date.parse(at
 /** Download and transfer progress GitHub prints line by line; only the last of a run is worth keeping. */
 const PROGRESS_RE = /^(?:Received \d+ of \d+|\d{1,3}(?:\.\d+)?%(?:\s|$)|.*\b\d{1,3}(?:\.\d+)?% \(\d+\/\d+\))/
 export const isProgress = (line: string): boolean => PROGRESS_RE.test(plainText(line).trim())
+
+/** What a line shows: the marker kind and the text with the marker (`##[error]`, `[command]`, …) taken out, ANSI kept. */
+export type LineView = { kind: 'text' | 'cmd' | 'danger' | 'warning' | 'notice' | 'debug'; raw: string }
+
+const SHOWN_MARKER_RE = /^(##\[(?:error|warning|notice|debug|command)\]|\[command\])/
+const MARKER_KIND: Record<string, LineView['kind']> = { '##[error]': 'danger', '##[warning]': 'warning', '##[notice]': 'notice', '##[debug]': 'debug', '##[command]': 'cmd', '[command]': 'cmd' }
+
+export const lineView = (raw: string): LineView => {
+  const m = SHOWN_MARKER_RE.exec(plainText(raw))
+  if (!m) return { kind: 'text', raw }
+  // The marker may sit behind colour codes: drop its first occurrence from the raw text, keep the codes.
+  const i = raw.indexOf(m[1]!)
+  return { kind: MARKER_KIND[m[1]!]!, raw: i >= 0 ? raw.slice(0, i) + raw.slice(i + m[1]!.length) : raw }
+}
 
 /** `##[command]text` and `[command]text` → `text`; anything else → null. */
 export const commandText = (line: string): string | null => {
@@ -56,19 +77,43 @@ export const pseudoStep = (job: Pick<Job, 'status' | 'conclusion' | 'startedAt' 
 })
 
 /**
- * Each line goes to the last step whose `startedAt` is at or before its stamp; lines before the first started step go
- * to the first step, lines without a readable stamp follow the line before them. A `##[endgroup]` stays with the step
- * that opened its group even when its stamp already falls in the next step (GitHub's second-precision step times cut
- * through the last group of a step). Steps keep GitHub's order (`number`).
+ * Lines the runner prints first in a step: `##[group]Run <action or script>` for every main step, `Post job cleanup.`
+ * for a post step, `Cleaning up orphan processes` for "Complete job". Only a line like this moves to the next step
+ * inside the second that step started in.
+ */
+const OPENER_RE = /^(?:##\[group\](Run .*)|Post job cleanup\.|Cleaning up orphan processes)\s*$/
+
+/** The group title when `line` opens a step (`Run actions/checkout@v7`), '' for the other openers, null otherwise. */
+export const stepOpener = (line: string): string | null => {
+  const m = OPENER_RE.exec(plainText(line))
+  return m ? (m[1] ?? '').trim() : null
+}
+
+/**
+ * Lines → steps, keeping GitHub's order (`number`). A line that carries its step (GitHub's per-step files) goes to
+ * that step. Every other line is placed by time, never going back to an earlier step: GitHub's step times are cut
+ * to the second, so a step's own last lines and the next steps' starts often share one second. Inside that second
+ * the current step keeps its lines until a step opener (`stepOpener`) shows up, which moves on to the started step
+ * whose name matches the opener (`Run actions/checkout@v7`) or else the next started one; a stamp one second or more
+ * past a step's start moves on to that step in any case. Skipped steps print nothing and take no lines. Lines before
+ * the first step go to the first step, lines without a readable stamp follow the line before them, and a
+ * `##[endgroup]` stays with the step that opened its group.
  */
 export const assignLines = (steps: JobStep[], lines: LogLine[]): Map<number, LogLine[]> => {
   const ordered = [...steps].sort((a, b) => a.number - b.number)
   const out = new Map<number, LogLine[]>(ordered.map((s) => [s.number, []]))
   if (!ordered.length) return out
-  const starts = ordered.map((s) => ({ number: s.number, at: ms(s.startedAt) })).filter((s) => !Number.isNaN(s.at))
-  let current = ordered[0]!.number
+  const starts = ordered.map((s) => (s.conclusion === 'skipped' ? NaN : ms(s.startedAt)))
+  let current = 0
   let groupStep: number | null = null
   for (const line of lines) {
+    if (line.step != null && out.has(line.step)) {
+      // GitHub said which step printed it: no timestamp guess, no group carried across steps.
+      out.get(line.step)!.push(line)
+      current = Math.max(current, ordered.findIndex((s) => s.number === line.step))
+      groupStep = null
+      continue
+    }
     const marker = classify(line.line)
     if (marker.kind === 'close' && groupStep !== null) {
       out.get(groupStep)!.push(line)
@@ -77,15 +122,20 @@ export const assignLines = (steps: JobStep[], lines: LogLine[]): Map<number, Log
     }
     const at = ms(line.at)
     if (!Number.isNaN(at)) {
-      let pick = starts.length ? starts[0]!.number : current
-      for (const s of starts) {
-        if (s.at <= at) pick = s.number
-        else break
+      // A whole second past a later step's start: that step runs, whatever the line says.
+      for (let i = current + 1; i < ordered.length; i++) if (starts[i]! + 1000 <= at) current = i
+      const opener = stepOpener(line.line)
+      if (opener !== null) {
+        const started: number[] = []
+        for (let i = current + 1; i < ordered.length; i++) if (starts[i]! <= at) started.push(i)
+        const named = opener ? started.find((i) => ordered[i]!.name === opener) : undefined
+        if (named !== undefined) current = named
+        else if (started.length) current = started[0]!
       }
-      current = pick
     }
-    out.get(current)!.push(line)
-    if (marker.kind === 'open') groupStep = current
+    const number = ordered[current]!.number
+    out.get(number)!.push(line)
+    if (marker.kind === 'open') groupStep = number
     else if (marker.kind === 'close') groupStep = null
   }
   return out
@@ -158,7 +208,22 @@ export const outcomeVerb = (job: Pick<Job, 'status' | 'conclusion'>): string => 
   return job.status
 }
 
-/** The whole steps view: steps in order, each with its refined lines, folded groups, count and default open state. */
+/**
+ * Numbers the visible lines of one step from 1, in order: a group's header takes the number of its `##[group]` line,
+ * content lines count, hidden markers do not. Returns the number the next line gets.
+ */
+export const numberBlocks = (blocks: LogBlock[]): number => {
+  let n = 1
+  for (const b of blocks) {
+    if (b.kind === 'group') {
+      b.n = n++
+      for (const l of b.lines) if (!l.marker) l.n = n++
+    } else if (!b.marker) b.n = n++
+  }
+  return n
+}
+
+/** The whole steps view: steps in order, each with its refined lines, numbered folded groups, counts and open state. */
 export const stepBlocks = (job: Job, lines: LogLine[]): StepBlock[] => {
   const pseudo = job.steps.length === 0
   const steps = pseudo ? [pseudoStep(job)] : [...job.steps].sort((a, b) => a.number - b.number)
@@ -167,7 +232,29 @@ export const stepBlocks = (job: Job, lines: LogLine[]): StepBlock[] => {
   return steps.map((step) => {
     const own = byStep.get(step.number) ?? []
     const blocks = groupLines(own)
-    const count = own.filter((l) => classify(l.line).kind === 'line').length
-    return { step, pseudo, lines: own, blocks, count, open: stepOpen(step) }
+    const next = numberBlocks(blocks)
+    const tones = own.map((l) => classify(l.line))
+    const count = tones.filter((m) => m.kind === 'line').length
+    const errors = tones.filter((m) => m.kind === 'line' && m.tone === 'danger').length
+    const warnings = tones.filter((m) => m.kind === 'line' && m.tone === 'warning').length
+    return { step, pseudo, lines: own, blocks, count, errors, warnings, next, open: stepOpen(step) }
   })
+}
+
+/** Anchor id of line `n` of step `step`: `step-4-12`. */
+export const lineAnchor = (step: number, n: number): string => `step-${step}-${n}`
+
+/**
+ * The line an annotation points at in the log: the first error or warning line (matching the annotation's level)
+ * whose text holds the annotation's first message line. Null when none does.
+ */
+export const annotationTarget = (blocks: StepBlock[], a: Pick<JobAnnotation, 'level' | 'message'>): string | null => {
+  const needle = a.message.split('\n')[0]!.trim()
+  if (!needle) return null
+  const tone = a.level === 'failure' ? 'danger' : a.level
+  for (const b of blocks) {
+    const lines = b.blocks.flatMap((x) => (x.kind === 'group' ? x.lines : [x]))
+    for (const l of lines) if (l.tone === tone && l.n !== undefined && plainText(l.line.line).includes(needle)) return lineAnchor(b.step.number, l.n)
+  }
+  return null
 }

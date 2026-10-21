@@ -129,7 +129,7 @@ export async function insertJobIfNew(j: NewJob, d: Db = db()): Promise<JobRow | 
   return job
 }
 
-export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries' | 'logSource' | 'logBytes' | 'logTruncated' | 'steps'>>
+export type JobPatch = Partial<Pick<JobRow, 'status' | 'conclusion' | 'runnerId' | 'startedAt' | 'completedAt' | 'retries' | 'logSource' | 'logBytes' | 'logTruncated' | 'steps' | 'annotations'>>
 
 /** `silent` skips the bus notification (log bookkeeping that changes nothing a dashboard table shows). */
 export async function updateJob(id: number, patch: JobPatch, d: Db = db(), opts: { silent?: boolean } = {}): Promise<JobRow | undefined> {
@@ -144,6 +144,7 @@ export async function updateJob(id: number, patch: JobPatch, d: Db = db(), opts:
   if (patch.logBytes !== undefined) sets.push(sql`log_bytes = ${patch.logBytes}`)
   if (patch.logTruncated !== undefined) sets.push(sql`log_truncated = ${patch.logTruncated}`)
   if (patch.steps !== undefined) sets.push(sql`steps = ${JSON.stringify(patch.steps)}`)
+  if (patch.annotations !== undefined) sets.push(sql`annotations = ${JSON.stringify(patch.annotations)}`)
   if (!sets.length) return jobById(id, d)
   const [row] = await d.all(sql`update jobs set ${sql.join(sets, sql`, `)} where id = ${id} returning *`)
   if (!row) return undefined
@@ -162,17 +163,29 @@ export async function jobsWithoutSteps(limit: number, d: Db = db()): Promise<Job
   return rows.map(toJob)
 }
 
+/**
+ * Completed jobs (ended at or after `since`) with a stored GitHub log none of whose lines carries a step number yet
+ * (rows from before per-step logs, or whose archive was not available), newest first.
+ */
+export async function jobsWithoutStepLines(limit: number, since: string, d: Db = db()): Promise<JobRow[]> {
+  const rows = await d.all(sql`select * from jobs j where status = 'completed' and log_source = 'github' and completed_at >= ${since}
+    and exists (select 1 from job_logs l where l.job_id = j.id)
+    and not exists (select 1 from job_logs l where l.job_id = j.id and l.step is not null)
+    order by completed_at desc limit ${limit}`)
+  return rows.map(toJob)
+}
+
 // job logs
 
 /** Lines after `after` (exclusive) in order, at most `limit`. */
 export async function logLinesAfter(jobId: number, after: number, limit: number, d: Db = db()): Promise<LogLine[]> {
-  const rows = await d.all(sql`select seq, at, line from job_logs where job_id = ${jobId} and seq > ${after} order by seq limit ${limit}`)
+  const rows = await d.all(sql`select seq, at, line, step from job_logs where job_id = ${jobId} and seq > ${after} order by seq limit ${limit}`)
   return rows.map(toLogLine)
 }
 
 /** The last `n` lines in order. */
 export async function logTail(jobId: number, n: number, d: Db = db()): Promise<LogLine[]> {
-  const rows = await d.all(sql`select seq, at, line from job_logs where job_id = ${jobId} order by seq desc limit ${n}`)
+  const rows = await d.all(sql`select seq, at, line, step from job_logs where job_id = ${jobId} order by seq desc limit ${n}`)
   return rows.map(toLogLine).reverse()
 }
 
@@ -182,12 +195,12 @@ export async function logCursor(jobId: number, d: Db = db()): Promise<{ seq: num
   return row ? { seq: Number(row.seq), at: String(row.at) } : { seq: 0, at: null }
 }
 
-/** Appends lines with consecutive seqs starting at `fromSeq`; one statement per batch. */
-export async function appendLogLines(jobId: number, fromSeq: number, lines: { at: string; line: string }[], d: Db = db()): Promise<LogLine[]> {
+/** Appends lines with consecutive seqs starting at `fromSeq`; one statement per batch. A line's `step` is kept when set. */
+export async function appendLogLines(jobId: number, fromSeq: number, lines: { at: string; line: string; step?: number | null }[], d: Db = db()): Promise<LogLine[]> {
   if (!lines.length) return []
-  const out = lines.map((l, i) => ({ seq: fromSeq + i, at: l.at, line: l.line }))
-  await d.run(sql`insert into job_logs (job_id, seq, at, line) values ${sql.join(
-    out.map((l) => sql`(${jobId}, ${l.seq}, ${l.at}, ${l.line})`),
+  const out: LogLine[] = lines.map((l, i) => (l.step == null ? { seq: fromSeq + i, at: l.at, line: l.line } : { seq: fromSeq + i, at: l.at, line: l.line, step: l.step }))
+  await d.run(sql`insert into job_logs (job_id, seq, at, line, step) values ${sql.join(
+    out.map((l) => sql`(${jobId}, ${l.seq}, ${l.at}, ${l.line}, ${l.step ?? null})`),
     sql`, `,
   )}`)
   return out
