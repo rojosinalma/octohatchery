@@ -4,6 +4,8 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-21
+
 ### Added
 
 - Job page, GitHub's log viewer and more: line numbers that restart in every step, each a link to its line (`/jobs/87#step-4-12` opens the step and marks the line); a **Show timestamps** toggle (off by default, remembered by the browser); ANSI colours, bold, italic and underline mapped to the palette; `##[error]`, `##[warning]`, `##[notice]` and `##[debug]` lines with an icon and the word instead of the marker; error and warning counts on every step row; a failed job opens on its first error line; a search box that highlights, counts and walks the matches in the open steps.
@@ -111,7 +113,8 @@ First scaffold.
 - Runner image `ghcr.io/rojosinalma/octohatchery-runner` based on GitHub's `actions-runner`, with `gh`, Docker CLI and buildx, git-lfs, jq, curl and unzip, plus a `buildkitd` sidecar in the compose file for container builds inside jobs.
 - Audit log (`events`) and retention purge for finished jobs, runners and events.
 
-[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.2
 [0.2.1]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.1
 [0.2.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.1.0
