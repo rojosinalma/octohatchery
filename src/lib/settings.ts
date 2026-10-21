@@ -14,6 +14,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   runner_image_default: 'ghcr.io/rojosinalma/octohatchery-runner:edge',
   scheduler_tick_s: '5',
   heartbeat_s: '15',
+  /** GitHub App accounts served (comma-separated logins); empty = the default installation, or every installation. */
+  github_accounts: '',
   ui_skin: 'bootstrap',
   ui_palette: 'gruvbox',
   ui_mode: 'auto',

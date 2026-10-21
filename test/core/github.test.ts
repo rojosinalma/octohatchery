@@ -47,11 +47,13 @@ describe('permissions model', () => {
       appUrl: 'https://github.com/settings/apps/hatch',
       permissionsUrl: 'https://github.com/settings/apps/hatch/permissions',
       installUrl: 'https://github.com/settings/installations/5',
+      newInstallUrl: 'https://github.com/apps/hatch/installations/new',
     })
     expect(githubLinks({ source: 'app', granted: {}, appSlug: 'hatch', installationId: 5, appOwner: { login: 'acme', type: 'Organization' }, account: 'acme', accountType: 'Organization' })).toEqual({
       appUrl: 'https://github.com/organizations/acme/settings/apps/hatch',
       permissionsUrl: 'https://github.com/organizations/acme/settings/apps/hatch/permissions',
       installUrl: 'https://github.com/organizations/acme/settings/installations/5',
+      newInstallUrl: 'https://github.com/apps/hatch/installations/new',
     })
     expect(githubLinks({ source: 'pat', granted: {} }).permissionsUrl).toContain('personal-access-tokens')
   })

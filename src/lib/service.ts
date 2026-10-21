@@ -6,9 +6,11 @@ import { backend } from './backends'
 import { bus } from './bus'
 import { config } from './config'
 import { recordEvent } from './events'
+import { accountPolicy, ACCOUNT_RE, allows, parseAccounts, refusal } from './github/accounts'
 import { github } from './github/auth'
 import { buildStatus, RUNS_ON_PERMISSIONS, unknownStatus, type GitHubStatus } from './github/permissions'
 import { githubMessage } from './github/rest'
+import type { RepoInfo } from './github/types'
 import { wantedImages } from './images'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
@@ -59,6 +61,8 @@ const LOG_PAGE_MAX = 20_000
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 /** GitHub answers (permissions, repository list) are reused this long; `recheckGitHub` drops them. */
 const GITHUB_CACHE_MS = 60_000
+/** Most repositories listed per installation; the dialog filters client-side. */
+const REPOS_PER_INSTALLATION = 500
 /** `/health` must answer even when GitHub hangs: a check past this falls back to the last known status. */
 const GITHUB_CHECK_TIMEOUT_MS = 5_000
 
@@ -86,7 +90,8 @@ async function checkGitHub(): Promise<GitHubStatus> {
   try {
     const probeRepo = (await store.adoptedRepos())[0]?.fullName
     const report = await gh.permissions(probeRepo)
-    const status = buildStatus({ ...report, source: gh.kind }, webhookUrl())
+    const policy = gh.installs ? await accountPolicy(gh.installs.defaultId) : undefined
+    const status = buildStatus({ ...report, source: gh.kind }, webhookUrl(), policy)
     if (status.missing.length) logger.warn(`github permissions missing: ${status.missing.join(', ')}`)
     return status
   } catch (err) {
@@ -150,14 +155,41 @@ async function requireJob(id: number): Promise<store.JobRow> {
   return job
 }
 
-/** Refuses a write to GitHub when the credentials definitely lack what the mode needs; unknown grants pass. */
-async function requireGitHubPermissions(mode: 'pr' | 'commit'): Promise<void> {
+/**
+ * Refuses a write to GitHub when the credentials definitely lack what the mode needs; unknown grants pass. With
+ * installations, the installation of the repo's owner is the one that must have them.
+ */
+async function requireGitHubPermissions(mode: 'pr' | 'commit', fullName: string): Promise<void> {
   const status = await service.githubStatus()
   const needed = RUNS_ON_PERMISSIONS[mode]
-  const missing = status.permissions.filter((p) => needed.includes(p.key) && p.ok === false)
+  const owner = fullName.split('/')[0]!.toLowerCase()
+  const inst = status.installations?.find((i) => i.account.toLowerCase() === owner)
+  const missing = inst
+    ? inst.missing.filter((k) => needed.includes(k.split(':')[0]!))
+    : status.permissions.filter((p) => needed.includes(p.key) && p.ok === false).map((p) => `${p.key}:${p.level}`)
   if (!missing.length) return
-  const where = status.permissionsUrl ? ` Grant them at ${status.permissionsUrl}${status.installUrl ? ` and accept the change at ${status.installUrl}` : ''}.` : ''
-  throw new ServiceError(`GitHub access lacks ${missing.map((p) => `${p.key}:${p.level}`).join(', ')}, needed for ${mode === 'pr' ? 'a pull request' : 'a commit'}.${where}`, 'invalid')
+  const accept = inst?.url ?? status.installUrl
+  const where = status.permissionsUrl ? ` Grant them at ${status.permissionsUrl}${accept ? ` and accept the change at ${accept}` : ''}.` : ''
+  throw new ServiceError(`GitHub access${inst ? ` on ${inst.account}` : ''} lacks ${missing.join(', ')}, needed for ${mode === 'pr' ? 'a pull request' : 'a commit'}.${where}`, 'invalid')
+}
+
+/**
+ * With installations: the installation on the repo's owner, or a refusal when the App is not installed there or the
+ * account is not served (`github_accounts`). Sources without installations always pass.
+ */
+async function requireServedAccount(fullName: string): Promise<void> {
+  const installs = github().installs
+  if (!installs) return
+  const owner = fullName.split('/')[0]!
+  let inst
+  try {
+    inst = await installs.forOwner(owner)
+  } catch (err) {
+    throw new ServiceError(`GitHub did not list the App's installations: ${githubMessage(err)}`, 'unavailable')
+  }
+  if (!inst) throw new ServiceError(`The GitHub App is not installed on ${owner}. Install it on that account, then try again.`, 'invalid')
+  const policy = await accountPolicy(installs.defaultId)
+  if (!allows(policy, inst)) throw new ServiceError(`${fullName} is not served: ${refusal(policy, inst.account)}`, 'invalid')
 }
 
 /** No more lines can arrive: the final log is stored, or the job finished and its runner is gone past the finalise window. */
@@ -170,6 +202,25 @@ async function logComplete(job: Job): Promise<boolean> {
   if (store.ACTIVE_RUNNER_STATES.includes(runner.state)) return false
   const endedAt = runner.exitedAt ?? job.completedAt
   return !endedAt || Date.now() - Date.parse(endedAt) > FINALISE_GRACE_MS
+}
+
+/** Repositories of every served installation, per installation in parallel; fails only when all of them fail. */
+async function reposOfServedInstallations(gh: ReturnType<typeof github>) {
+  const installs = gh.installs!
+  const policy = await accountPolicy(installs.defaultId)
+  const served = (await installs.list()).filter((i) => allows(policy, i))
+  const results = await Promise.allSettled(served.map((i) => gh.listInstallationRepos(REPOS_PER_INSTALLATION, i.id)))
+  const out: RepoInfo[] = []
+  const errors: unknown[] = []
+  results.forEach((r, n) => {
+    if (r.status === 'fulfilled') out.push(...r.value)
+    else {
+      errors.push(r.reason)
+      logger.warn(`repositories of ${served[n]!.account}#${served[n]!.id} not listed`, githubMessage(r.reason))
+    }
+  })
+  if (served.length && errors.length === served.length) throw errors[0]
+  return out
 }
 
 export const service = {
@@ -254,30 +305,35 @@ export const service = {
     return Promise.race([statusInFlight, timeout]).finally(() => clearTimeout(timer))
   },
 
-  /** Drops the cached GitHub status and repository list and checks again now. */
+  /** Drops the cached GitHub status, installations and repository list and checks again now. */
   async recheckGitHub(actor: Actor): Promise<GitHubStatus> {
     statusCache = undefined
     repoListCache = undefined
+    github().installs?.invalidate()
     const status = await service.githubStatus()
     await recordEvent(actor, 'github.recheck', status.source, { ok: status.ok, missing: status.missing })
     return status
   },
 
   /**
-   * Repositories the App installation or the token can reach (first 500), each flagged when already adopted here.
-   * Cached for 60 s; errors surface as `ServiceError` so the dialog can show GitHub's reason and the fix.
+   * Repositories the token or every served App installation can reach (first 500 each), each flagged when already
+   * adopted here. Cached for 60 s; errors surface as `ServiceError` so the dialog can show GitHub's reason and the fix.
+   * One failing installation is logged and skipped; only when every one fails does the call fail.
    */
   async listGitHubRepos(): Promise<GitHubRepoItem[]> {
     const gh = github()
-    if (gh.kind === 'none') throw new ServiceError('GITHUB_AUTH=none: configure a GitHub App or token first', 'unavailable')
+    if (gh.kind === 'none' && !gh.installs) throw new ServiceError('GITHUB_AUTH=none: configure a GitHub App or token first', 'unavailable')
     const adopted = new Set((await store.adoptedRepos()).map((r) => r.fullName))
     if (repoListCache && Date.now() - repoListCache.at < GITHUB_CACHE_MS) return repoListCache.value.map((r) => ({ ...r, adopted: adopted.has(r.fullName) }))
+    const failed = (err: unknown) => {
+      const status = (err as { status?: number }).status
+      return new ServiceError(`GitHub did not list the repositories: ${githubMessage(err)}`, status === 401 || status === 403 ? 'invalid' : 'unavailable')
+    }
     let repos
     try {
-      repos = await gh.listInstallationRepos()
+      repos = gh.installs ? await reposOfServedInstallations(gh) : await gh.listInstallationRepos()
     } catch (err) {
-      const status = (err as { status?: number }).status
-      throw new ServiceError(`GitHub did not list the repositories: ${githubMessage(err)}`, status === 401 || status === 403 ? 'invalid' : 'unavailable')
+      throw err instanceof ServiceError ? err : failed(err)
     }
     const items = repos.map((r) => ({ ...r, adopted: adopted.has(r.fullName) })).sort((a, b) => a.fullName.localeCompare(b.fullName))
     repoListCache = { at: Date.now(), value: items }
@@ -312,6 +368,7 @@ export const service = {
 
   async adoptRepo(fullName: string, actor: Actor): Promise<Repo> {
     if (!/^[\w.-]+\/[\w.-]+$/.test(fullName)) throw new ServiceError('repository must be "owner/name"')
+    await requireServedAccount(fullName)
     let info
     try {
       info = await github().getRepo(fullName)
@@ -357,7 +414,7 @@ export const service = {
 
     const repo = await store.repoByName(input.fullName)
     if (!repo?.adopted) throw new ServiceError(`repository "${input.fullName}" is not adopted`, 'invalid')
-    await requireGitHubPermissions(input.mode)
+    await requireGitHubPermissions(input.mode, input.fullName)
     const gh = github()
     const info = await gh.getRepo(input.fullName)
     const files = input.workflows?.length ? input.workflows : await gh.listWorkflowFiles(input.fullName, info.defaultBranch)
@@ -547,6 +604,14 @@ export const service = {
       if (!/^(tcp|unix):\/\/.+/.test(value)) throw new ServiceError('buildkit_host must be a tcp:// or unix:// address')
     } else if (key === 'runner_image_default') {
       if (!IMAGE_RE.test(value)) throw new ServiceError('runner_image_default must be an image reference like registry/name:tag')
+    } else if (key === 'github_accounts') {
+      const accounts = parseAccounts(value)
+      const bad = accounts.find((a) => !ACCOUNT_RE.test(a))
+      if (bad) throw new ServiceError(`github_accounts: "${bad}" is not a GitHub login`)
+      value = accounts.join(',')
+      // The served set changes what the status and the repository list show: drop both.
+      statusCache = undefined
+      repoListCache = undefined
     } else if (key.startsWith('ui_')) {
       if (!/^[a-z0-9-]{1,40}$/.test(value)) throw new ServiceError(`${key} must be a short lowercase identifier`)
     } else if (!/^\d+$/.test(value)) {

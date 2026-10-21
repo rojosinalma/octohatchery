@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { empty, full, githubOk, githubStatus, makeService, type FixtureSet } from './fixtures'
+import { empty, full, githubMulti, githubOk, githubStatus, makeService, type FixtureSet } from './fixtures'
 
 const store: { data: FixtureSet } = { data: full }
 mock.module('../../src/lib/service', () => ({ service: makeService(store) }))
@@ -77,7 +77,9 @@ describe('overview', () => {
     // one Hosts card (plus the Recent jobs card), one column per host with its slots underneath
     expect((body.match(/<section class="t-card"/g) ?? []).length).toBe(2)
     expect(body).toContain('href="/hosts">All hosts')
-    expect(body).toContain('<div class="t-card-body host-list t-grid" data-min="md">')
+    expect(body).toContain('<div class="t-card-body host-list" data-hosts="2">')
+    // two hosts split the card in halves (3 of 6 tracks each)
+    expect([...body.matchAll(/<section class="host-section" data-name="[^"]+" data-span="(\d)"/g)].map((m) => m[1])).toEqual(['3', '3'])
     expect(body).not.toContain('slots used / total')
     expect(body).toContain('aria-label="About slots"')
     const sections = [...body.matchAll(/<section class="host-section" data-name="([^"]+)"/g)].map((m) => m[1])
@@ -155,6 +157,21 @@ describe('overview', () => {
     expect(nodeA).toContain('data-runner-id="3"')
     expect((nodeA.match(/data-tip="Claimed, runner starting"/g) ?? []).length).toBe(1)
     expect(nodeB).toContain('4/16')
+  })
+
+  test('hosts split each row equally: at most 3 per row, rows filled evenly', async () => {
+    const { hostRows, hostSpans } = await import('../../src/views/overview')
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map((n) => hostRows(n))).toEqual([[1], [2], [3], [2, 2], [3, 2], [3, 3], [3, 2, 2], [3, 3, 2]])
+    expect(hostSpans(5)).toEqual([2, 2, 2, 3, 3])
+    expect(hostSpans(1)).toEqual([6])
+    expect(hostRows(0)).toEqual([])
+    const many = Array.from({ length: 5 }, (_, i) => ({ ...full.hosts[0]!, name: `node-${i}`, isLeader: i === 0 }))
+    const { body } = await get('/?partial=1')
+    expect(body).toContain('data-hosts="2"')
+    store.data = { ...full, hosts: many }
+    const five = (await get('/?partial=1')).body
+    expect(five).toContain('<div class="t-card-body host-list" data-hosts="5">')
+    expect([...five.matchAll(/data-span="(\d)"/g)].map((m) => m[1])).toEqual(['2', '2', '2', '3', '3'])
   })
 
   test('empty state explains self-registration', async () => {
@@ -558,6 +575,33 @@ describe('github status', () => {
     expect(body).toContain('data-action="github-recheck"')
     const heads = body.slice(body.indexOf('id="github-permissions"')).match(/<th>([^<]+)<\/th>/g)!.slice(0, 5)
     expect(heads).toEqual(['<th>Permission</th>', '<th>Required</th>', '<th>Granted</th>', '<th>Why</th>', '<th>What breaks without it</th>'])
+  })
+
+  test('settings tab with several installations: one card each, accounts as checkboxes, gaps with what breaks', async () => {
+    store.data = { ...full, github: githubMulti }
+    const { body } = await get('/settings')
+    expect(body).toContain('id="github-installations"')
+    expect(body).toContain('data-installation="7654321" data-account="acme" data-allowed="true"')
+    expect(body).toContain('data-installation="999" data-account="umbrella" data-allowed="false"')
+    expect(body).toContain('href="https://github.com/organizations/umbrella/settings/installations/999"')
+    expect(body).toContain('>organization<')
+    expect(body).toContain('<code>workflows:write</code>')
+    expect(body).toContain('>1 missing<')
+    expect(body).toContain('2 accounts')
+    expect(body).toContain('href="https://github.com/apps/octohatchery-acme/installations/new"')
+    // Known values are picked: one checkbox per installation, ticked when served; no text input for the setting.
+    const row = body.slice(body.indexOf('data-key="github_accounts"'))
+    expect(row).toContain('<fieldset class="t-check-group gh-accounts" data-accounts aria-labelledby="gh-accounts-label">')
+    expect(row).toContain('<input class="t-check-input" type="checkbox" value="acme" checked/>')
+    expect(row).toContain('<input class="t-check-input" type="checkbox" value="umbrella"/>')
+    expect(row).toContain('appears here after the App is installed on it')
+    expect(body).not.toContain('data-setting="github_accounts"')
+    // A listed account without an installation stays visible so it can be unticked; the setting is not under Other.
+    store.data = { ...full, github: githubMulti, settings: { ...full.settings, github_accounts: 'acme,gone-org' } }
+    const again = (await get('/settings')).body
+    expect(again).toContain('value="gone-org" checked')
+    expect(again).toContain('the App is not installed there')
+    expect(again).not.toContain('id="s-github_accounts"')
   })
 
   test('settings tab with GITHUB_AUTH=none shows the .env instructions and the docs link', async () => {

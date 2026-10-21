@@ -21,7 +21,7 @@ Two layers. `.env` holds bootstrap values and secrets and is read once at start.
 | `GITHUB_AUTH` | yes | `app` or `pat`. |
 | `GITHUB_APP_ID` | with `app` | The GitHub App id. |
 | `GITHUB_APP_PRIVATE_KEY` | with `app` | The App's PEM private key, newlines as `\n`. |
-| `GITHUB_APP_INSTALLATION_ID` | with `app` | The installation id on your account or organisation. |
+| `GITHUB_APP_INSTALLATION_ID` | no | The default installation. Without it the App's installations are discovered; see `github_accounts`. |
 | `GITHUB_TOKEN` | with `pat` | A personal access token with repository and runner administration scopes. |
 | `GITHUB_WEBHOOK_SECRET` | yes | Random string. OctoHatchery sets it on every webhook it registers and verifies every delivery against it. |
 | any name a runner type lists under secret env | per type | Values for secrets a runner type passes into its containers. Read at spawn time; a missing one fails the spawn with a reason. |
@@ -41,6 +41,7 @@ Every node in a cluster needs the same GitHub values and webhook secret, its own
 | `log_level` | `info` | `debug`, `info`, `warn` or `error`. |
 | `buildkit_host` | `tcp://octohatchery-buildkitd:1234` | `BUILDKIT_HOST` injected into every runner. Points at the sidecar on the compose network. |
 | `runner_image_default` | `ghcr.io/rojosinalma/octohatchery-runner:edge` | The image preselected when a template is created on the dashboard. |
+| `github_accounts` | empty | GitHub App only: the accounts (comma-separated logins) whose installations are served. Empty serves the default installation, or every installation when `GITHUB_APP_INSTALLATION_ID` is not set. Set it with the checkboxes on Settings → GitHub. |
 
 Settings are read at use time with a cache of at most five seconds, so a change is live within that window on every node.
 

@@ -1,5 +1,6 @@
 import type { Octokit } from '@octokit/rest'
-import type { GitHubAuthAdapter, GitHubClient, JobDetails, QueuedJob } from '../types'
+import { installationIndex, type Installation } from '../installations'
+import type { GitHubAuthAdapter, GitHubClient, JobDetails, QueuedJob, RepoInfo } from '../types'
 
 /** In-memory stand-in for tests: deterministic answers, records every call, never talks to GitHub. */
 export type FakeGitHub = GitHubClient & {
@@ -17,6 +18,17 @@ export type FakeGitHub = GitHubClient & {
   failOn: Map<string, string>
   /** What `permissions()` reports as granted (empty = nothing known). */
   granted: Record<string, string>
+  /** Installation id → repositories `listInstallationRepos(max, id)` answers. */
+  reposByInstallation: Map<number, RepoInfo[]>
+  /** With installations: `method repo → installation id` for every repo call, as the App picks its token. */
+  installationCalls: string[]
+  /** How often the installation list was fetched (cache misses and refreshes). */
+  installationFetches: () => number
+  /**
+   * Turns the fake into a multi-installation App source: `installs` answers from `list` (mutable, so a test can add
+   * an installation later), cached like the App's (TTL and miss refetch as given), `permissions()` reports each one.
+   */
+  useInstallations(list: Installation[], opts?: { defaultId?: number; ttlMs?: number; missRefetchMs?: number; now?: () => number }): void
 }
 
 export function createFakeGitHub(): FakeGitHub {
@@ -30,8 +42,20 @@ export function createFakeGitHub(): FakeGitHub {
   const failOn = new Map<string, string>()
   const pulls = new Map<string, { url: string; state: string }>()
   const granted: Record<string, string> = {}
+  const reposByInstallation = new Map<number, RepoInfo[]>()
+  let installationList: Installation[] | undefined
+  let fetches = 0
+  const installationCalls: string[] = []
   let nextRunnerId = 1000
   const rec = (method: string, ...args: unknown[]) => calls.push({ method, args })
+  /** The App's rule, faked: a repo call needs an installation on the repo's owner. */
+  const via = async (self: GitHubClient, method: string, repo: string) => {
+    if (!self.installs) return
+    const owner = repo.split('/')[0]!
+    const inst = await self.installs.forOwner(owner)
+    if (!inst) throw Object.assign(new Error(`the GitHub App is not installed on ${owner}`), { status: 404 })
+    installationCalls.push(`${method} ${repo} → ${inst.id}`)
+  }
   return {
     kind: 'none',
     calls,
@@ -43,18 +67,33 @@ export function createFakeGitHub(): FakeGitHub {
     branches,
     failOn,
     granted,
+    reposByInstallation,
+    installationCalls,
+    installationFetches: () => fetches,
+    useInstallations(list, opts = {}) {
+      installationList = list
+      this.installs = installationIndex(async () => {
+        fetches++
+        rec('listInstallations')
+        if (failOn.has('listInstallations')) throw Object.assign(new Error(failOn.get('listInstallations')), { status: 502 })
+        return installationList!.map((i) => ({ ...i }))
+      }, opts)
+    },
     async getInstallationOctokit(): Promise<Octokit> {
       throw new Error('GITHUB_AUTH=none has no Octokit')
     },
     async createJitConfig(input) {
+      await via(this, 'createJitConfig', input.repo)
       rec('createJitConfig', input)
       return { runnerId: nextRunnerId++, encodedJitConfig: `fake-jit-${input.name}` }
     },
     async deleteRunner(repo, runnerId) {
+      await via(this, 'deleteRunner', repo)
       rec('deleteRunner', repo, runnerId)
       deletedRunners.push(runnerId)
     },
     async listQueuedJobs(repo) {
+      await via(this, 'listQueuedJobs', repo)
       rec('listQueuedJobs', repo)
       return queued.get(repo) ?? []
     },
@@ -65,11 +104,13 @@ export function createFakeGitHub(): FakeGitHub {
     async deleteWebhook(repo, hookId) {
       rec('deleteWebhook', repo, hookId)
     },
-    async listInstallationRepos() {
-      rec('listInstallationRepos')
+    async listInstallationRepos(max, installationId) {
+      rec('listInstallationRepos', max, installationId)
+      if (installationId !== undefined) return reposByInstallation.get(installationId) ?? []
       return [{ fullName: 'example/repo', isPrivate: false, defaultBranch: 'main' }]
     },
     async getRepo(fullName) {
+      await via(this, 'getRepo', fullName)
       rec('getRepo', fullName)
       return { fullName, isPrivate: false, defaultBranch: 'main' }
     },
@@ -104,15 +145,25 @@ export function createFakeGitHub(): FakeGitHub {
     },
     async permissions(probeRepo) {
       rec('permissions', probeRepo)
-      return { source: 'none', granted: { ...granted } }
+      if (!this.installs) return { source: 'none', granted: { ...granted } }
+      const list = await this.installs.list()
+      return {
+        source: 'none',
+        granted: {},
+        installationId: this.installs.defaultId,
+        appSlug: 'fake-app',
+        installations: list.map((i) => ({ id: i.id, account: i.account, accountType: i.accountType, granted: { ...i.permissions }, repoCount: reposByInstallation.get(i.id)?.length ?? 0 })),
+      }
     },
     async getJobLog(repo, githubJobId) {
+      await via(this, 'getJobLog', repo)
       rec('getJobLog', repo, githubJobId)
       const text = jobLogs.get(`${repo}#${githubJobId}`)
       if (text === undefined) throw Object.assign(new Error(`Not Found: log for job ${githubJobId}`), { status: 404 })
       return text
     },
     async getJob(repo, githubJobId) {
+      await via(this, 'getJob', repo)
       rec('getJob', repo, githubJobId)
       if (failOn.has('getJob')) throw Object.assign(new Error(failOn.get('getJob')), { status: 403 })
       return jobDetails.get(`${repo}#${githubJobId}`) ?? fakeJobDetails()

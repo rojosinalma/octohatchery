@@ -367,8 +367,14 @@
       }
       state.innerHTML = ''
       search.disabled = false
+      // Grouped by owner (one header per account) when the repos span several accounts; the list arrives sorted by name.
+      var owners = repos.map(function (r) { return r.fullName.split('/')[0] }).filter(function (o, i, a) { return a.indexOf(o) === i })
+      var grouped = owners.length > 1, lastOwner = null
       list.innerHTML = repos.map(function (r) {
-        return '<button class="t-list-item" role="option" aria-selected="false" data-action="adopt-pick" data-repo="' + esc(r.fullName) + '" data-name="' + esc(r.fullName.toLowerCase()) + '"' + (r.adopted ? ' disabled data-adopted' : '') + '>'
+        var owner = r.fullName.split('/')[0]
+        var head = grouped && owner !== lastOwner ? '<div class="t-list-group" data-owner="' + esc(owner) + '">' + esc(owner) + '</div>' : ''
+        lastOwner = owner
+        return head + '<button class="t-list-item" role="option" aria-selected="false" data-action="adopt-pick" data-repo="' + esc(r.fullName) + '" data-owner="' + esc(owner) + '" data-name="' + esc(r.fullName.toLowerCase()) + '"' + (r.adopted ? ' disabled data-adopted' : '') + '>'
           + '<svg class="t-icon t-list-lead" aria-hidden="true"><use href="/tailor/icons.svg#bi-github"/></svg>'
           + '<span class="t-list-body"><span class="t-list-name">' + esc(r.fullName) + '</span><span class="t-list-desc">default branch ' + esc(r.defaultBranch) + '</span></span>'
           + '<span class="t-list-trail t-cluster" data-gap="1">' + (r.adopted ? '<span class="t-badge" data-tone="success">adopted</span>' : '') + '<span class="t-badge" data-tone="' + (r.isPrivate ? 'neutral' : 'info') + '">' + (r.isPrivate ? 'private' : 'public') + '</span></span>'
@@ -385,6 +391,9 @@
       var hit = !q || b.dataset.name.indexOf(q) >= 0
       b.hidden = !hit
       if (hit) shown++
+    })
+    $$('#adopt-list .t-list-group[data-owner]', dlg).forEach(function (g) {
+      g.hidden = !$$('#adopt-list [data-action="adopt-pick"]', dlg).some(function (b) { return b.dataset.owner === g.dataset.owner && !b.hidden })
     })
     var count = $('#adopt-count', dlg)
     count.textContent = q ? shown + ' of ' + total : total + ' repositor' + (total === 1 ? 'y' : 'ies')
@@ -613,6 +622,31 @@
       })
     })
   }
+
+  // Accounts served (github_accounts): the ticked boxes are the list. Delegated, so it survives a re-render of main.
+  // Optimistic: the card badge flips at once, a refused save reverts box and badge; unticking the last account is
+  // refused before anything is sent.
+  document.addEventListener('change', function (e) {
+    var accounts = e.target.closest('[data-accounts]'), box = e.target.closest('input[type=checkbox]')
+    if (!accounts || !box) return
+    var picked = $$('input[type=checkbox]', accounts).filter(function (b) { return b.checked }).map(function (b) { return b.value })
+    if (!picked.length) { box.checked = true; T.toast('warning', 'Keep at least one account: with none ticked OctoHatchery would serve nothing'); return }
+    var row = accounts.closest('.t-setting')
+    var badge = function (on) {
+      $$('.gh-install').filter(function (c) { return c.dataset.account.toLowerCase() === box.value.toLowerCase() }).forEach(function (c) {
+        var b = $('.gh-served', c); c.dataset.allowed = on ? 'true' : 'false'
+        if (b) { b.textContent = on ? 'served' : 'ignored'; b.dataset.tone = on ? 'success' : 'neutral' }
+      })
+    }
+    badge(box.checked)
+    row.dataset.state = 'saving'
+    saveSetting('github_accounts', picked.join(',')).then(function (res) {
+      row.dataset.state = res.ok ? 'saved' : 'failed'
+      toast(res)
+      if (!res.ok) { box.checked = !box.checked; badge(box.checked); return }
+      var hint = $('.gh-accounts-default', row); if (hint) hint.remove()
+    })
+  })
 
   /* ── Job log: live tail over SSE, bounded DOM, follow toggle, copy, steps + folded groups ─ */
   var LOG_DOM_LINES = 5000

@@ -66,7 +66,7 @@ For a cluster (several hosts sharing one PostgreSQL database), repeat on each ho
 
 ### Adopt a repository
 
-Open the dashboard, go to **Repos** and press **Adopt a repo**: the dialog lists the repositories your GitHub App installation or token can reach; one click adopts. With a token OctoHatchery also registers a webhook for `workflow_job` events; with an App the App's webhook already covers the repo. The same action is available as `POST /api/repos/adopt` and as the MCP tool `adopt_repo`.
+Open the dashboard, go to **Repos** and press **Adopt a repo**: the dialog lists the repositories your GitHub App installations or token can reach; one click adopts. One App can serve your own account and organisations at once: tick the accounts on **Settings → GitHub** ([docs/github-app.md](docs/github-app.md#serving-several-accounts)). With a token OctoHatchery also registers a webhook for `workflow_job` events; with an App the App's webhook already covers the repo. The same action is available as `POST /api/repos/adopt` and as the MCP tool `adopt_repo`.
 
 ### Point a workflow at a runner type
 

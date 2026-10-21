@@ -2,6 +2,8 @@ import { verify } from '@octokit/webhooks-methods'
 import { z } from 'zod'
 import { config } from './config'
 import { recordEvent } from './events'
+import { notServedReason } from './github/accounts'
+import { github } from './github/auth'
 import { SELF_HOSTED } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
@@ -43,6 +45,8 @@ export const WorkflowJobPayload = z.object({
     steps: z.array(StepPayload).optional(),
   }),
   repository: z.object({ full_name: z.string() }),
+  /** Present on GitHub App deliveries: the installation that sent it. */
+  installation: z.object({ id: z.number() }).optional(),
 })
 export type WorkflowJobPayload = z.infer<typeof WorkflowJobPayload>
 
@@ -92,6 +96,14 @@ export async function applyWorkflowJob(p: WorkflowJobPayload): Promise<WebhookOu
   const wj = p.workflow_job
   const repoName = p.repository.full_name
   const target = `${repoName}#${wj.id}`
+  // Installations on accounts this instance does not serve (`github_accounts`) are dropped before anything else:
+  // never a job row; one audit event per job (on `queued`), a log line per delivery.
+  const notServed = await notServedReason(github().installs, repoName.split('/')[0]!, p.installation?.id)
+  if (notServed) {
+    logger.info(`webhook ${p.action} ${target} dropped: ${notServed}`)
+    if (p.action === 'queued') await recordEvent('github', 'webhook.ignored', repoName, { reason: notServed, job: wj.id, installation: p.installation?.id ?? null })
+    return { status: 200, message: `ignored: ${notServed}` }
+  }
   switch (p.action) {
     case 'queued': {
       const repo = await repoByName(repoName)

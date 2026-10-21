@@ -78,10 +78,11 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
     for (const [k, v] of [
       ['GITHUB_APP_ID', cfg.githubAppId],
       ['GITHUB_APP_PRIVATE_KEY', cfg.githubAppPrivateKey],
-      ['GITHUB_APP_INSTALLATION_ID', cfg.githubAppInstallationId],
     ] as const) {
       if (!v) throw new ConfigError(`GITHUB_AUTH=app needs ${k}`)
     }
+    // Optional: names the default installation; without it the App's installations are discovered.
+    if (cfg.githubAppInstallationId !== undefined) intOf('GITHUB_APP_INSTALLATION_ID', cfg.githubAppInstallationId, 0)
   }
   if (githubAuth === 'pat' && !cfg.githubToken) throw new ConfigError('GITHUB_AUTH=pat needs GITHUB_TOKEN')
   if (githubAuth !== 'none' && !cfg.githubWebhookSecret) {

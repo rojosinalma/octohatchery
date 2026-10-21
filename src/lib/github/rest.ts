@@ -11,7 +11,7 @@ const logger = log('github')
 export function restClient(
   kind: GitHubClient['kind'],
   getOctokit: (repoFullName: string) => Promise<Octokit>,
-  extra: Pick<GitHubClient, 'ensureWebhook' | 'deleteWebhook' | 'listInstallationRepos' | 'permissions'>,
+  extra: Pick<GitHubClient, 'ensureWebhook' | 'deleteWebhook' | 'listInstallationRepos' | 'permissions' | 'installs'>,
 ): GitHubClient {
   const call = async <T>(what: string, fn: () => Promise<T>): Promise<T> => {
     try {

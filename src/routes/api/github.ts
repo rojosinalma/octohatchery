@@ -12,5 +12,9 @@ export const githubRoutes = new Elysia({ prefix: '/github' })
   })
   .get('/repos', async () => {
     const [repos, status] = await Promise.all([service.listGitHubRepos(), service.githubStatus()])
-    return jsonOk({ repos, source: status.source, installUrl: status.installUrl }, `${repos.length} repositories`)
+    const owners = new Set(repos.map((r) => r.fullName.split('/')[0]))
+    return jsonOk(
+      { repos, source: status.source, installUrl: status.installUrl, newInstallUrl: status.newInstallUrl },
+      `${repos.length} repositories${owners.size > 1 ? ` on ${owners.size} accounts` : ''}`,
+    )
   })

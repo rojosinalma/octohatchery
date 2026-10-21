@@ -30,7 +30,7 @@ describe('config', () => {
     expect(() => loadConfig({ MODE: 'cluster', GITHUB_AUTH: 'none' })).toThrow(ConfigError)
     expect(() => loadConfig({ MODE: 'cluster', GITHUB_AUTH: 'none' })).toThrow(/postgres/)
   })
-  test('app auth needs its three keys; PEM newlines are restored', () => {
+  test('app auth needs its id and key; PEM newlines are restored', () => {
     expect(() => loadConfig({ GITHUB_AUTH: 'app' })).toThrow(/GITHUB_APP_ID/)
     const c = loadConfig({
       GITHUB_AUTH: 'app',
@@ -40,6 +40,10 @@ describe('config', () => {
       GITHUB_WEBHOOK_SECRET: 's',
     })
     expect(c.githubAppPrivateKey).toBe('-----BEGIN\nabc\n-----END')
+    // The installation id is optional (installations are discovered) but must be a number when set.
+    const base = { GITHUB_AUTH: 'app', GITHUB_APP_ID: '1', GITHUB_APP_PRIVATE_KEY: 'k', GITHUB_WEBHOOK_SECRET: 's' }
+    expect(loadConfig(base).githubAppInstallationId).toBeUndefined()
+    expect(() => loadConfig({ ...base, GITHUB_APP_INSTALLATION_ID: 'abc' })).toThrow(/GITHUB_APP_INSTALLATION_ID/)
   })
   test('pat auth needs a token and a webhook secret', () => {
     expect(() => loadConfig({ GITHUB_AUTH: 'pat' })).toThrow(/GITHUB_TOKEN/)

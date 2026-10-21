@@ -27,7 +27,9 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Overview
 
-- One Hosts card, hosts side by side as columns (two on a desktop, stacked on a narrow screen).
+- One Hosts card, hosts side by side as columns that split each row equally: up to three per row,
+  rows filled evenly (4 hosts = 2 + 2, 5 = 3 + 2), stacked on a narrow screen. A narrow column puts
+  the specs under the host name.
   Each column has a one-line header: status dot, name (links to the Hosts screen), a `leader`
   badge on the node that runs the sweep, an `offline` or `Docker unreachable` badge only when
   that is the case, and on the right the specs the node reported (`8 CPU · 32 GB · Docker 27.3.1
@@ -118,8 +120,9 @@ toggle, and a status dot in the top-right corner that shows whether the live con
 
 ### Repos
 
-- Adopt a repo: a button that opens a dialog listing the repositories the GitHub App installation
-  or the token can reach (`GET /api/github/repos`, first 500, cached 60 s), with a filter box,
+- Adopt a repo: a button that opens a dialog listing the repositories every served GitHub App
+  installation or the token can reach (`GET /api/github/repos`, first 500 per installation, cached
+  60 s), grouped by owner when there is more than one, with a filter box,
   a private/public badge and an `adopted` badge on rows already served (disabled). One click calls
   `POST /api/repos/adopt {fullName}`; nothing is typed by hand. The clicked row shows a spinner
   and the other rows are disabled until GitHub answers. When the list cannot be fetched the
@@ -226,12 +229,17 @@ one row. The actor badge tells which. Detail is the event's JSON rendered as `ke
 - Appearance: skin and palette selects (alphabetical). The choice is stored as the settings
   `ui_skin`, `ui_palette` and `ui_mode`, so every browser that opens the dashboard gets the same
   look; localStorage only caches it to avoid a flash on load.
-- GitHub: the auth mode, the App (linked) with its installation, account and repository count,
-  the webhook URL, and a table of the permissions OctoHatchery needs — required level, granted
-  level, why, and what breaks without it; a missing one is a red row. Buttons: **Re-check**
-  (`POST /api/github/recheck`, drops the 60 s cache), **Edit permissions on GitHub** and
-  **Accept on the installation**. With `GITHUB_AUTH=none` the tab shows the `.env` lines for both
+- GitHub: the auth mode, the App (linked), a link to install it on another account, the webhook
+  URL, one card per installation (account, user or organisation, installation id linked to its
+  settings page, repository count, missing permissions with what breaks, **Accept on the
+  installation** when something is missing), **Accounts served** (one checkbox per installation's
+  account, saved as `github_accounts` on change; unticking the last one is refused), and a table of
+  the permissions OctoHatchery needs — required level, level granted to the default installation,
+  why, and what breaks without it; a missing one is a red row. Buttons: **Re-check**
+  (`POST /api/github/recheck`, drops the cached status and installation list) and **Edit
+  permissions on GitHub**. With a token the tab shows the account instead of cards. With `GITHUB_AUTH=none` the tab shows the `.env` lines for both
   modes and links to [github-app.md](github-app.md). The same status is `GET /api/github/status`
+  (with `installations: [{id, account, type, repoCount, missing, allowed, url}]` in App mode)
   and `github: {ok, source, missing}` in `GET /health`.
 - Banner: while a permission is missing or no GitHub source is configured, every page shows a
   warning under the navbar naming the gap and linking to this tab. It is rendered from the cached
