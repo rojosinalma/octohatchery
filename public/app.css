@@ -334,6 +334,15 @@
   flex-wrap: nowrap;
 }
 
+.member-stale {
+  display: flex;
+  align-items: center;
+  gap: var(--t-space-2);
+  max-width: 16rem;
+  padding: 0.25rem 0.75rem;
+  color: var(--t-warning);
+}
+
 .member-switcher .t-menu-kbd {
   margin-left: auto;
   white-space: nowrap;

@@ -4,6 +4,9 @@ import { empty, full, githubMulti, githubOk, githubStatus, job87Set, makeService
 const store: { data: FixtureSet } = { data: full }
 mock.module('../../src/lib/service', () => ({ service: makeService(store) }))
 
+// Bun loads a local .env on its own; the pages render as a standalone node (no OCTOFORGE_TOKEN) whatever it holds.
+const { loadConfig, setConfig } = await import('../../src/lib/config')
+setConfig(loadConfig({ DATABASE_URL: 'sqlite::memory:', GITHUB_AUTH: 'none', CONTAINER_BACKEND: 'fake', HOST_NAME: 'node-a', MODE: 'single' }))
 const { ui } = await import('../../src/routes/ui')
 
 const get = async (path: string) => {
@@ -894,6 +897,18 @@ describe('events', () => {
 })
 
 describe('settings', () => {
+  test('standalone: no Octoforge section or sidebar entry; under Octoforge both appear', async () => {
+    const { body } = await get('/settings')
+    expect(body).not.toContain('id="octoforge"')
+    expect(body).not.toContain('href="#octoforge"')
+    expect(body).not.toContain('data-setting="siblings_stale_minutes"')
+    const { SettingsPage, SettingsSide } = await import('../../src/views/settings')
+    const page = String(await SettingsPage({ settings: full.settings, version: '0.1.0-test', github: githubOk, octoforge: true }))
+    expect(page).toContain('id="octoforge"')
+    expect(page).toMatch(/data-setting="siblings_stale_minutes" data-value="10800" data-scale="60"/)
+    expect(String(await SettingsSide({ hasOther: false, octoforge: true }))).toContain('href="#octoforge"')
+  })
+
   test('rows per setting with labels, help and auto-save hooks; theme selects; sidebar', async () => {
     const { body } = await get('/settings')
     expect(body).toContain('class="t-shell-side"')

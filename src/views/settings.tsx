@@ -2,7 +2,7 @@ import { parseAccounts } from '../lib/github/accounts'
 import { REQUIRED_PERMISSIONS, type GitHubStatus, type InstallationStatus, type PermissionRow } from '../lib/github/permissions'
 import { Icon, RelTime, e } from './parts'
 
-export type SettingsData = { settings: Record<string, string>; version: string; github: GitHubStatus }
+export type SettingsData = { settings: Record<string, string>; version: string; github: GitHubStatus; octoforge?: boolean }
 
 type Control =
   | { kind: 'duration'; scale?: number }
@@ -12,7 +12,8 @@ type Control =
 
 type Spec = { key: string; label: string; help: string; tone?: 'accent' | 'info' | 'danger'; control: Control; default: string }
 
-type Group = { id: string; title: string; icon: string; items: Spec[] }
+/** `octoforge`: shown only when the node runs under Octoforge (`OCTOFORGE_TOKEN` set). */
+type Group = { id: string; title: string; icon: string; items: Spec[]; octoforge?: boolean }
 
 /** Settings known to the scheduler and stream; keys and defaults follow the project rules. Unknown keys render as text rows under "Other". */
 export const SETTING_GROUPS: Group[] = [
@@ -137,7 +138,25 @@ export const SETTING_GROUPS: Group[] = [
       },
     ],
   },
+  {
+    id: 'octoforge',
+    title: 'Octoforge',
+    icon: 'bi-grid-3x3-gap-fill',
+    octoforge: true,
+    items: [
+      {
+        key: 'siblings_stale_minutes',
+        label: 'Member list counts as old after',
+        help: 'Octoforge resends the list of its tools every hour. When no list arrives for this long, the switcher in the navbar keeps its links and says the list is old. 0 never marks it.',
+        control: { kind: 'duration', scale: 60 },
+        default: '180',
+      },
+    ],
+  },
 ]
+
+/** The groups this node shows: Octoforge ones only under Octoforge. */
+export const visibleGroups = (octoforge: boolean) => SETTING_GROUPS.filter((g) => octoforge || !g.octoforge)
 
 /** Keys driven by the theme switcher, not shown as rows. */
 export const THEME_KEYS = ['ui_skin', 'ui_palette', 'ui_mode']
@@ -216,7 +235,7 @@ const Row = ({ spec, value }: { spec: Spec; value: string }) => (
   </div>
 )
 
-export const SettingsSide = ({ hasOther }: { hasOther: boolean }) => (
+export const SettingsSide = ({ hasOther, octoforge = false }: { hasOther: boolean; octoforge?: boolean }) => (
   <nav class="t-sidebar" aria-label="Settings sections">
     <ul>
       <li class="t-sidebar-group">Settings</li>
@@ -232,7 +251,7 @@ export const SettingsSide = ({ hasOther }: { hasOther: boolean }) => (
           <span class="t-sidebar-item-name">GitHub</span>
         </a>
       </li>
-      {SETTING_GROUPS.map((g) => (
+      {visibleGroups(octoforge).map((g) => (
         <li>
           <a class="t-sidebar-item" href={`#${g.id}`}>
             <Icon id={g.icon} />
@@ -596,7 +615,7 @@ export const GitHubSection = ({ github, accounts = '' }: { github: GitHubStatus;
   </section>
 )
 
-export const SettingsPage = ({ settings, version, github }: SettingsData) => {
+export const SettingsPage = ({ settings, version, github, octoforge = false }: SettingsData) => {
   const other = otherKeys(settings)
   return (
     <>
@@ -630,7 +649,7 @@ export const SettingsPage = ({ settings, version, github }: SettingsData) => {
           </div>
         </section>
         <GitHubSection github={github} accounts={settings['github_accounts'] ?? ''} />
-        {SETTING_GROUPS.map((g) => (
+        {visibleGroups(octoforge).map((g) => (
           <section class="t-section" id={g.id}>
             <h2 class="t-section-title" safe>
               {g.title}

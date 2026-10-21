@@ -16,6 +16,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   heartbeat_s: '15',
   /** GitHub App accounts served (comma-separated logins); empty = the default installation, or every installation. */
   github_accounts: '',
+  /** Under Octoforge: minutes without a resent sibling list before the member switcher marks it old (3 × Octoforge's hourly resend); 0 = never. */
+  siblings_stale_minutes: '180',
   ui_skin: 'bootstrap',
   ui_palette: 'gruvbox',
   ui_mode: 'auto',

@@ -34,23 +34,38 @@ export type SiblingList = z.infer<typeof SiblingList>
 
 /** One link in the switcher; `current` marks this app. */
 export type Sibling = { name: string; title: string; url: string; icon: string; current: boolean }
-export type Switcher = { forge: Omit<Sibling, 'name' | 'current'>; members: Sibling[]; updatedAt: string }
+/** `staleSince` is set when Octoforge has not resent the list for `siblings_stale_minutes`: the links stay, marked old. */
+export type Switcher = { forge: Omit<Sibling, 'name' | 'current'>; members: Sibling[]; updatedAt: string; staleSince?: string }
 
-const sameList = (a: SiblingList, b: SiblingList) => JSON.stringify({ ...a, updated_at: '' }) === JSON.stringify({ ...b, updated_at: '' })
+/** The list as stored: what Octoforge sent plus when this member got it (Octoforge's `updated_at` may not move on a resend). */
+const Stored = SiblingList.extend({ received_at: z.iso.datetime({ offset: true }) })
+type Stored = z.infer<typeof Stored>
 
-function parse(raw: string): SiblingList | undefined {
+const content = ({ forge, members }: SiblingList) => JSON.stringify({ forge, members })
+
+function parse(raw: string): Stored | undefined {
   try {
-    return SiblingList.parse(JSON.parse(raw))
+    return Stored.parse(JSON.parse(raw))
   } catch {
     return undefined
+  }
+}
+
+/** True when this node runs under Octoforge (`OCTOFORGE_TOKEN` set). Standalone, nothing Octoforge-related is shown. */
+export function underOctoforge(): boolean {
+  try {
+    return Boolean(config().octoforgeToken)
+  } catch {
+    return false
   }
 }
 
 /** Stores the list Octoforge sent; an audit event only when its content changed (Octoforge resends it every hour). */
 export async function storeSiblings(list: SiblingList): Promise<{ changed: boolean }> {
   const before = parse(await settings.fetch(SIBLINGS_KEY, ''))
-  await settings.set(SIBLINGS_KEY, JSON.stringify(list))
-  const changed = !before || !sameList(before, list)
+  const stored: Stored = { forge: list.forge, members: list.members, updated_at: list.updated_at, received_at: new Date().toISOString() }
+  await settings.set(SIBLINGS_KEY, JSON.stringify(stored))
+  const changed = !before || content(before) !== content(list)
   if (changed) {
     logger.info(`sibling list stored: ${list.members.length} members`)
     await recordEvent(ACTOR, 'siblings.updated', 'siblings', { members: list.members.map((m) => m.name) })
@@ -69,7 +84,7 @@ export async function dropSiblings(): Promise<{ removed: boolean }> {
 
 /** What the member switcher renders; undefined (no switcher) without `OCTOFORGE_TOKEN` or a valid stored list. */
 export async function switcher(): Promise<Switcher | undefined> {
-  if (!config().octoforgeToken) return undefined
+  if (!underOctoforge()) return undefined
   const raw = await settings.fetch(SIBLINGS_KEY, '')
   if (!raw) return undefined
   const list = parse(raw)
@@ -77,9 +92,12 @@ export async function switcher(): Promise<Switcher | undefined> {
     logger.warn(`stored ${SIBLINGS_KEY} is not a valid sibling list; no switcher shown`)
     return undefined
   }
+  const staleMs = (await settings.fetchInt('siblings_stale_minutes', 180)) * 60_000
+  const stale = staleMs > 0 && Date.now() - Date.parse(list.received_at) > staleMs
   return {
     forge: list.forge,
     members: list.members.map((m) => ({ ...m, current: m.name === manifest.name })),
     updatedAt: list.updated_at,
+    ...(stale ? { staleSince: list.received_at } : {}),
   }
 }

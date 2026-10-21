@@ -70,9 +70,14 @@ every member with its icon. The entry for OctoHatchery itself is marked "this ap
   members. Anything else is refused with 400 and nothing is stored.
 - The list is stored in the `settings` table under `octoforge_siblings`, hidden from the settings API
   like the other `octoforge_*` keys. Every node of a cluster reads it from there, so one call is enough.
-- Octoforge sends the list again every hour. A resend that only changes `updated_at` is stored but
-  writes no audit event.
-- Without `OCTOFORGE_TOKEN` there is no switcher, even when a list is still stored.
+- Octoforge sends the list again every hour. A resend with the same tools is stored but writes no
+  audit event.
+- When no list arrives for a while (setting `siblings_stale_minutes`, 180 by default, three missed
+  resends), the switcher keeps its links and adds "Octoforge has not updated this list since …".
+  The next list removes the note. 0 never shows it. The setting is on the Settings page under
+  **Octoforge**, which only shows when `OCTOFORGE_TOKEN` is set.
+- Standalone (no `OCTOFORGE_TOKEN`) there is no switcher and no Octoforge setting, even when a list
+  is still stored.
 
 ## GitHub credentials
 

@@ -3,7 +3,7 @@ import { html } from '@elysiajs/html'
 import { resolve, sep } from 'node:path'
 import { service } from '../lib/service'
 import { SETTING_DEFAULTS } from '../lib/settings'
-import { switcher } from '../lib/octoforge/siblings'
+import { switcher, underOctoforge } from '../lib/octoforge/siblings'
 import { STATUS_BY_CODE, validationMessage } from '../lib/json'
 import { JOBS_PER_MAX, JOBS_PER_PAGE, ServiceError, type JobStatus } from '../lib/types'
 import { Layout, type NavKey, type Theme } from '../views/layout'
@@ -218,5 +218,6 @@ export const ui = new Elysia({ name: 'ui' })
 
   .get('/settings', async () => {
     const [settings, v, github] = await Promise.all([service.getSettings(), version(), service.githubStatus()])
-    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} github={github} />, <SettingsSide hasOther={otherKeys(settings).length > 0} />)
+    const octoforge = underOctoforge()
+    return page('settings', 'Settings', <SettingsPage settings={settings} version={v} github={github} octoforge={octoforge} />, <SettingsSide hasOther={otherKeys(settings).length > 0} octoforge={octoforge} />)
   })

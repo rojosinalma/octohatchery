@@ -123,6 +123,29 @@ describe('sibling list', () => {
     expect(String(MemberSwitcher({ siblings: undefined }) ?? '')).toBe('')
   })
 
+  test('a list Octoforge stops resending stays, marked old after siblings_stale_minutes; a resend clears the mark', async () => {
+    await fresh({ OCTOFORGE_TOKEN: TOKEN })
+    const a = app()
+    await call(a, 'PUT', '/api/octoforge/siblings', LIST)
+    expect((await switcher())?.staleSince).toBeUndefined()
+    const old = new Date(Date.now() - 181 * 60_000).toISOString()
+    await settings.set(SIBLINGS_KEY, JSON.stringify({ ...LIST, received_at: old }))
+    const s = await switcher()
+    expect(s?.staleSince).toBe(old)
+    expect(s?.members).toHaveLength(2)
+    const html = String(await MemberSwitcher({ siblings: s }))
+    expect(html).toContain('id="member-switcher-stale"')
+    expect(html).toContain(`datetime="${old}"`)
+    expect(String(await MemberSwitcher({ siblings: { ...s!, staleSince: undefined } }))).not.toContain('member-switcher-stale')
+
+    await settings.set('siblings_stale_minutes', '0')
+    expect((await switcher())?.staleSince).toBeUndefined()
+    await settings.set('siblings_stale_minutes', '180')
+    // The hourly resend (same content, same updated_at) refreshes the receive time.
+    await call(a, 'PUT', '/api/octoforge/siblings', LIST)
+    expect((await switcher())?.staleSince).toBeUndefined()
+  })
+
   test('the token removed later hides the switcher again', async () => {
     await fresh({ OCTOFORGE_TOKEN: TOKEN })
     await call(app(), 'PUT', '/api/octoforge/siblings', LIST)
