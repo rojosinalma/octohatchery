@@ -4,6 +4,12 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-21
+
+### Added
+
+- `GET /api/octoforge/status` carries `public_url` (the `PUBLIC_URL` value, left out when it is unset), so Octoforge can hand GitHub the public webhook and setup URLs while it calls the instance on an internal address.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added
@@ -91,6 +97,7 @@ First scaffold.
 - Runner image `ghcr.io/rojosinalma/octohatchery-runner` based on GitHub's `actions-runner`, with `gh`, Docker CLI and buildx, git-lfs, jq, curl and unzip, plus a `buildkitd` sidecar in the compose file for container builds inside jobs.
 - Audit log (`events`) and retention purge for finished jobs, runners and events.
 
-[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rojosinalma/octohatchery/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.1
 [0.2.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.2.0
 [0.1.0]: https://github.com/rojosinalma/octohatchery/releases/tag/v0.1.0

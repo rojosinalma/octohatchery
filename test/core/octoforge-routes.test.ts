@@ -138,6 +138,14 @@ describe('octoforge routes', () => {
     expect(r.json).toMatchObject({ ok: true, contract: 1, github: { mode: 'none', source: 'none' } })
     expect(typeof r.json.version).toBe('string')
     expect(r.json.database).toMatchObject({ engine: 'sqlite' })
+    expect(r.json.public_url).toBe('https://hatchery.example.test')
+  })
+
+  test('status: public_url is left out when PUBLIC_URL is unset', async () => {
+    await world({ PUBLIC_URL: '' })
+    const r = await call(app(), 'GET', '/api/octoforge/status', undefined, AUTH)
+    expect(r.status).toBe(200)
+    expect('public_url' in r.json).toBe(false)
   })
 
   test('PUT /github with a token: checked, stored, in use, client rebuilt; DELETE goes back to env', async () => {

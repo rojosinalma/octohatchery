@@ -37,7 +37,7 @@ token gets 401. Answers use the usual `{ok, message, ...data}` shape.
 | Route | Does |
 |---|---|
 | `GET /api/octoforge/manifest` | The `octoforge.json` document. No token needed. |
-| `GET /api/octoforge/status` | `{contract, version, github: {mode, source, app_id?, login?}, database: {engine, schema?, source}}`. `source` is `env`, `octoforge` or `none`. Never a secret. |
+| `GET /api/octoforge/status` | `{contract, version, public_url?, github: {mode, source, app_id?, login?}, database: {engine, schema?, source}}`. `public_url` is `PUBLIC_URL` when it is set, so Octoforge can give GitHub the public webhook and setup URLs even when it reaches the instance by another address. `source` is `env`, `octoforge` or `none`. Never a secret. |
 | `PUT /api/octoforge/github` | Hands over a GitHub credential (below). |
 | `DELETE /api/octoforge/github` | Drops the handed-over credential; the node goes back to its `.env` values. |
 | `POST /api/octoforge/database/adopt` | Moves OctoHatchery's data into a shared database (see [Database](#database)). |
