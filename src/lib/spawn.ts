@@ -21,6 +21,12 @@ export const RUNNER_SOCKET_PATH = '/var/run/docker.sock'
 export const DIND_IMAGE = 'docker:28-dind'
 export const DIND_PORT = 2375
 export const DIND_ROLE = 'dind'
+/**
+ * The runner's work folder (`_work` under the runner image's home, see the JIT config): GITHUB_WORKSPACE and RUNNER_TEMP
+ * live under it. On `dind` types one volume is mounted here in the runner and in its daemon, so a job path passed to
+ * `docker run -v` is the same files on both sides.
+ */
+export const WORK_DIR = '/home/runner/_work'
 /** `runAs: root` runs the runner container as uid and gid 0. */
 export const ROOT_USER = '0:0'
 
@@ -43,6 +49,10 @@ export function socketGid(path: string, stat: (p: string) => { gid: number } = s
 
 export function dindName(runner: Pick<Runner, 'name'>): string {
   return `${runner.name}-dind`
+}
+
+export function workVolumeName(runner: Pick<Runner, 'name'>): string {
+  return `${runner.name}-work`
 }
 
 const DIND_READY_MS = 45_000
@@ -114,20 +124,36 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     const jit = await github().createJitConfig({ repo, name: runner.name, labels })
     logger.info(`registered ${runner.name} with ${repo} (github runner ${jit.runnerId})`)
     let runnerNetwork = network
+    const mounts = runnerMounts(type)
     if (type.docker === 'dind') {
       // The daemon starts first and owns the network stack; the runner joins it (`container:<sidecar>`), so a port
       // the daemon publishes (GitHub `services:` ports) is on the job's own localhost, as on a hosted runner.
-      const sidecarId = await backend().spawnSidecar({ runner, name: dindName(runner), image: DIND_IMAGE, role: DIND_ROLE, env: { DOCKER_TLS_CERTDIR: '' }, network, privileged: true })
+      // Both containers mount one volume at the work folder, so `docker run -v <job path>:…` sees the job's files.
+      const volume = await backend().createVolume({ runner, name: workVolumeName(runner) })
+      const sidecarId = await backend().spawnSidecar({
+        runner,
+        name: dindName(runner),
+        image: DIND_IMAGE,
+        role: DIND_ROLE,
+        env: { DOCKER_TLS_CERTDIR: '' },
+        network,
+        privileged: true,
+        mounts: [`${volume}:${WORK_DIR}`],
+      })
       await waitForDaemon(sidecarId, runner.name)
+      // A new volume belongs to root; the runner user and any `--user` a job passes must be able to write and delete in it.
+      if ((await backend().exec(sidecarId, ['chmod', '0777', WORK_DIR])) !== 0) throw new Error(`${runner.name}: cannot open ${WORK_DIR} on the work volume to the runner user`)
       env.DOCKER_HOST = `tcp://localhost:${DIND_PORT}`
       runnerNetwork = `container:${sidecarId}`
+      // nocopy: the runner image's own folder must not be copied over the volume and undo the mode set above.
+      mounts.push(`${volume}:${WORK_DIR}:nocopy`)
     }
     const containerId = await backend().spawnRunner({
       runner,
       type,
       jitconfig: jit.encodedJitConfig,
       env,
-      mounts: runnerMounts(type),
+      mounts,
       network: runnerNetwork,
       groupAdd,
       user: runnerUser(type),

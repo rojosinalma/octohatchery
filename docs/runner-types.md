@@ -63,7 +63,7 @@ can talk to. Image builds do not: `docker buildx build` goes to the shared `buil
 |---|---|---|
 | `none` (default) | No daemon. `BUILDKIT_HOST` only. | `services:`, `docker run` and Compose steps fail. Safest. |
 | `socket` | The node's Docker socket (`DOCKER_HOST` when it is a unix socket, else `/var/run/docker.sock`) is bind-mounted at `/var/run/docker.sock`, and the runner's user is added to the socket's group. | Everything works and is fast (shared image cache). Every job on this type sees and can stop, start or exec into **every container on the host**, including OctoHatchery itself. Only for types whose repos you fully trust. |
-| `dind` | Before the runner, the node starts a `docker:28-dind` sidecar (privileged, plain TCP, same runner network, named `<runner>-dind`, labelled with the runner id and `octohatchery.role=dind`) and points the runner's `DOCKER_HOST` at it. The runner's entrypoint waits up to 30 s for the daemon. The sidecar is removed with the runner by the reaper, the stale sweep and `kill`. | Isolated: the job controls only its own daemon. About 5 s slower to start; images are pulled fresh every job (no shared cache); the sidecar is privileged on the host. |
+| `dind` | Before the runner, the node starts a `docker:28-dind` sidecar (privileged, plain TCP, same runner network, named `<runner>-dind`, labelled with the runner id and `octohatchery.role=dind`) and points the runner's `DOCKER_HOST` at it. The runner's entrypoint waits up to 30 s for the daemon. The runner and the sidecar share one volume (`<runner>-work`) at the runner's work folder `/home/runner/_work`, see [Files shared with the daemon](#files-shared-with-the-daemon). The sidecar and the volume are removed with the runner by the reaper, the stale sweep and `kill`. | Isolated: the job controls only its own daemon. About 5 s slower to start; images are pulled fresh every job (no shared cache); the sidecar is privileged on the host. |
 
 For `socket`, the node adds the socket's group id to the runner container when it can `stat` the
 socket (the socket is mounted into the app container, so this normally works). When it cannot, it
@@ -76,6 +76,32 @@ or by using `dind` instead.
 may race the daemon.
 
 The shipped `generic` and `deploy` types start with `none`; pick what each needs in the type dialog.
+
+### Files shared with the daemon
+
+With `dind` the daemon runs in its own container. Without help, `docker run -v <job path>:<dest>` would
+mount the daemon's own copy of that path, which is empty. So the node creates one named volume per runner,
+`<runner>-work`, and mounts it at `/home/runner/_work` in both containers. That folder holds
+`GITHUB_WORKSPACE` and `RUNNER_TEMP`, so a path under either one is the same files on both sides, in
+both directions:
+
+```yaml
+- run: |
+    mkdir -p "$RUNNER_TEMP/t" && echo host > "$RUNNER_TEMP/t/in"
+    docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/t:/w" alpine \
+      sh -c 'cat /w/in && echo container > /w/out'
+    cat "$RUNNER_TEMP/t/out"
+```
+
+- The volume's root is opened to every user (`chmod 0777`) before the runner starts. The runner creates
+  its folders in it as its own user, so a container started with `--user "$(id -u):$(id -g)"` writes
+  files the job can read and delete, and the other way round.
+- A container that writes as root leaves root-owned files, which the job cannot delete, the same as on a
+  GitHub-hosted runner. Pass `--user`, or delete them from a container (`docker run --rm -v …:/w alpine rm -rf /w/…`).
+- Paths outside `/home/runner/_work` (for example `/tmp` or `$HOME`) are still not shared.
+- A custom runner image must keep the runner's home at `/home/runner`; the work folder is `_work` under it.
+- The volume is new for every job and is removed with the runner. Jobs that use `container:`, and volumes
+  on `services:`, work on `dind` types for the same reason.
 
 ### `services:` and localhost on containerised runners
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { fresh, TEST_HOST } from './helpers'
 import { reap } from '../../src/lib/scheduler'
 import { service } from '../../src/lib/service'
-import { DIND_IMAGE, dindName, hostSocketPath, runnerMounts, socketGid } from '../../src/lib/spawn'
+import { DIND_IMAGE, dindName, hostSocketPath, runnerMounts, socketGid, WORK_DIR, workVolumeName } from '../../src/lib/spawn'
 import { removeStaleRunners } from '../../src/lib/sweep'
 import { runnerById } from '../../src/lib/store'
 import type { RunnerType } from '../../src/lib/types'
@@ -71,6 +71,58 @@ describe('runner docker access', () => {
     await service.kill(runner.id, 'user')
     expect(w.docker.containers.size).toBe(0)
     expect(w.docker.sidecars.size).toBe(0)
+    expect(w.docker.volumes.size).toBe(0)
+  })
+
+  test('dind type: one work volume at the same path in the daemon and the runner, opened to every user', async () => {
+    const w = await fresh()
+    await service.adoptRepo('acme/app', 'user')
+    await service.upsertRunnerType({ ...base, name: 'dindy', docker: 'dind', mounts: ['/srv/cache:/cache'] }, 'user')
+    await service.setSlots({ host: TEST_HOST, type: 'dindy', count: 1 }, 'user')
+    const runner = await service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')
+    const volume = workVolumeName(runner)
+    expect(WORK_DIR).toBe('/home/runner/_work')
+    expect([...w.docker.volumes.keys()]).toEqual([volume])
+    expect(w.docker.volumes.get(volume)!.runner.id).toBe(runner.id)
+    const sidecar = [...w.docker.sidecars.values()][0]!
+    expect(sidecar.input.mounts).toEqual([`${volume}:${WORK_DIR}`])
+    expect(w.docker.spawns[0]!.mounts).toEqual(['/srv/cache:/cache', `${volume}:${WORK_DIR}:nocopy`])
+    expect(w.docker.execs).toContainEqual({ containerId: sidecar.id, cmd: ['chmod', '0777', WORK_DIR] })
+  })
+
+  test('dind type: a failed chmod fails the spawn and removes the daemon and the volume', async () => {
+    const w = await fresh()
+    await service.adoptRepo('acme/app', 'user')
+    await service.upsertRunnerType({ ...base, name: 'dindy', docker: 'dind' }, 'user')
+    await service.setSlots({ host: TEST_HOST, type: 'dindy', count: 1 }, 'user')
+    w.docker.exec = async (_id, cmd) => (cmd[0] === 'chmod' ? 1 : 0)
+    await expect(service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')).rejects.toMatchObject({ code: 'unavailable' })
+    expect(w.docker.spawns.length).toBe(0)
+    expect(w.docker.sidecars.size).toBe(0)
+    expect(w.docker.volumes.size).toBe(0)
+  })
+
+  test('other types get no work volume', async () => {
+    const w = await fresh()
+    await service.adoptRepo('acme/app', 'user')
+    await service.upsertRunnerType({ ...base, name: 'sock', docker: 'socket' }, 'user')
+    await service.setSlots({ host: TEST_HOST, type: 'sock', count: 1 }, 'user')
+    await service.spawn({ type: 'sock', host: TEST_HOST }, 'user')
+    expect(w.docker.volumes.size).toBe(0)
+    expect(w.docker.spawns[0]!.mounts.some((m) => m.includes(WORK_DIR))).toBe(false)
+  })
+
+  test('reap removes work volumes whose runner is gone, on this host only', async () => {
+    const w = await fresh()
+    await service.adoptRepo('acme/app', 'user')
+    await service.upsertRunnerType({ ...base, name: 'dindy', docker: 'dind' }, 'user')
+    await service.setSlots({ host: TEST_HOST, type: 'dindy', count: 1 }, 'user')
+    const live = await service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')
+    const runner = { name: 'gone', host: TEST_HOST, type: 'dindy' }
+    w.docker.volumes.set('gone-work', { runner: { ...runner, id: 9999 }, name: 'gone-work' })
+    w.docker.volumes.set('other-work', { runner: { ...runner, id: 9998, host: 'node-z' }, name: 'other-work' })
+    await reap()
+    expect([...w.docker.volumes.keys()].sort()).toEqual([workVolumeName(live), 'other-work'].sort())
   })
 
   test('dind type: the reaper and the stale sweep remove the sidecar with the runner', async () => {
@@ -83,6 +135,7 @@ describe('runner docker access', () => {
     await reap()
     expect((await runnerById(a.id))?.state).toBe('exited')
     expect(w.docker.sidecars.size).toBe(0)
+    expect(w.docker.volumes.size).toBe(0)
 
     const b = await service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')
     expect(w.docker.sidecars.size).toBe(1)
@@ -90,6 +143,7 @@ describe('runner docker access', () => {
     expect((await runnerById(b.id))?.state).toBe('removed')
     expect(w.docker.containers.size).toBe(0)
     expect(w.docker.sidecars.size).toBe(0)
+    expect(w.docker.volumes.size).toBe(0)
   })
 
   test('dind type: a sidecar started before a failed spawn is removed again', async () => {
@@ -102,5 +156,6 @@ describe('runner docker access', () => {
     await expect(service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')).rejects.toMatchObject({ code: 'unavailable' })
     w.docker.spawnRunner = spawnRunner
     expect(w.docker.sidecars.size).toBe(0)
+    expect(w.docker.volumes.size).toBe(0)
   })
 })

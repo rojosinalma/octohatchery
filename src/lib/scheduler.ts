@@ -38,6 +38,15 @@ export async function reap(host = config().hostName): Promise<number> {
     await be.remove(c.id)
     if (runnerId) await be.removeByRunnerId(Number(runnerId))
   }
+  // Work volumes whose runner is no longer active (a cleanup that failed, a node that died mid-removal).
+  // Rows are read after the volumes: a runner's row exists before its volume, so a spawn in flight is never caught.
+  const volumes = await be.listRunnerVolumes()
+  const liveIds = new Set((await activeRunners(host)).map((r) => String(r.id)))
+  for (const v of volumes) {
+    if (v.host !== host || liveIds.has(v.runnerId) || !v.runnerId) continue
+    logger.info(`removing orphan volume ${v.name} (runner ${v.runnerId})`)
+    await be.removeByRunnerId(Number(v.runnerId)).catch((err) => logger.warn(`remove orphan volume ${v.name} failed`, err instanceof Error ? err.message : String(err)))
+  }
   for (const runner of active) {
     if (runner.state === 'spawning' && !runner.containerId) continue // not started yet
     const info = runner.containerId ? await be.inspect(runner.containerId) : owned.get(String(runner.id))

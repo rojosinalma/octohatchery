@@ -1,4 +1,4 @@
-import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, ImageInfo, SidecarInput, SpawnInput } from './types'
+import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, ImageInfo, SidecarInput, SpawnInput, VolumeInput } from './types'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL } from './types'
 
 /** A hand-driven log feed: `push` lines, `end` when the container exits. */
@@ -40,6 +40,10 @@ export type FakeBackend = ContainerBackend & {
   spawns: SpawnInput[]
   /** Sidecars by id; removed together with their runner by `removeByRunnerId`. */
   sidecars: Map<string, ContainerInfo & { input: SidecarInput }>
+  /** Volumes by name, with the runner they belong to. */
+  volumes: Map<string, VolumeInput>
+  /** Commands run through `exec`, with the container they ran in. */
+  execs: { containerId: string; cmd: string[] }[]
   up: boolean
   /** Images the fake engine holds, by reference; `pull` adds one (or fails when its reference is in `pullFails`). */
   images: Map<string, ImageInfo>
@@ -64,6 +68,8 @@ export function createFakeBackend(): FakeBackend {
     containers,
     spawns,
     sidecars,
+    volumes: new Map(),
+    execs: [],
     images,
     pullFails: new Map(),
     pulls: [],
@@ -107,8 +113,16 @@ export function createFakeBackend(): FakeBackend {
       })
       return id
     },
-    async exec() {
+    async exec(containerId, cmd) {
+      fake.execs.push({ containerId, cmd })
       return 0
+    },
+    async createVolume(input) {
+      fake.volumes.set(input.name, input)
+      return input.name
+    },
+    async listRunnerVolumes() {
+      return [...fake.volumes.values()].map((v) => ({ name: v.name, runnerId: String(v.runner.id), host: v.runner.host }))
     },
     async spawnSidecar(input) {
       const id = `fake-sidecar-${++n}`
@@ -137,6 +151,7 @@ export function createFakeBackend(): FakeBackend {
     async removeByRunnerId(runnerId) {
       for (const [id, c] of containers) if (c.labels[RUNNER_ID_LABEL] === String(runnerId)) containers.delete(id)
       for (const [id, c] of sidecars) if (c.labels[RUNNER_ID_LABEL] === String(runnerId)) sidecars.delete(id)
+      for (const [name, v] of fake.volumes) if (v.runner.id === runnerId) fake.volumes.delete(name)
     },
     async listOwned() {
       return [...containers.values()]

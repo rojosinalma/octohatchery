@@ -33,7 +33,18 @@ export type SidecarInput = {
   env: Record<string, string>
   network: string
   privileged: boolean
+  /** `src:dst[:opts]` entries, already resolved (the dind sidecar: the runner's work volume). */
+  mounts?: string[]
 }
+
+/** A named volume that lives and dies with one runner (today: the work directory shared with the dind daemon). */
+export type VolumeInput = {
+  runner: Pick<Runner, 'id' | 'name' | 'host' | 'type'>
+  name: string
+}
+
+/** A volume labelled with a runner id, as `listRunnerVolumes` reports it. */
+export type RunnerVolume = { name: string; runnerId: string; host: string }
 
 /** Labels every runner container carries; `listOwned` filters on the first one. */
 export const RUNNER_LABEL = 'octohatchery.runner'
@@ -61,12 +72,19 @@ export type ContainerBackend = {
   spawnRunner(input: SpawnInput): Promise<string>
   /** Creates and starts a sidecar for a runner; returns its id. Removed with the runner by `removeByRunnerId`. */
   spawnSidecar(input: SidecarInput): Promise<string>
+  /** Creates a named volume labelled with the runner's id and host; removed with the runner by `removeByRunnerId`. */
+  createVolume(input: VolumeInput): Promise<string>
+  /** Every volume labelled with a runner id on this engine. */
+  listRunnerVolumes(): Promise<RunnerVolume[]>
   /** Runs a command inside a running container and resolves with its exit code (used to probe a sidecar's readiness). */
   exec(containerId: string, cmd: string[]): Promise<number>
   inspect(containerId: string): Promise<ContainerInfo>
   /** Removes the container (force). Missing containers are not an error. */
   remove(containerId: string): Promise<void>
-  /** Removes every container labelled with this runner id (the runner and its sidecars), force; nothing found is fine. */
+  /**
+   * Removes every container labelled with this runner id (the runner and its sidecars), force, then every volume with
+   * that label; nothing found is fine.
+   */
   removeByRunnerId(runnerId: number): Promise<void>
   /** Every container labelled `octohatchery.runner=true`, running or exited (sidecars excluded). */
   listOwned(): Promise<ContainerInfo[]>

@@ -4,6 +4,10 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Changed
+
+- Docker-in-Docker types: the runner and its daemon share one volume at the runner's work folder `/home/runner/_work`, so `docker run -v "$RUNNER_TEMP/x:/w"` (or any path under `GITHUB_WORKSPACE`) shows the job's files in the container, and what the container writes reaches the job. The volume is open to every user, is new for each job and is removed with the runner; the reaper also removes volumes left behind by a failed cleanup.
+
 ## [0.3.3] - 2026-10-21
 
 ### Changed

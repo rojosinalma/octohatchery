@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { PassThrough } from 'node:stream'
 import { config } from '../config'
 import { log } from '../log'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo, type SpawnInput } from './types'
+import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo, type RunnerVolume, type SpawnInput } from './types'
 
 const logger = log('docker')
 const PIDS_LIMIT = 1024
@@ -215,7 +215,7 @@ export const dockerBackend: BackendAdapter = {
         logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}${type.docker !== 'none' ? ` docker=${type.docker}` : ''}${user ? ` user=${user}` : ''}`)
         return container.id
       },
-      async spawnSidecar({ runner, name, image, role, env, network, privileged }) {
+      async spawnSidecar({ runner, name, image, role, env, network, privileged, mounts }) {
         await pullIfMissing(docker, image)
         const container = await docker.createContainer({
           Image: image,
@@ -228,6 +228,7 @@ export const dockerBackend: BackendAdapter = {
             [RUNNER_ROLE_LABEL]: role,
           },
           HostConfig: {
+            Binds: mounts?.length ? mounts : undefined,
             NetworkMode: network,
             Privileged: privileged,
             PidsLimit: PIDS_LIMIT,
@@ -237,6 +238,18 @@ export const dockerBackend: BackendAdapter = {
         await container.start()
         logger.info(`start sidecar ${name} (${container.id.slice(0, 12)}) role=${role} image=${image}${privileged ? ' privileged' : ''}`)
         return container.id
+      },
+      async createVolume({ runner, name }) {
+        await docker.createVolume({
+          Name: name,
+          Labels: { [RUNNER_ID_LABEL]: String(runner.id), [RUNNER_TYPE_LABEL]: runner.type, [RUNNER_HOST_LABEL]: runner.host },
+        })
+        logger.info(`create volume ${name}`)
+        return name
+      },
+      async listRunnerVolumes() {
+        const res = await docker.listVolumes({ filters: { label: [RUNNER_ID_LABEL] } })
+        return (res.Volumes ?? []).map((v): RunnerVolume => ({ name: v.Name, runnerId: v.Labels?.[RUNNER_ID_LABEL] ?? '', host: v.Labels?.[RUNNER_HOST_LABEL] ?? '' }))
       },
       async exec(containerId, cmd) {
         const container = docker.getContainer(containerId)
@@ -271,6 +284,15 @@ export const dockerBackend: BackendAdapter = {
           try {
             await docker.getContainer(c.Id).remove({ force: true, v: true })
             logger.info(`remove ${c.Id.slice(0, 12)} (runner ${runnerId}${c.Labels?.[RUNNER_ROLE_LABEL] ? `, ${c.Labels[RUNNER_ROLE_LABEL]}` : ''})`)
+          } catch (err) {
+            if (!isNotFound(err)) throw err
+          }
+        }
+        const volumes = await docker.listVolumes({ filters: { label: [`${RUNNER_ID_LABEL}=${runnerId}`] } })
+        for (const v of volumes.Volumes ?? []) {
+          try {
+            await docker.getVolume(v.Name).remove({ force: true })
+            logger.info(`remove volume ${v.Name} (runner ${runnerId})`)
           } catch (err) {
             if (!isNotFound(err)) throw err
           }
