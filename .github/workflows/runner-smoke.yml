@@ -13,6 +13,7 @@ on:
         options:
           - generic
           - deploy
+          - generic-docker-in-docker
 
 permissions:
   contents: read
@@ -93,6 +94,18 @@ jobs:
           docker buildx inspect --bootstrap | head -8
           printf 'FROM scratch\nCOPY . /src\n' > Dockerfile.smoke
           docker buildx build -f Dockerfile.smoke --output type=cacheonly .
+
+      # Docker-in-Docker: the daemon is another container; the work folder is one volume shared by both.
+      - name: Work folder is shared with the daemon
+        if: startsWith(env.DOCKER_HOST, 'tcp://')
+        run: |
+          case "$RUNNER_TEMP" in /home/runner/_work/*) ;; *) echo "::error::RUNNER_TEMP=$RUNNER_TEMP is not under the shared work folder"; exit 1 ;; esac
+          mkdir -p "$RUNNER_TEMP/t" && echo host > "$RUNNER_TEMP/t/in"
+          out=$(docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/t:/w" alpine:3.22 sh -c 'cat /w/in && echo container > /w/out')
+          [ "$out" = host ] || { echo "::error::the container read '$out' instead of 'host'"; exit 1; }
+          [ "$(cat "$RUNNER_TEMP/t/out")" = container ] || { echo "::error::the container's file did not reach the job"; exit 1; }
+          rm -rf "$RUNNER_TEMP/t"
+          echo "shared in both directions"
 
       - name: Reach the deploy target
         if: inputs.runner_type == 'deploy'
