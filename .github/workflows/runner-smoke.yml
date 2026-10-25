@@ -97,7 +97,7 @@ jobs:
 
       # Docker-in-Docker: the daemon is another container; the work folder is one volume shared by both.
       - name: Work folder is shared with the daemon
-        if: startsWith(env.DOCKER_HOST, 'tcp://')
+        if: inputs.runner_type == 'generic-docker-in-docker'
         run: |
           case "$RUNNER_TEMP" in /home/runner/_work/*) ;; *) echo "::error::RUNNER_TEMP=$RUNNER_TEMP is not under the shared work folder"; exit 1 ;; esac
           mkdir -p "$RUNNER_TEMP/t" && echo host > "$RUNNER_TEMP/t/in"
