@@ -12,7 +12,7 @@
   },
   "devDependencies": {
     "@kitajs/ts-html-plugin": "4.1.4",
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "@types/dockerode": "4.0.2",
     "drizzle-kit": "0.31.11",
     "typescript": "7.0.2"
