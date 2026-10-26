@@ -9,6 +9,10 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 - Docker cache for Docker-in-Docker types (`dockerCache: repo`, in the template dialog, the API and `upsert_runner_type`): each host keeps the daemon's images and build cache per template and repository for the next job, one job at a time. Containers, volumes and networks of the last job are removed before each job. Settings `dind_cache_max_gb` (20) and `dind_cache_idle_days` (7) bound the disk use. Jobs see `OCTOHATCHERY_DOCKER_CACHE`. See [docs/runner-types.md](docs/runner-types.md#docker-cache).
 - `DIND_CERTS_DIR`: a host folder with private registry CAs, mounted read-only into every Docker-in-Docker daemon of the node.
 
+### Fixed
+
+- A runner started by hand (`spawn`) on the node's own host could be started twice; the second start failed at GitHub and its clean-up removed the first runner's containers.
+
 ### Security
 
 - Docker-in-Docker types: the daemon in the sidecar listens on `127.0.0.1:2375` only. Before, it listened on all addresses of the runner network without auth, so a job on any other runner could reach it. Jobs still use `DOCKER_HOST=tcp://localhost:2375` and need no change.

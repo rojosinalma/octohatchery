@@ -119,6 +119,23 @@ export async function removeRunnerContainers(runner: Pick<Runner, 'id' | 'contai
  * and a bound job goes back to `queued` (or `ignored` after MAX_CLAIM_RETRIES).
  */
 export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promise<RunnerRow | undefined> {
+  // A hand-made runner is started by `spawn` and its row is also seen by `startPending` until it has a container: the
+  // second start would fail at GitHub (name taken) and its clean-up would remove the first one's containers.
+  if (materialising.has(runner.id)) {
+    logger.debug(`${runner.name}: already starting`)
+    return undefined
+  }
+  materialising.add(runner.id)
+  try {
+    return await start(runner, actor)
+  } finally {
+    materialising.delete(runner.id)
+  }
+}
+
+const materialising = new Set<number>()
+
+async function start(runner: RunnerRow, actor: string): Promise<RunnerRow | undefined> {
   let cacheVolume: string | undefined
   /** True while the daemon on a kept store has not started and been cleaned: a failure then drops the store. */
   let cacheSuspect = false

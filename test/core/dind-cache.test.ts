@@ -170,3 +170,16 @@ describe('dind docker cache', () => {
     expect(w.docker.cacheVolumes.size).toBe(0)
   })
 })
+
+describe('materialise', () => {
+  test('a runner already starting is not started a second time', async () => {
+    const w = await setup(2)
+    const { insertRunner } = await import('../../src/lib/store')
+    const { materialise } = await import('../../src/lib/spawn')
+    const row = await insertRunner({ name: 'twice', host: TEST_HOST, type: 'cached', jobId: null, repo: 'acme/app', jobName: null })
+    const [a, b] = await Promise.all([materialise(row, 'user'), materialise(row, 'user')])
+    expect([a, b].filter(Boolean).length).toBe(1)
+    expect(w.docker.spawns.length).toBe(1)
+    expect(w.docker.sidecars.size).toBe(1)
+  })
+})
