@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OctoHatchery extension options</title>
+    <link rel="icon" type="image/png" href="icons/icon-32.png" />
+    <link rel="stylesheet" href="tailor/tokens.css" />
+    <link rel="stylesheet" href="tailor/base.css" />
+    <link rel="stylesheet" href="tailor/layout.css" />
+    <script src="tailor/config.js"></script>
+    <script src="theme.js"></script>
+    <link rel="stylesheet" href="app.css" />
+    <script src="tailor/tailor.js" data-tailor="manual" defer></script>
+    <script type="module" src="options.js"></script>
+  </head>
+  <body class="ext-options">
+    <main class="t-page opt-page">
+      <header class="t-page-header">
+        <img src="icons/icon-48.png" alt="" width="32" height="32" />
+        <h1 class="t-page-title">OctoHatchery extension</h1>
+        <span class="t-page-lead">Changes save as you make them and apply at once.</span>
+      </header>
+
+      <div class="t-settings t-stack" data-gap="4" id="settings">
+        <section class="t-section" id="connection">
+          <h2 class="t-section-title">Hatchery</h2>
+          <div class="t-section-body t-stack" data-gap="2">
+            <form class="t-field" id="url-form" novalidate>
+              <label class="t-label" for="url">Dashboard URL</label>
+              <div class="t-input-group">
+                <input class="t-input" id="url" type="url" inputmode="url" autocomplete="url" placeholder="https://hatchery.example.com" spellcheck="false" />
+                <button class="t-btn" data-variant="primary" type="submit" id="connect">Connect</button>
+              </div>
+              <span class="t-hint">The address you open the dashboard at. The browser asks you to allow access to this site only.</span>
+              <span class="t-feedback" id="url-feedback" aria-live="polite"></span>
+            </form>
+            <div class="t-cluster" data-gap="2" id="url-actions" hidden>
+              <button class="t-btn" data-size="sm" type="button" id="test">Test the connection</button>
+              <button class="t-btn" data-size="sm" type="button" id="open">Open the dashboard</button>
+              <button class="t-btn" data-size="sm" data-variant="ghost" data-tone="danger" type="button" id="disconnect">Disconnect</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="t-section" id="alerts">
+          <h2 class="t-section-title">Alerts</h2>
+          <div class="t-section-body">
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-alertStarted">A job starts running</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About start alerts">i</button><div class="t-help-box" hidden><p>One notification when a runner takes a job. A job that starts and ends between two polls sends this alert and its result alert.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-alertStarted" data-setting="alertStarted" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-alertSucceeded">A job succeeds</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About success alerts">i</button><div class="t-help-box" hidden><p>One notification when a job ends with the result success.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-alertSucceeded" data-setting="alertSucceeded" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-alertFailed">A job fails</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About failure alerts">i</button><div class="t-help-box" hidden><p>One notification when a job ends with failure or timed out (and cancelled, when the next setting is on). A job whose result is unknown sends no alert until GitHub reports the result.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-alertFailed" data-setting="alertFailed" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-cancelledAsFailed">Count cancelled jobs as failed</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About cancelled jobs">i</button><div class="t-help-box" hidden><p>On: a cancelled job counts and alerts as failed, like the dashboard's Failed filter. Off: a cancelled job counts as nothing and sends no alert.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-cancelledAsFailed" data-setting="cancelledAsFailed" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <span id="repos-label">Repos</span>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the repo filter">i</button><div class="t-help-box" hidden><p>Alerts only for the ticked repos. No repo ticked: alerts for every repo. The counters always count every repo.</p></div></span>
+              </div>
+              <div class="t-setting-control" aria-labelledby="repos-label">
+                <fieldset class="t-check-group opt-repos" id="repos"><span class="t-muted t-small">Connect to a hatchery to list its repos.</span></fieldset>
+              </div>
+              <span class="t-setting-state" aria-live="polite" id="repos-state"></span>
+            </div>
+            <div class="opt-row-actions">
+              <button class="t-btn" data-size="sm" type="button" id="test-alert">Send a test alert</button>
+              <span class="t-hint">Alerts use the notifications of the browser and the system. If nothing shows, check that the system lets the browser show notifications.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="t-section" id="counters">
+          <h2 class="t-section-title">Toolbar counters</h2>
+          <div class="t-section-body">
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-counterRunning">Running counter</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the running counter">i</button><div class="t-help-box" hidden><p>Live count: the jobs running now; it goes down when they end and the popup does not reset it. Started: the jobs that started since you last opened the popup. Both: two counters.</p></div></span>
+              </div>
+              <div class="t-setting-control">
+                <select class="t-select" data-size="sm" id="s-counterRunning" data-setting="counterRunning">
+                  <option value="live">Live count — jobs running now</option>
+                  <option value="started">Started — since the popup was last opened</option>
+                  <option value="both">Both — live count and started</option>
+                  <option value="off">Off — no running counter</option>
+                </select>
+              </div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-counterSucceeded">Succeeded counter</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the succeeded counter">i</button><div class="t-help-box" hidden><p>Jobs that succeeded since you last opened the popup.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-counterSucceeded" data-setting="counterSucceeded" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-counterFailed">Failed counter</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the failed counter">i</button><div class="t-help-box" hidden><p>Jobs that failed since you last opened the popup.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-counterFailed" data-setting="counterFailed" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-resetOnOpen">Reset when the popup opens</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the reset">i</button><div class="t-help-box" hidden><p>On: opening the popup sets the started, succeeded and failed counters to zero; the popup still shows what they were. Off: they keep counting until you click "Clear the counters" in the popup.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-resetOnOpen" data-setting="resetOnOpen" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-badgeStyle">Style</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the style">i</button><div class="t-help-box" hidden><p>Drawn icon: every counter above zero gets a coloured tile on the toolbar icon (blue running, aqua started, green succeeded, red failed). Badge: the logo stays and a badge shows one count: failed first, then succeeded, then running. The tooltip of the icon always lists every counter.</p></div></span>
+              </div>
+              <div class="t-setting-control">
+                <select class="t-select" data-size="sm" id="s-badgeStyle" data-setting="badgeStyle">
+                  <option value="icon">Drawn icon — every counter on the icon</option>
+                  <option value="badge">Badge — the most important count</option>
+                </select>
+              </div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="t-section" id="polling">
+          <h2 class="t-section-title">Polling</h2>
+          <div class="t-section-body">
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-pollSeconds">Check every</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About polling">i</button><div class="t-help-box" hidden><p>How often the extension asks the hatchery for changes while the popup is closed. The browser allows 30 s at the shortest. While the popup is open it follows the live stream and updates within a second.</p></div></span>
+              </div>
+              <div class="t-setting-control">
+                <div class="t-input-group t-duration" data-setting="pollSeconds" data-value="60" data-size="sm">
+                  <input class="t-input" type="number" min="1" step="1" id="s-pollSeconds" aria-label="Check every" />
+                  <select class="t-select" aria-label="unit">
+                    <option value="1">s</option>
+                    <option value="60">min</option>
+                  </select>
+                </div>
+              </div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="t-section" id="appearance">
+          <h2 class="t-section-title">Appearance</h2>
+          <div class="t-section-body">
+            <div class="t-setting">
+              <div class="t-setting-label">
+                <label for="s-themeFromHatchery">Use the hatchery's look</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About the look">i</button><div class="t-help-box" hidden><p>On: the popup and this page use the skin, palette and mode set in the hatchery's own settings, and change when they change there. Off: you pick them here, for this browser only.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-themeFromHatchery" data-setting="themeFromHatchery" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="t-setting" id="theme-pickers-row">
+              <div class="t-setting-label">
+                <span id="theme-label">Skin, palette and mode</span>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About skin and palette">i</button><div class="t-help-box" hidden><p>Applies at once to this page and the popup. The sun and moon button switches between dark and light; it is off when the palette has one mode only.</p></div></span>
+              </div>
+              <div class="t-setting-control" aria-labelledby="theme-label">
+                <div data-tailor-pickers="skin palette mode"></div>
+              </div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="t-section" id="about">
+          <h2 class="t-section-title">About</h2>
+          <div class="t-section-body">
+            <dl class="t-facts">
+              <dt>Extension</dt>
+              <dd class="t-mono" id="ext-version"></dd>
+              <dt>Hatchery</dt>
+              <dd class="t-mono" id="hatchery-version">not connected</dd>
+            </dl>
+          </div>
+        </section>
+      </div>
+    </main>
+    <dialog class="t-dialog" id="t-confirm" data-variant="confirm" data-tone="danger" aria-labelledby="t-confirm-title">
+      <div class="t-dialog-header">
+        <h2 class="t-dialog-title" id="t-confirm-title"><svg class="t-icon" aria-hidden="true"><use href="tailor/icons.svg#bi-exclamation-triangle" /></svg><span>Are you sure?</span></h2>
+        <button class="t-dialog-close" aria-label="Close" data-dialog-close>×</button>
+      </div>
+      <div class="t-dialog-body" id="t-confirm-body"></div>
+      <div class="t-dialog-footer"><button class="t-btn" data-dialog-close>Cancel</button><button class="t-btn" data-variant="danger" id="t-confirm-ok">Confirm</button></div>
+    </dialog>
+  </body>
+</html>

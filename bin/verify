@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies the project: dependencies, types, tests, and (optionally) a health probe from a container.
-# Usage: bin/verify            — install, typecheck, test
+# Usage: bin/verify            — install, typecheck, test, extension build
 #        VERIFY_URL=https://host bin/verify — also probes $VERIFY_URL/health from a curl container (never loopback);
 #        VERIFY_NETWORK=<docker network> and VERIFY_HOST=<name:ip> help the probe reach LAN-only names
 set -euo pipefail
@@ -23,8 +23,8 @@ if [ -n "$extra" ] && [ -f "$extra" ]; then
   while IFS= read -r p; do [ -n "$p" ] && [ "${p#\#}" = "$p" ] && patterns+=("$p"); done < "$extra"
 fi
 # Generic hits that are not private: the runner image's own home, the example domain, the vendored tailor files,
-# and reverse-proxy products named in the docs.
-allow='/home/runner/|example\.internal|^public/tailor/|Authentik'
+# reverse-proxy products named in the docs, and the WebExtension storage area `storage.local` in the browser extension.
+allow='/home/runner/|example\.internal|^public/tailor/|Authentik|^extension/[^:]+:[0-9]+:.*storage\.local\b'
 leaks=0
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   for p in "${patterns[@]}"; do
@@ -49,6 +49,16 @@ for area in test/*/; do
   step "bun test ${area%/}"
   bun test "${area%/}"
 done
+
+# The browser extension: every script parses (the pages and the worker have no test of their own), and the
+# build (tailor config, manifests for Chrome and Firefox) works. The build goes to a temp folder.
+step "browser extension"
+for f in extension/*.js extension/lib/*.js; do bun build --no-bundle "$f" >/dev/null; done
+ext_out=$(mktemp -d)
+bin/build-extension --no-zip "$ext_out" >/dev/null
+for t in chrome/octohatchery-extension firefox; do bun -e "JSON.parse(require('fs').readFileSync('$ext_out/$t/manifest.json','utf8'))"; done
+rm -rf "$ext_out"
+echo "extension scripts parse, build ok"
 
 if [ -n "${VERIFY_URL:-}" ]; then
   step "probe ${VERIFY_URL%/}/health"

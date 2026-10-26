@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OctoHatchery</title>
+    <link rel="stylesheet" href="tailor/tokens.css" />
+    <link rel="stylesheet" href="tailor/base.css" />
+    <link rel="stylesheet" href="tailor/layout.css" />
+    <script src="tailor/config.js"></script>
+    <script src="theme.js"></script>
+    <link rel="stylesheet" href="app.css" />
+    <script src="tailor/tailor.js" defer></script>
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body class="ext-popup">
+    <header class="pop-head">
+      <a class="pop-brand" id="brand" href="#" data-open="/">
+        <img src="icons/icon-32.png" alt="" width="20" height="20" />
+        <span>OctoHatchery</span>
+      </a>
+      <span class="pop-host t-muted t-small t-truncate" id="host"></span>
+      <span class="t-dot" id="live" data-status="muted" data-tip="Not connected" aria-label="Not connected"></span>
+      <button class="t-btn" type="button" data-variant="ghost" data-size="xs" data-icon="only" id="refresh" aria-label="Refresh" data-tip="Refresh">
+        <svg class="t-icon" aria-hidden="true"><use href="tailor/icons.svg#bi-arrow-repeat" /></svg>
+      </button>
+      <button class="t-btn" type="button" data-variant="ghost" data-size="xs" data-icon="only" id="options" aria-label="Options" data-tip="Options">
+        <svg class="t-icon" aria-hidden="true"><use href="tailor/icons.svg#bi-gear" /></svg>
+      </button>
+    </header>
+    <main class="pop-body" id="body">
+      <p class="t-muted t-small pop-loading"><span class="t-spinner" data-size="sm" role="status"></span> Loading…</p>
+    </main>
+    <footer class="pop-foot" id="foot" hidden>
+      <nav class="pop-links t-cluster" data-gap="1">
+        <a class="t-btn" data-variant="ghost" data-size="xs" href="#" data-open="/">Overview</a>
+        <a class="t-btn" data-variant="ghost" data-size="xs" href="#" data-open="/jobs">Jobs</a>
+        <a class="t-btn" data-variant="ghost" data-size="xs" href="#" data-open="/jobs?failed=1">Failed</a>
+        <a class="t-btn" data-variant="ghost" data-size="xs" href="#" data-open="/hosts">Hosts</a>
+      </nav>
+      <span class="t-muted t-small t-mono" id="updated" data-tip="Hatchery version and the time of the last poll"></span>
+    </footer>
+  </body>
+</html>

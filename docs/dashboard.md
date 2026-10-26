@@ -297,6 +297,15 @@ reconnects on its own.
 Actions never reload the page. After an action that changes a table without a live block (adopt,
 unadopt, template save/delete), the page's main column is fetched again and swapped.
 
+## Browser extension
+
+The browser extension in [`extension/`](../extension/README.md) shows the same jobs from the
+toolbar: a popup with what runs, waits and ended last, counters on the icon, and alerts when a
+job starts, succeeds or fails. It reads the JSON API with the browser's sign-in cookies, polls
+every minute (30 s at the shortest) while the popup is closed, and follows `/events/stream` while
+it is open. Each open popup counts as one stream client against `sse_max_clients`. Build it with
+`bin/build-extension`; setup, counters, alerts and permissions are in its README.
+
 ## Theming
 
 The UI is built on [tailor](https://github.com/rojosinalma/tailor): one markup vocabulary

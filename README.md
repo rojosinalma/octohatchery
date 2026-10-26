@@ -36,6 +36,7 @@ What it does:
 | GitHub App or token | Use a GitHub App from the shipped manifest (recommended) or a personal access token. Settings shows which permission is missing and what breaks without it. | [github-app.md](docs/github-app.md) |
 | Dashboard, API and MCP | The same actions in a browser, over a JSON API, or as Model Context Protocol tools for an agent. | [dashboard.md](docs/dashboard.md), [mcp.md](docs/mcp.md) |
 | Monitoring | `/health`, Prometheus `/metrics`, live updates over SSE and an audit log of every action. | [operations.md](docs/operations.md#troubleshooting) |
+| Browser extension | Running and queued jobs in the toolbar, with counters on the icon and alerts when a job starts, succeeds or fails. Works with any hatchery URL. | [extension/README.md](extension/README.md) |
 | Octoforge member | Can run as a member of Octoforge, which hands over the GitHub credentials and the database. | [octoforge.md](docs/octoforge.md) |
 
 Why I built it: I wanted one set of runners for all my repositories without moving them into an organisation. I also did not want to pay for hosted minutes when private repositories build container images.
@@ -122,6 +123,7 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 - JSON API under `/api/`: every response is `{ "ok": true|false, "message": "...", ...data }`.
 - MCP at `/mcp` (Streamable HTTP) with the same actions as tools. See [docs/mcp.md](docs/mcp.md).
 - `GET /health` for monitoring, `GET /metrics` for Prometheus, `GET /events/stream` for live updates over SSE, `GET /api/jobs/:id/log/stream` for one job's log.
+- Browser extension for Chrome and Firefox: running and queued jobs in the toolbar, counters on the icon, alerts when a job starts, succeeds or fails. See [extension/README.md](extension/README.md).
 
 ### Documentation
 
