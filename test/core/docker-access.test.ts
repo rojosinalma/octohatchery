@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { fresh, TEST_HOST } from './helpers'
 import { reap } from '../../src/lib/scheduler'
 import { service } from '../../src/lib/service'
-import { DIND_IMAGE, dindName, hostSocketPath, runnerMounts, socketGid, WORK_DIR, workVolumeName } from '../../src/lib/spawn'
+import { DIND_CMD, DIND_IMAGE, dindName, hostSocketPath, runnerMounts, socketGid, WORK_DIR, workVolumeName } from '../../src/lib/spawn'
 import { removeStaleRunners } from '../../src/lib/sweep'
 import { runnerById } from '../../src/lib/store'
 import type { RunnerType } from '../../src/lib/types'
@@ -60,7 +60,11 @@ describe('runner docker access', () => {
     const runner = await service.spawn({ type: 'dindy', host: TEST_HOST }, 'user')
     expect(w.docker.sidecars.size).toBe(1)
     const sidecar = [...w.docker.sidecars.values()][0]!
-    expect(sidecar.input).toMatchObject({ name: dindName(runner), image: DIND_IMAGE, role: 'dind', privileged: true, env: { DOCKER_TLS_CERTDIR: '' } })
+    expect(sidecar.input).toMatchObject({ name: dindName(runner), image: DIND_IMAGE, role: 'dind', privileged: true, env: { DOCKER_TLS_CERTDIR: '' }, cmd: DIND_CMD })
+    // Loopback only, TLS off on purpose: no other container on the network reaches the daemon, and no 15 s start delay.
+    expect(DIND_CMD).toContain('--host=tcp://127.0.0.1:2375')
+    expect(DIND_CMD).toContain('--tls=false')
+    expect(DIND_CMD.some((a) => a.includes('0.0.0.0'))).toBe(false)
     expect(sidecar.labels['octohatchery.runner-id']).toBe(String(runner.id))
     expect(sidecar.labels['octohatchery.runner']).toBeUndefined()
     // The runner shares the sidecar's network stack: the daemon and every port it publishes are on localhost.

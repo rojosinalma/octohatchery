@@ -215,11 +215,12 @@ export const dockerBackend: BackendAdapter = {
         logger.info(`start ${runner.name} (${container.id.slice(0, 12)}) image=${type.image}${type.docker !== 'none' ? ` docker=${type.docker}` : ''}${user ? ` user=${user}` : ''}`)
         return container.id
       },
-      async spawnSidecar({ runner, name, image, role, env, network, privileged, mounts }) {
+      async spawnSidecar({ runner, name, image, role, env, network, privileged, cmd, mounts }) {
         await pullIfMissing(docker, image)
         const container = await docker.createContainer({
           Image: image,
           name,
+          ...(cmd?.length ? { Cmd: cmd } : {}),
           Env: Object.entries(env).map(([k, v]) => `${k}=${v}`),
           Labels: {
             [RUNNER_ID_LABEL]: String(runner.id),

@@ -33,6 +33,8 @@ export type SidecarInput = {
   env: Record<string, string>
   network: string
   privileged: boolean
+  /** Command (the image's CMD) to run; unset = the image's default. */
+  cmd?: string[]
   /** `src:dst[:opts]` entries, already resolved (the dind sidecar: the runner's work volume). */
   mounts?: string[]
 }

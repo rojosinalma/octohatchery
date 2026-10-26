@@ -22,6 +22,13 @@ export const DIND_IMAGE = 'docker:28-dind'
 export const DIND_PORT = 2375
 export const DIND_ROLE = 'dind'
 /**
+ * The daemon's command. It listens on loopback only: the runner shares the sidecar's network namespace, so
+ * `tcp://localhost:2375` reaches it, and no other container on the runner network can (the daemon is privileged and has
+ * no auth). `--tls=false` says so explicitly; without it dockerd waits 15 s on start for a TCP listener without TLS.
+ * The first word `dockerd` makes the image's entrypoint keep its dind setup but add no listeners of its own.
+ */
+export const DIND_CMD = ['dockerd', '--host=unix:///var/run/docker.sock', `--host=tcp://127.0.0.1:${DIND_PORT}`, '--tls=false']
+/**
  * The runner's work folder (`_work` under the runner image's home, see the JIT config): GITHUB_WORKSPACE and RUNNER_TEMP
  * live under it. On `dind` types one volume is mounted here in the runner and in its daemon, so a job path passed to
  * `docker run -v` is the same files on both sides.
@@ -138,6 +145,7 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
         env: { DOCKER_TLS_CERTDIR: '' },
         network,
         privileged: true,
+        cmd: DIND_CMD,
         mounts: [`${volume}:${WORK_DIR}`],
       })
       await waitForDaemon(sidecarId, runner.name)

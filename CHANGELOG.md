@@ -4,8 +4,13 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Security
+
+- Docker-in-Docker types: the daemon in the sidecar listens on `127.0.0.1:2375` only. Before, it listened on all addresses of the runner network without auth, so a job on any other runner could reach it. Jobs still use `DOCKER_HOST=tcp://localhost:2375` and need no change.
+
 ### Changed
 
+- Docker-in-Docker types start about 15 s faster: the daemon is told explicitly that it runs without TLS, which skips Docker's start delay for such listeners.
 - Docker-in-Docker types: the runner and its daemon share one volume at the runner's work folder `/home/runner/_work`, so `docker run -v "$RUNNER_TEMP/x:/w"` (or any path under `GITHUB_WORKSPACE`) shows the job's files in the container, and what the container writes reaches the job. The volume is open to every user, is new for each job and is removed with the runner; the reaper also removes volumes left behind by a failed cleanup.
 
 ## [0.3.3] - 2026-10-21
