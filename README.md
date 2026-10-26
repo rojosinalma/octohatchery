@@ -4,20 +4,41 @@
 [![Release](https://img.shields.io/github/v/release/rojosinalma/octohatchery?sort=semver)](https://github.com/rojosinalma/octohatchery/releases)
 [![Licence: AGPL-3.0](https://img.shields.io/badge/licence-AGPL--3.0-blue.svg)](LICENSE)
 
-One brain, many hosts, one tentacle per job: self-hosted GitHub Actions runners that appear when a job queues and vanish when it finishes.
+| ![Overview: hosts, slots per template and recent jobs](docs/screenshots/overview.png) | ![Repos: adopted repositories](docs/screenshots/repos.png) | ![Jobs: queue and history](docs/screenshots/jobs.png) | ![Templates: runner types and slots per host](docs/screenshots/templates.png) |
+|---|---|---|---|
+| ![Hosts: every node and what it reports](docs/screenshots/hosts.png) | ![Events: audit trail](docs/screenshots/events.png) | ![Settings: appearance, GitHub access and tunables](docs/screenshots/settings.png) | |
 
-OctoHatchery watches the repositories you adopt. When GitHub queues a job that asks for one of your runner types, it starts a fresh, single-use runner container on a host that has a free slot, lets GitHub's runner binary execute the job, then removes the container and its registration. Nothing waits around between jobs, and every job starts from a clean image.
+OctoHatchery is an orchestrator for self-hosted GitHub Actions runners. It is for people who want their own runners on a personal account, without moving their repositories into an organisation.
 
-What you get:
+**You do not need an organisation.** On a personal account, GitHub ties every self-hosted runner to one repository. To share runners between repositories you normally need an organisation and runner groups, which means moving your repositories. OctoHatchery works with a personal account as it is, and with organisations too if you have them.
 
-- **One ephemeral runner per job.** Each runner is registered just in time with a single-use configuration and is gone after one job.
-- **Runner types.** A type is a row, not code: image, CPU and memory caps, extra mounts, environment and the names of secrets to pass in. Jobs pick a type with `runs-on`.
-- **Slots per host.** You decide how many runners of each type a host may run at once. The scheduler never spawns past that.
-- **Single or cluster mode.** One node with SQLite, or several nodes sharing a PostgreSQL database and claiming jobs for their own hosts.
-- **Dashboard, JSON API and MCP.** See slots, runners, jobs and the audit log in a browser, script everything over HTTP, or hand the same controls to an agent through the Model Context Protocol.
-- **GitHub App or personal access token.** Use whichever fits your account.
+**Runners are not tied to a single repository.** You do not register runners up front. When a job queues in any repository you adopted, OctoHatchery registers a just-in-time runner for that job. It starts the runner as a fresh container on a host with a free slot and removes it when the job ends. One pool of hosts serves every adopted repository, and nothing waits around between jobs.
 
-Why I built it: a personal GitHub account cannot share one self-hosted runner across repositories. Runners register per repository, and the only way around that is an organisation, which means moving every repository. Hosted minutes cost money the moment private repositories build container images. OctoHatchery registers a runner for a specific job on demand, so one pool of hosts serves every repository you adopt, personal or organisation, without a permanent runner anywhere.
+What it does:
+
+| Feature | What it does | Docs |
+|---|---|---|
+| No organisation needed | Works on a personal account. Organisations work too, from the same App, side by side. | [github-app.md](docs/github-app.md#serving-several-accounts) |
+| One pool for all your repos | Runners register per job on the repository that queued it, so every adopted repository uses the same hosts. | [Usage](#adopt-a-repository) |
+| One runner per job | Each runner gets a single-use just-in-time configuration and runs one job in a clean container. Then OctoHatchery removes it. | [SDD.md](docs/SDD.md) |
+| Templates | A runner type is a database row, not code: image, labels, CPU and memory caps, mounts, environment and secret names. Jobs select one with `runs-on`. Edit them in the dashboard, the API or MCP. | [runner-types.md](docs/runner-types.md#fields) |
+| Secrets stay on the node | A template holds only the names of secrets. Their values stay in each node's environment and never go into the database. | [runner-types.md](docs/runner-types.md#secrets-names-in-the-type-values-on-the-node) |
+| Docker access per template | `none` (default, safest), `socket` (the host's daemon, for trusted repos only) or `dind` (a private Docker-in-Docker daemon for each runner). | [runner-types.md](docs/runner-types.md#docker-access) |
+| Docker cache for dind | A `dind` template can keep the daemon's images and build cache per repository between jobs, with limits on disk use. | [runner-types.md](docs/runner-types.md#docker-cache) |
+| Shared BuildKit | Every runner can build images through the node's `buildkitd` sidecar, also without Docker access. | [runner-types.md](docs/runner-types.md#docker-access) |
+| Private registries | `DIND_CERTS_DIR` gives a node's private registry CAs to every Docker-in-Docker daemon, so pulls and pushes to them work in jobs. | [runner-types.md](docs/runner-types.md#private-registries) |
+| Runner image | A shipped image with GitHub's runner and a baked tool cache (Ruby, Bun), so setup steps skip the download. Any image whose entrypoint honours `RUNNER_JITCONFIG` also works. Run as the image's user or as root. | [runner-types.md](docs/runner-types.md#tool-cache) |
+| Slots per host | You set how many runners of each template a host may run at once. The scheduler never starts more. | [runner-types.md](docs/runner-types.md#slots-per-host) |
+| Images per host | See which hosts have each template's image, and pull it ahead of time from the dashboard. | [runner-types.md](docs/runner-types.md#images) |
+| Single or cluster mode | One node on SQLite, or several nodes on a shared PostgreSQL database, each claiming jobs for its own host, with one elected leader. | [operations.md](docs/operations.md#cluster-mode) |
+| Live job logs | Each job's log by step, live while it runs and GitHub's final log afterwards. | [dashboard.md](docs/dashboard.md#job) |
+| `runs-on` help | Copy the `runs-on` snippet for a template, or let OctoHatchery open a pull request or commit that changes the workflows. | [Usage](#point-a-workflow-at-a-runner-type) |
+| GitHub App or token | Use a GitHub App from the shipped manifest (recommended) or a personal access token. Settings shows which permission is missing and what breaks without it. | [github-app.md](docs/github-app.md) |
+| Dashboard, API and MCP | The same actions in a browser, over a JSON API, or as Model Context Protocol tools for an agent. | [dashboard.md](docs/dashboard.md), [mcp.md](docs/mcp.md) |
+| Monitoring | `/health`, Prometheus `/metrics`, live updates over SSE and an audit log of every action. | [operations.md](docs/operations.md#troubleshooting) |
+| Octoforge member | Can run as a member of Octoforge, which hands over the GitHub credentials and the database. | [octoforge.md](docs/octoforge.md) |
+
+Why I built it: I wanted one set of runners for all my repositories without moving them into an organisation. I also did not want to pay for hosted minutes when private repositories build container images.
 
 OctoHatchery is not affiliated with or endorsed by GitHub. GitHub, GitHub Actions and Octocat are trademarks of GitHub, Inc. The octopus here is just a metaphor.
 
@@ -106,7 +127,7 @@ The **Repos** page shows the exact snippet for each type. If you prefer, `apply_
 
 - [docs/github-app.md](docs/github-app.md): GitHub App manifest and setup, personal access token setup.
 - [docs/runner-types.md](docs/runner-types.md): the runner image, writing your own types, secrets and mounts.
-- [docs/dashboard.md](docs/dashboard.md): the six pages and what each control does.
+- [docs/dashboard.md](docs/dashboard.md): the seven pages and what each control does.
 - [docs/mcp.md](docs/mcp.md): MCP tools and how to connect an agent.
 - [docs/operations.md](docs/operations.md): configuration, single and cluster mode, upgrades, backups, troubleshooting, teardown.
 - [docs/octoforge.md](docs/octoforge.md): running under Octoforge: the manifest, the member API, handing over GitHub credentials, the shared database and the member switcher.

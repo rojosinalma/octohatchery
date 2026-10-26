@@ -2,7 +2,7 @@
   "contract": 1,
   "name": "octohatchery",
   "title": "OctoHatchery",
-  "description": "Orchestrator for self-hosted GitHub Actions runners.",
+  "description": "Self-hosted GitHub Actions runners for all your repos, no organisation needed.",
   "icon": "/favicon.svg",
   "health": "/health",
   "github": {

@@ -4,7 +4,7 @@ This document describes how OctoHatchery is built and why. It is the reference f
 
 ## 1. Purpose
 
-OctoHatchery turns queued GitHub Actions jobs into short-lived, single-use self-hosted runners. It serves accounts that cannot share one runner across repositories (personal accounts register runners per repository) and anyone who wants a clean container per job without paying for hosted minutes. It takes `workflow_job` events from the repositories you adopt, matches the job's labels to a runner type, picks a host with a free slot for that type, registers a just-in-time (JIT) runner with GitHub, starts a container with that configuration, and removes everything when the job ends.
+OctoHatchery is an orchestrator for self-hosted GitHub Actions runners. It is for people who want their own runners on a personal account without moving their repositories into an organisation: on a personal account GitHub ties each self-hosted runner to one repository, and only organisations can share runners between repositories. OctoHatchery does not register runners up front. It turns each queued job into a short-lived, single-use runner on the repository that queued it, so one pool of hosts serves every adopted repository. It also serves anyone who wants a clean container per job without paying for hosted minutes. It takes `workflow_job` events from the repositories you adopt, matches the job's labels to a runner type, picks a host with a free slot for that type, registers a just-in-time (JIT) runner with GitHub, starts a container with that configuration, and removes everything when the job ends.
 
 Non-goals, on purpose:
 

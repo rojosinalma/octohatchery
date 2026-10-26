@@ -5,6 +5,8 @@ not code: you add and change them from the dashboard (Templates page), the JSON 
 (`PUT /api/runner-types/:name`) or the MCP tool `upsert_runner_type`. The dashboard calls them
 templates; the API, the MCP tools and this document keep the name runner type.
 
+A type is not tied to a repository. Every adopted repository can use every type: a runner is registered for one job on the repository that queued it, from the type the job asks for in `runs-on`.
+
 ## Fields
 
 | Field | Meaning |

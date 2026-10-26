@@ -32,7 +32,7 @@
     "zod": "4.6.7"
   },
   "version": "0.3.3",
-  "description": "Orchestrator for self-hosted GitHub Actions runners: one ephemeral runner per job, typed, across hosts.",
+  "description": "Self-hosted GitHub Actions runner orchestrator: one ephemeral runner per job, shared across all your repos, no organisation needed.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",

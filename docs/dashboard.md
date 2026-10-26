@@ -7,6 +7,10 @@ so what you can click you can also script.
 
 ## Screens
 
+One screenshot per tab: [Overview](screenshots/overview.png), [Repos](screenshots/repos.png),
+[Jobs](screenshots/jobs.png), [Templates](screenshots/templates.png), [Hosts](screenshots/hosts.png),
+[Events](screenshots/events.png), [Settings](screenshots/settings.png).
+
 | Path | Screen | Fast task |
 |---|---|---|
 | `/` | Overview | See which hosts are online, each template's slots per host with the runner in each one and what it works on, and the latest jobs. Kill a runner. |

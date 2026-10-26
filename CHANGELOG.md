@@ -6,6 +6,7 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Added
 
+- README: a direct description (no organisation needed, runners not tied to one repository), a features table and one screenshot per dashboard tab (`docs/screenshots/`).
 - Docker cache for Docker-in-Docker types (`dockerCache: repo`, in the template dialog, the API and `upsert_runner_type`): each host keeps the daemon's images and build cache per template and repository for the next job, one job at a time. Containers, volumes and networks of the last job are removed before each job. Settings `dind_cache_max_gb` (20) and `dind_cache_idle_days` (7) bound the disk use. Jobs see `OCTOHATCHERY_DOCKER_CACHE`. See [docs/runner-types.md](docs/runner-types.md#docker-cache).
 - `DIND_CERTS_DIR`: a host folder with private registry CAs, mounted read-only into every Docker-in-Docker daemon of the node.
 
