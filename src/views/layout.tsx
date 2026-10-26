@@ -23,7 +23,10 @@ export type LayoutProps = PropsWithChildren<{
   /** `tailor-head.html` content, vendored by `tailor apply`; read once by the route. */
   tailorHead: string
   version: string
-  /** Server-side theme choice (settings `ui_skin`, `ui_palette`, `ui_mode`), seeded into the flash cache on first visit. */
+  /**
+   * Server-side theme choice (settings `ui_skin`, `ui_palette`, `ui_mode`). It is written into the browser's cache on
+   * every page load, before the pre-paint snippet reads it: the server is the source of truth, the cache only avoids a flash.
+   */
   theme?: Theme
   /** Optional `.t-shell-side` content (settings page). */
   side?: JSX.Element
@@ -89,7 +92,7 @@ export const GitHubBanner = ({ github }: { github?: Pick<GitHubStatus, 'source' 
 
 const SAFE_ID = /^[a-z0-9-]+$/
 const seedTheme = (theme: Theme) =>
-  `(function(){try{var t=${JSON.stringify(Object.fromEntries(Object.entries(theme).filter(([, v]) => v && SAFE_ID.test(v))))};for(var k in t){if(t[k]&&!localStorage.getItem('octohatchery.'+k))localStorage.setItem('octohatchery.'+k,t[k])}}catch(e){}})();`
+  `(function(){try{var t=${JSON.stringify(Object.fromEntries(Object.entries(theme).filter(([, v]) => v && SAFE_ID.test(v))))};for(var k in t){if(t[k])localStorage.setItem('octohatchery.'+k,t[k])}}catch(e){}})();`
 
 export const Layout = ({ title, active, tailorHead, version, theme = {}, side, repoUrl, github, siblings, children }: LayoutProps) => (
   <html lang="en">

@@ -69,6 +69,12 @@ describe('layout', () => {
     expect(body).not.toContain('alert(1)')
   })
 
+  test('the server theme overwrites the browser cache on every load (not only the first)', async () => {
+    const { body } = await get('/')
+    expect(body).toContain("if(t[k])localStorage.setItem('octohatchery.'+k,t[k])")
+    expect(body).not.toContain('!localStorage.getItem')
+  })
+
   test('the concept word stays out of the dashboard; copy says runners', async () => {
     const { body } = await get('/')
     expect(body).not.toMatch(/tentacle/)

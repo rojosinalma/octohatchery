@@ -307,6 +307,9 @@ palette, in dark and light mode, renders them correctly.
 
 - Default: skin `bootstrap`, palette `gruvbox`, mode follows the OS until the toggle is used.
 - The footer toggle switches light / dark; `/settings` → Appearance picks skin and palette.
+- The choice is stored on the server (settings `ui_skin`, `ui_palette`, `ui_mode`) and saved from any page.
+  Every page load takes the server's values, so every browser, and the browser extension, shows the same
+  look. The browser keeps a copy only to paint the first frame without a flash.
 - `?skin=`, `?palette=`, `?mode=` on any URL override the choice for that page load.
 - Icons come from the vendored sprite `public/tailor/icons.svg` (Bootstrap Icons subset).
 - `public/favicon.svg` is the OctoHatchery mark: a flat octopus on a dark plate, same file for

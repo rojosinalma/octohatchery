@@ -12,6 +12,7 @@ All notable changes to OctoHatchery are recorded here. The format follows [Keep 
 
 ### Fixed
 
+- The dashboard's look (skin, palette, mode) now comes from the server's settings on every page load. Before, a browser kept the look it had cached once, so it could show another look than the one saved, and changes made in another browser did not reach it.
 - A runner started by hand (`spawn`) on the node's own host could be started twice; the second start failed at GitHub and its clean-up removed the first runner's containers.
 
 ### Security
