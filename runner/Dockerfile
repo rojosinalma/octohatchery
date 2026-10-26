@@ -8,7 +8,7 @@ ARG TOOLS_TAG=edge
 FROM ${TOOLS_REGISTRY}/octohatchery-tool-ruby:${TOOLS_TAG} AS ruby
 FROM ${TOOLS_REGISTRY}/octohatchery-tool-bun:${TOOLS_TAG} AS bun
 
-FROM ghcr.io/actions/actions-runner:2.338.0
+FROM ghcr.io/actions/actions-runner:2.338.1
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
