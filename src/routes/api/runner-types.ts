@@ -18,6 +18,8 @@ export const RunnerTypeBody = t.Object({
   docker: t.Optional(t.Union([t.Literal('none'), t.Literal('socket'), t.Literal('dind')])),
   /** User the container runs as: image (default, the image's own user) or root (uid 0). */
   runAs: t.Optional(t.Union([t.Literal('image'), t.Literal('root')])),
+  /** dind only: none (default, an empty daemon per job) or repo (a warm daemon store per node, type and repository). */
+  dockerCache: t.Optional(t.Union([t.Literal('none'), t.Literal('repo')])),
 })
 
 export const runnerTypes = new Elysia({ prefix: '/runner-types' })
@@ -39,6 +41,7 @@ export const runnerTypes = new Elysia({ prefix: '/runner-types' })
           secretEnv: body.secretEnv ?? [],
           docker: body.docker ?? 'none',
           runAs: body.runAs ?? 'image',
+          dockerCache: body.dockerCache ?? 'none',
         },
         actorOf(headers),
       )

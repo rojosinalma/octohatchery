@@ -40,6 +40,7 @@ import {
   type RepoListItem,
   RUNNER_DOCKER_OPTIONS,
   RUNNER_RUN_AS_OPTIONS,
+  RUNNER_DOCKER_CACHE_OPTIONS,
   type Runner,
   type RunnerState,
   type RunnerType,
@@ -139,6 +140,8 @@ function validateRunnerType(input: Omit<RunnerType, 'id' | 'createdAt' | 'update
   for (const k of input.secretEnv) if (!ENV_NAME_RE.test(k)) throw new ServiceError(`secret env name "${k}" is not valid`)
   if (!RUNNER_DOCKER_OPTIONS.includes(input.docker)) throw new ServiceError(`docker must be one of ${RUNNER_DOCKER_OPTIONS.join(', ')}`)
   if (!RUNNER_RUN_AS_OPTIONS.includes(input.runAs)) throw new ServiceError(`runAs must be one of ${RUNNER_RUN_AS_OPTIONS.join(', ')}`)
+  if (!RUNNER_DOCKER_CACHE_OPTIONS.includes(input.dockerCache)) throw new ServiceError(`dockerCache must be one of ${RUNNER_DOCKER_CACHE_OPTIONS.join(', ')}`)
+  if (input.dockerCache !== 'none' && input.docker !== 'dind') throw new ServiceError('dockerCache needs docker "dind": only a Docker-in-Docker daemon has a store of its own to keep')
 }
 
 async function requireHost(name: string): Promise<Host> {
@@ -245,15 +248,15 @@ export const service = {
     if (await store.hostByName(input.name)) throw new ServiceError(`"${input.name}" is a host name`, 'conflict')
     const now = store.now()
     const [row] = await db().all(sql`
-      insert into runner_types (name, description, labels, image, cpus, memory_mb, mounts, env, secret_env, docker, run_as, created_at, updated_at)
+      insert into runner_types (name, description, labels, image, cpus, memory_mb, mounts, env, secret_env, docker, run_as, docker_cache, created_at, updated_at)
       values (${input.name}, ${input.description}, ${JSON.stringify(input.labels)}, ${input.image}, ${input.cpus}, ${input.memoryMb},
-        ${JSON.stringify(input.mounts)}, ${JSON.stringify(input.env)}, ${JSON.stringify(input.secretEnv)}, ${input.docker}, ${input.runAs}, ${now}, ${now})
+        ${JSON.stringify(input.mounts)}, ${JSON.stringify(input.env)}, ${JSON.stringify(input.secretEnv)}, ${input.docker}, ${input.runAs}, ${input.dockerCache}, ${now}, ${now})
       on conflict (name) do update set description = excluded.description, labels = excluded.labels, image = excluded.image,
         cpus = excluded.cpus, memory_mb = excluded.memory_mb, mounts = excluded.mounts, env = excluded.env,
-        secret_env = excluded.secret_env, docker = excluded.docker, run_as = excluded.run_as, updated_at = excluded.updated_at
+        secret_env = excluded.secret_env, docker = excluded.docker, run_as = excluded.run_as, docker_cache = excluded.docker_cache, updated_at = excluded.updated_at
       returning *`)
     const type = toRunnerType(row!)
-    await recordEvent(actor, 'runner_type.upsert', type.name, { image: type.image, cpus: type.cpus, memoryMb: type.memoryMb, docker: type.docker, runAs: type.runAs })
+    await recordEvent(actor, 'runner_type.upsert', type.name, { image: type.image, cpus: type.cpus, memoryMb: type.memoryMb, docker: type.docker, runAs: type.runAs, dockerCache: type.dockerCache })
     return type
   },
 

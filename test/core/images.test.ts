@@ -20,7 +20,7 @@ describe('image inventory', () => {
     await fresh()
     const wanted = await wantedImages()
     expect(wanted).toEqual([...new Set([DEFAULT_RUNNER_IMAGE, 'ghcr.io/rojosinalma/octohatchery-runner:edge', DIND_IMAGE])].sort())
-    await service.upsertRunnerType({ name: 'gpu', description: null, labels: [], image: 'ghcr.io/x/gpu:1', cpus: 1, memoryMb: 1024, mounts: [], env: {}, secretEnv: [], docker: 'none', runAs: 'image' }, 'user')
+    await service.upsertRunnerType({ name: 'gpu', description: null, labels: [], image: 'ghcr.io/x/gpu:1', cpus: 1, memoryMb: 1024, mounts: [], env: {}, secretEnv: [], docker: 'none', runAs: 'image', dockerCache: 'none' }, 'user')
     expect(await wantedImages()).toContain('ghcr.io/x/gpu:1')
   })
 

@@ -45,6 +45,16 @@ export type VolumeInput = {
   name: string
 }
 
+/**
+ * A warm Docker-in-Docker store (`dockerCache: repo`): a named volume that outlives runners, keyed by host, type and
+ * repository. It never carries the runner-id label, so removing a runner never removes it.
+ */
+export type CacheVolumeInput = { name: string; host: string; type: string; repo: string }
+/** A cache volume as `listCacheVolumes` reports it; `inUse` = some container on the engine mounts it. */
+export type CacheVolume = CacheVolumeInput & { inUse: boolean }
+export const CACHE_LABEL = 'octohatchery.cache'
+export const CACHE_REPO_LABEL = 'octohatchery.repo'
+
 /** A volume labelled with a runner id, as `listRunnerVolumes` reports it. */
 export type RunnerVolume = { name: string; runnerId: string; host: string }
 
@@ -78,8 +88,17 @@ export type ContainerBackend = {
   createVolume(input: VolumeInput): Promise<string>
   /** Every volume labelled with a runner id on this engine. */
   listRunnerVolumes(): Promise<RunnerVolume[]>
-  /** Runs a command inside a running container and resolves with its exit code (used to probe a sidecar's readiness). */
-  exec(containerId: string, cmd: string[]): Promise<number>
+  /** Every cache volume on this engine, with whether a container mounts it. */
+  listCacheVolumes(): Promise<CacheVolume[]>
+  /** Creates a cache volume (labels: cache, host, type, repo); an existing one with that name is kept. */
+  createCacheVolume(input: CacheVolumeInput): Promise<string>
+  /** Removes a volume by name (force); a missing one is not an error. */
+  removeVolume(name: string): Promise<void>
+  /**
+   * Runs a command inside a running container and resolves with its exit code (a sidecar's readiness probe, the cache
+   * cleanup). A command still running after `timeoutMs` (default 5 s) resolves as 1.
+   */
+  exec(containerId: string, cmd: string[], opts?: { timeoutMs?: number }): Promise<number>
   inspect(containerId: string): Promise<ContainerInfo>
   /** Removes the container (force). Missing containers are not an error. */
   remove(containerId: string): Promise<void>

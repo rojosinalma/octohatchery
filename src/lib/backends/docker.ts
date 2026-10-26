@@ -2,7 +2,7 @@ import Docker from 'dockerode'
 import { PassThrough } from 'node:stream'
 import { config } from '../config'
 import { log } from '../log'
-import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo, type RunnerVolume, type SpawnInput } from './types'
+import { CACHE_LABEL, CACHE_REPO_LABEL, RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL, type BackendAdapter, type CacheVolume, type ContainerBackend, type ContainerInfo, type ContainerLogLine, type ImageInfo, type RunnerVolume, type SpawnInput } from './types'
 
 const logger = log('docker')
 const PIDS_LIMIT = 1024
@@ -252,11 +252,44 @@ export const dockerBackend: BackendAdapter = {
         const res = await docker.listVolumes({ filters: { label: [RUNNER_ID_LABEL] } })
         return (res.Volumes ?? []).map((v): RunnerVolume => ({ name: v.Name, runnerId: v.Labels?.[RUNNER_ID_LABEL] ?? '', host: v.Labels?.[RUNNER_HOST_LABEL] ?? '' }))
       },
-      async exec(containerId, cmd) {
+      async listCacheVolumes() {
+        const res = await docker.listVolumes({ filters: { label: [`${CACHE_LABEL}=true`] } })
+        const used = new Set<string>()
+        for (const c of await docker.listContainers({ all: true })) for (const m of c.Mounts ?? []) if (m.Name) used.add(m.Name)
+        return (res.Volumes ?? []).map(
+          (v): CacheVolume => ({
+            name: v.Name,
+            host: v.Labels?.[RUNNER_HOST_LABEL] ?? '',
+            type: v.Labels?.[RUNNER_TYPE_LABEL] ?? '',
+            repo: v.Labels?.[CACHE_REPO_LABEL] ?? '',
+            inUse: used.has(v.Name),
+          }),
+        )
+      },
+      async createCacheVolume({ name, host, type, repo }) {
+        try {
+          await docker.getVolume(name).inspect()
+          return name
+        } catch (err) {
+          if (!isNotFound(err)) throw err
+        }
+        await docker.createVolume({ Name: name, Labels: { [CACHE_LABEL]: 'true', [RUNNER_HOST_LABEL]: host, [RUNNER_TYPE_LABEL]: type, [CACHE_REPO_LABEL]: repo } })
+        logger.info(`create cache volume ${name} (${type}, ${repo})`)
+        return name
+      },
+      async removeVolume(name) {
+        try {
+          await docker.getVolume(name).remove({ force: true })
+          logger.info(`remove volume ${name}`)
+        } catch (err) {
+          if (!isNotFound(err)) throw err
+        }
+      },
+      async exec(containerId, cmd, opts = {}) {
         const container = docker.getContainer(containerId)
         const e = await container.exec({ Cmd: cmd, AttachStdout: false, AttachStderr: false })
         await e.start({ Detach: true })
-        for (let i = 0; i < 50; i++) {
+        for (let i = 0; i < Math.ceil((opts.timeoutMs ?? 5000) / 100); i++) {
           const st = await e.inspect()
           if (!st.Running) return st.ExitCode ?? 1
           await Bun.sleep(100)

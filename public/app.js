@@ -276,6 +276,8 @@
     setRadio(f, 'docker', type && type.docker ? type.docker : 'none')
     f.elements.runAs.value = type && type.runAs ? type.runAs : 'image'
     T.sync(f.elements.runAs)
+    f.elements.dockerCache.value = type && type.dockerCache ? type.dockerCache : 'none'
+    T.sync(f.elements.dockerCache)
     if (!type) { syncTypeBadge(f); setImage(f, f.dataset.imageDefault || ''); return }
     f.elements.name.value = type.name
     syncTypeBadge(f)
@@ -422,6 +424,8 @@
         secretEnv: list(f.elements.secretEnv.value),
         docker: f.elements.docker.value || 'none',
         runAs: f.elements.runAs.value || 'image',
+        // Only a Docker-in-Docker daemon has a store to keep; the API refuses the cache for other types.
+        dockerCache: (f.elements.docker.value === 'dind' && f.elements.dockerCache.value) || 'none',
       }
       busy(submit, true)
       return api('PUT', '/api/runner-types/' + encodeURIComponent(name), payload).then(toast).then(function (res) {

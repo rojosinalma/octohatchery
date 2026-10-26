@@ -13,6 +13,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   buildkit_host: 'tcp://octohatchery-buildkitd:1234',
   runner_image_default: 'ghcr.io/rojosinalma/octohatchery-runner:edge',
   scheduler_tick_s: '5',
+  /** `dockerCache: repo`: a warm daemon store above this size (GB, images and build cache) is emptied before its next job. */
+  dind_cache_max_gb: '20',
+  /** `dockerCache: repo`: the stores of a type and repository with no runner on a node for this many days are removed. */
+  dind_cache_idle_days: '7',
   heartbeat_s: '15',
   /** GitHub App accounts served (comma-separated logins); empty = the default installation, or every installation. */
   github_accounts: '',

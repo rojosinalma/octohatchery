@@ -32,6 +32,7 @@ export const runnerTypes = pgTable('runner_types', {
   docker: text('docker').notNull().default('none'),
   /** User the runner container runs as: `image` (the image's own user) or `root` (uid 0). */
   runAs: text('run_as').notNull().default('image'),
+  dockerCache: text('docker_cache').notNull().default('none'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

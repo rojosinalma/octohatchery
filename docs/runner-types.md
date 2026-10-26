@@ -20,6 +20,7 @@ templates; the API, the MCP tools and this document keep the name runner type.
 | `secretEnv` | Names of environment variables whose values live on the node. |
 | `docker` | What a job can do with Docker: `none` (default), `socket` or `dind`. See [Docker access](#docker-access). |
 | `runAs` | The user the container runs as: `image` (default) or `root`. See [Run as](#run-as). |
+| `dockerCache` | `dind` types only: `none` (default) or `repo`. See [Docker cache](#docker-cache). |
 
 Every runner also gets:
 
@@ -63,7 +64,7 @@ can talk to. Image builds do not: `docker buildx build` goes to the shared `buil
 |---|---|---|
 | `none` (default) | No daemon. `BUILDKIT_HOST` only. | `services:`, `docker run` and Compose steps fail. Safest. |
 | `socket` | The node's Docker socket (`DOCKER_HOST` when it is a unix socket, else `/var/run/docker.sock`) is bind-mounted at `/var/run/docker.sock`, and the runner's user is added to the socket's group. | Everything works and is fast (shared image cache). Every job on this type sees and can stop, start or exec into **every container on the host**, including OctoHatchery itself. Only for types whose repos you fully trust. |
-| `dind` | Before the runner, the node starts a `docker:28-dind` sidecar (privileged, plain TCP on loopback only, same runner network, named `<runner>-dind`, labelled with the runner id and `octohatchery.role=dind`) and points the runner's `DOCKER_HOST` at it. The runner's entrypoint waits up to 30 s for the daemon. The runner and the sidecar share one volume (`<runner>-work`) at the runner's work folder `/home/runner/_work`, see [Files shared with the daemon](#files-shared-with-the-daemon). The sidecar and the volume are removed with the runner by the reaper, the stale sweep and `kill`. | Isolated: the job controls only its own daemon, which listens on `127.0.0.1` inside the sidecar, so no other container on the runner network can reach it. About 2 s slower to start; images are pulled fresh every job (no shared cache); the sidecar is privileged on the host. |
+| `dind` | Before the runner, the node starts a `docker:28-dind` sidecar (privileged, plain TCP on loopback only, same runner network, named `<runner>-dind`, labelled with the runner id and `octohatchery.role=dind`) and points the runner's `DOCKER_HOST` at it. The runner's entrypoint waits up to 30 s for the daemon. The runner and the sidecar share one volume (`<runner>-work`) at the runner's work folder `/home/runner/_work`, see [Files shared with the daemon](#files-shared-with-the-daemon). The sidecar and the volume are removed with the runner by the reaper, the stale sweep and `kill`. | Isolated: the job controls only its own daemon, which listens on `127.0.0.1` inside the sidecar, so no other container on the runner network can reach it. About 2 s slower to start; images are pulled fresh every job unless the type keeps a [Docker cache](#docker-cache); the sidecar is privileged on the host. |
 
 For `socket`, the node adds the socket's group id to the runner container when it can `stat` the
 socket (the socket is mounted into the app container, so this normally works). When it cannot, it
@@ -102,6 +103,38 @@ both directions:
 - A custom runner image must keep the runner's home at `/home/runner`; the work folder is `_work` under it.
 - The volume is new for every job and is removed with the runner. Jobs that use `container:`, and volumes
   on `services:`, work on `dind` types for the same reason.
+
+### Docker cache
+
+A new Docker-in-Docker daemon starts empty, so every job pulls its images again. Set `dockerCache: repo` on a `dind`
+type to keep the daemon's store for the next job:
+
+- Each host keeps a pool of named volumes per type and repository, `octohatchery-cache-<type>-<owner>.<repo>-<n>`,
+  with as many volumes as the type has slots on that host. The daemon mounts one at `/var/lib/docker`.
+- A volume serves one job at a time. Two jobs of the same repository running at once get two volumes, and each
+  daemon has its own store, so concurrent jobs cannot damage each other's images. When every volume is busy, the job
+  gets an empty daemon.
+- Before the runner starts, the node removes every container (with a restart policy or not), every volume and every
+  network the last job left in the daemon. Only images and the build cache stay.
+- A repository never sees the images of another repository: the pools are separate.
+- Limits: a store above `dind_cache_max_gb` (default 20) is emptied before its next job. The stores of a type and
+  repository that ran no job on a host for `dind_cache_idle_days` (default 7) are removed, and so are volumes above
+  the slot count and volumes of a type that no longer keeps a cache. The most disk a type can use on a host is
+  repositories × slots × the size cap.
+- A daemon that does not start on its store, or whose clean-up fails, fails the spawn (the job is tried again) and its
+  volume is removed, so a damaged store is not used twice.
+- The job sees `OCTOHATCHERY_DOCKER_CACHE=kept` (the store of an earlier job, or a new one) or `emptied` (it was over
+  the cap). Without a cache the variable is not set.
+
+Pull with a fixed tag or digest. `docker pull` of a tag already in the store still asks the registry for the newest
+digest and downloads only changed layers. `docker run image:tag` without a pull uses what the store has.
+
+### Private registries
+
+Set `DIND_CERTS_DIR` on a node to a host folder in Docker's `certs.d` layout (`<registry>/ca.crt`). It is mounted
+read-only at `/etc/docker/certs.d` in every Docker-in-Docker daemon of that node, so `docker pull` and `docker push`
+to a registry signed by a private CA work in jobs. Registry credentials are not part of this: use `docker login` with a
+secret from `secretEnv` when the registry needs one.
 
 ### `services:` and localhost on containerised runners
 

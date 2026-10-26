@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs'
 import { backend } from './backends'
 import { config } from './config'
+import { cleanCacheDaemon, DAEMON_STORE, leaseCacheVolume, releaseLease } from './dind-cache'
 import { recordEvent } from './events'
 import { github } from './github/auth'
 import { ensureFollower } from './joblog'
@@ -8,7 +9,7 @@ import { runnerLabels } from './labels'
 import { log } from './log'
 import { metrics } from './metrics'
 import { settings } from './settings'
-import { adoptedRepos, jobById, markRunnerStarted, runnerTypeByName, updateJob, updateRunner, type RunnerRow } from './store'
+import { adoptedRepos, jobById, markRunnerStarted, runnerTypeByName, slotsView, updateJob, updateRunner, type RunnerRow } from './store'
 import type { Runner, RunnerType } from './types'
 
 const logger = log('scheduler')
@@ -34,6 +35,10 @@ export const DIND_CMD = ['dockerd', '--host=unix:///var/run/docker.sock', `--hos
  * `docker run -v` is the same files on both sides.
  */
 export const WORK_DIR = '/home/runner/_work'
+/** Where the daemon reads per-registry CAs (`<registry>/ca.crt`); `DIND_CERTS_DIR` is mounted here read-only. */
+export const DIND_CERTS_PATH = '/etc/docker/certs.d'
+/** Set in the job when its daemon runs on a kept store (`dockerCache: repo`): images of earlier jobs may be there. */
+export const DOCKER_CACHE_ENV = 'OCTOHATCHERY_DOCKER_CACHE'
 /** `runAs: root` runs the runner container as uid and gid 0. */
 export const ROOT_USER = '0:0'
 
@@ -114,6 +119,9 @@ export async function removeRunnerContainers(runner: Pick<Runner, 'id' | 'contai
  * and a bound job goes back to `queued` (or `ignored` after MAX_CLAIM_RETRIES).
  */
 export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promise<RunnerRow | undefined> {
+  let cacheVolume: string | undefined
+  /** True while the daemon on a kept store has not started and been cleaned: a failure then drops the store. */
+  let cacheSuspect = false
   try {
     const type = await runnerTypeByName(runner.type)
     if (!type) throw new Error(`runner type "${runner.type}" no longer exists`)
@@ -137,18 +145,40 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
       // the daemon publishes (GitHub `services:` ports) is on the job's own localhost, as on a hosted runner.
       // Both containers mount one volume at the work folder, so `docker run -v <job path>:…` sees the job's files.
       const volume = await backend().createVolume({ runner, name: workVolumeName(runner) })
-      const sidecarId = await backend().spawnSidecar({
-        runner,
-        name: dindName(runner),
-        image: DIND_IMAGE,
-        role: DIND_ROLE,
-        env: { DOCKER_TLS_CERTDIR: '' },
-        network,
-        privileged: true,
-        cmd: DIND_CMD,
-        mounts: [`${volume}:${WORK_DIR}`],
-      })
+      const sidecarMounts = [`${volume}:${WORK_DIR}`]
+      const certs = config().dindCertsDir
+      if (certs) sidecarMounts.push(`${certs}:${DIND_CERTS_PATH}:ro`)
+      if (type.dockerCache === 'repo') {
+        const slots = (await slotsView()).find((s) => s.host === runner.host && s.type === type.name)?.count ?? 1
+        cacheVolume = await leaseCacheVolume({ host: runner.host, type: type.name, repo, slots })
+        if (cacheVolume) sidecarMounts.push(`${cacheVolume}:${DAEMON_STORE}`)
+      }
+      let sidecarId: string
+      try {
+        sidecarId = await backend().spawnSidecar({
+          runner,
+          name: dindName(runner),
+          image: DIND_IMAGE,
+          role: DIND_ROLE,
+          env: { DOCKER_TLS_CERTDIR: '' },
+          network,
+          privileged: true,
+          cmd: DIND_CMD,
+          mounts: sidecarMounts,
+        })
+        cacheSuspect = Boolean(cacheVolume)
+      } finally {
+        // From here the engine reports the volume in use (or the spawn failed and the volume is free again).
+        if (cacheVolume) releaseLease(cacheVolume)
+      }
       await waitForDaemon(sidecarId, runner.name)
+      if (cacheVolume) {
+        // A kept store: nothing of the last job may still run or exist, only images and the build cache stay.
+        const outcome = await cleanCacheDaemon(sidecarId, runner.name)
+        cacheSuspect = false
+        env[DOCKER_CACHE_ENV] = outcome === 'wiped' ? 'emptied' : 'kept'
+        logger.info(`${runner.name}: daemon on cache volume ${cacheVolume} (${outcome})`)
+      }
       // A new volume belongs to root; the runner user and any `--user` a job passes must be able to write and delete in it.
       if ((await backend().exec(sidecarId, ['chmod', '0777', WORK_DIR])) !== 0) throw new Error(`${runner.name}: cannot open ${WORK_DIR} on the work volume to the runner user`)
       env.DOCKER_HOST = `tcp://localhost:${DIND_PORT}`
@@ -177,6 +207,12 @@ export async function materialise(runner: RunnerRow, actor = 'scheduler'): Promi
     await backend()
       .removeByRunnerId(runner.id)
       .catch((e) => logger.warn(`cleanup for ${runner.name} failed`, e instanceof Error ? e.message : String(e)))
+    // A store the daemon could not start on, or could not be cleaned, is not trusted for the next job.
+    if (cacheVolume && cacheSuspect) {
+      await backend()
+        .removeVolume(cacheVolume)
+        .catch((e) => logger.warn(`removing cache volume ${cacheVolume} failed`, e instanceof Error ? e.message : String(e)))
+    }
     await updateRunner(runner.id, { state: 'failed', exitedAt: new Date().toISOString() })
     await recordEvent(actor, 'runner.failed', runner.name, { reason: err instanceof Error ? err.message : String(err) })
     if (runner.jobId !== null) await requeue(runner.jobId, err instanceof Error ? err.message : String(err), actor)

@@ -1,4 +1,4 @@
-import type { BackendAdapter, ContainerBackend, ContainerInfo, ContainerLogLine, ImageInfo, SidecarInput, SpawnInput, VolumeInput } from './types'
+import type { BackendAdapter, CacheVolumeInput, ContainerBackend, ContainerInfo, ContainerLogLine, ImageInfo, SidecarInput, SpawnInput, VolumeInput } from './types'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL, RUNNER_LABEL, RUNNER_ROLE_LABEL, RUNNER_TYPE_LABEL } from './types'
 
 /** A hand-driven log feed: `push` lines, `end` when the container exits. */
@@ -42,6 +42,8 @@ export type FakeBackend = ContainerBackend & {
   sidecars: Map<string, ContainerInfo & { input: SidecarInput }>
   /** Volumes by name, with the runner they belong to. */
   volumes: Map<string, VolumeInput>
+  /** Cache volumes by name. A volume is in use while a sidecar lists it in its mounts. */
+  cacheVolumes: Map<string, CacheVolumeInput>
   /** Commands run through `exec`, with the container they ran in. */
   execs: { containerId: string; cmd: string[] }[]
   up: boolean
@@ -69,6 +71,7 @@ export function createFakeBackend(): FakeBackend {
     spawns,
     sidecars,
     volumes: new Map(),
+    cacheVolumes: new Map(),
     execs: [],
     images,
     pullFails: new Map(),
@@ -123,6 +126,18 @@ export function createFakeBackend(): FakeBackend {
     },
     async listRunnerVolumes() {
       return [...fake.volumes.values()].map((v) => ({ name: v.name, runnerId: String(v.runner.id), host: v.runner.host }))
+    },
+    async listCacheVolumes() {
+      const used = new Set([...sidecars.values()].flatMap((s) => (s.input.mounts ?? []).map((m) => m.split(':')[0]!)))
+      return [...fake.cacheVolumes.values()].map((v) => ({ ...v, inUse: used.has(v.name) }))
+    },
+    async createCacheVolume(input) {
+      if (!fake.cacheVolumes.has(input.name)) fake.cacheVolumes.set(input.name, input)
+      return input.name
+    },
+    async removeVolume(name) {
+      fake.cacheVolumes.delete(name)
+      fake.volumes.delete(name)
     },
     async spawnSidecar(input) {
       const id = `fake-sidecar-${++n}`

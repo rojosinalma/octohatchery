@@ -1,0 +1,1 @@
+ALTER TABLE "runner_types" ADD COLUMN "docker_cache" text DEFAULT 'none' NOT NULL;

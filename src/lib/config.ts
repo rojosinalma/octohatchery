@@ -12,6 +12,11 @@ export type Config = {
   dockerHost: string | undefined
   backend: BackendKind
   runnerNetwork: string
+  /**
+   * Host path of a `certs.d` folder (`<registry>/ca.crt` per registry) mounted read-only at `/etc/docker/certs.d` in every
+   * Docker-in-Docker daemon, so it trusts registries with a private CA. Unset = no mount.
+   */
+  dindCertsDir: string | undefined
   githubAuth: GitHubAuthKind
   githubAppId: string | undefined
   githubAppPrivateKey: string | undefined
@@ -80,6 +85,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
     dockerHost: env.DOCKER_HOST || undefined,
     backend: oneOf('CONTAINER_BACKEND', env.CONTAINER_BACKEND, BACKENDS, 'docker'),
     runnerNetwork: env.RUNNER_NETWORK || 'octohatchery_default',
+    dindCertsDir: env.DIND_CERTS_DIR || undefined,
     githubAuth,
     githubAppId: env.GITHUB_APP_ID || undefined,
     githubAppPrivateKey: pem(env.GITHUB_APP_PRIVATE_KEY),
@@ -94,6 +100,9 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
   }
   if (cfg.databaseSchema !== undefined && !SCHEMA_NAME_PATTERN.test(cfg.databaseSchema)) {
     throw new ConfigError(`DATABASE_SCHEMA must be a lowercase identifier (a-z, 0-9, _, not starting with pg_), got "${cfg.databaseSchema}"`)
+  }
+  if (cfg.dindCertsDir !== undefined && !cfg.dindCertsDir.startsWith('/')) {
+    throw new ConfigError(`DIND_CERTS_DIR must be an absolute host path, got "${cfg.dindCertsDir}"`)
   }
   if (githubAuth === 'app') {
     for (const [k, v] of [

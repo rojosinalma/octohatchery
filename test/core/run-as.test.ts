@@ -12,7 +12,7 @@ import { ROOT_USER, runnerEnv, runnerUser } from '../../src/lib/spawn'
 import { api } from '../../src/routes/api'
 import type { RunnerType } from '../../src/lib/types'
 
-const base: Omit<RunnerType, 'id' | 'createdAt' | 'updatedAt'> = { name: 'x', description: null, labels: [], image: 'img', cpus: 1, memoryMb: 512, mounts: [], env: {}, secretEnv: [], docker: 'none', runAs: 'image' }
+const base: Omit<RunnerType, 'id' | 'createdAt' | 'updatedAt'> = { name: 'x', description: null, labels: [], image: 'img', cpus: 1, memoryMb: 512, mounts: [], env: {}, secretEnv: [], docker: 'none', runAs: 'image', dockerCache: 'none' }
 const MIGRATIONS = join(import.meta.dir, '../../src/db/migrations')
 
 describe('runner type run_as', () => {

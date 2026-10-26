@@ -1,4 +1,4 @@
-import { RUNNER_DOCKER_OPTIONS, RUNNER_RUN_AS_OPTIONS, type Event, type Host, type HostImage, type ImagePull, type ImagePullStatus, type Job, type JobStatus, type JobAnnotation, type JobStep, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerRunAs, type RunnerState, type RunnerType } from '../lib/types'
+import { RUNNER_DOCKER_CACHE_OPTIONS, RUNNER_DOCKER_OPTIONS, RUNNER_RUN_AS_OPTIONS, type Event, type Host, type HostImage, type ImagePull, type ImagePullStatus, type Job, type JobStatus, type JobAnnotation, type JobStep, type LogLine, type Repo, type Runner, type RunnerDocker, type RunnerDockerCache, type RunnerRunAs, type RunnerState, type RunnerType } from '../lib/types'
 import type { Row } from './driver'
 
 // Row → domain mappers. SQLite returns booleans as 0/1 and JSON as text; Postgres returns booleans natively.
@@ -62,6 +62,7 @@ export function toRunnerType(r: Row): RunnerType {
     secretEnv: json<string[]>(r.secret_env, []),
     docker: (RUNNER_DOCKER_OPTIONS as readonly string[]).includes(str(r.docker)) ? (str(r.docker) as RunnerDocker) : 'none',
     runAs: (RUNNER_RUN_AS_OPTIONS as readonly string[]).includes(str(r.run_as)) ? (str(r.run_as) as RunnerRunAs) : 'image',
+    dockerCache: (RUNNER_DOCKER_CACHE_OPTIONS as readonly string[]).includes(str(r.docker_cache)) ? (str(r.docker_cache) as RunnerDockerCache) : 'none',
     createdAt: str(r.created_at),
     updatedAt: str(r.updated_at),
   }

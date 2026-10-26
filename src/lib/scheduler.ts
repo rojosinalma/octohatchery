@@ -4,6 +4,7 @@ import { toJob, toRunner } from '../db/rows'
 import { backend } from './backends'
 import { RUNNER_HOST_LABEL, RUNNER_ID_LABEL } from './backends/types'
 import { config } from './config'
+import { sweepCacheVolumes } from './dind-cache'
 import { recordEvent } from './events'
 import { startImagePull } from './images'
 import { ensureFollower } from './joblog'
@@ -19,6 +20,14 @@ import type { RunnerType } from './types'
 
 const logger = log('scheduler')
 const CLAIM_BATCH = 50
+/** Cache volumes change slowly (idle days, slot counts): the reaper checks them at most this often. */
+const CACHE_SWEEP_MS = 10 * 60_000
+let lastCacheSweep = 0
+
+/** Tests only: the next `reap` checks the cache volumes again. */
+export function resetCacheSweep(): void {
+  lastCacheSweep = 0
+}
 
 export function runnerName(type: string, host: string): string {
   return `${type}-${host}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -46,6 +55,10 @@ export async function reap(host = config().hostName): Promise<number> {
     if (v.host !== host || liveIds.has(v.runnerId) || !v.runnerId) continue
     logger.info(`removing orphan volume ${v.name} (runner ${v.runnerId})`)
     await be.removeByRunnerId(Number(v.runnerId)).catch((err) => logger.warn(`remove orphan volume ${v.name} failed`, err instanceof Error ? err.message : String(err)))
+  }
+  if (Date.now() - lastCacheSweep >= CACHE_SWEEP_MS) {
+    lastCacheSweep = Date.now()
+    await sweepCacheVolumes(host).catch((err) => logger.warn('cache volume sweep failed', err instanceof Error ? err.message : String(err)))
   }
   for (const runner of active) {
     if (runner.state === 'spawning' && !runner.containerId) continue // not started yet

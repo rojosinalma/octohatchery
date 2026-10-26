@@ -18,6 +18,7 @@ Two layers. `.env` holds bootstrap values and secrets and is read once at start.
 | `DATABASE_URL` | yes | `sqlite:<path>` for SQLite (for example `sqlite:./data/octohatchery.db`) or `postgres://` URL for PostgreSQL. The scheme selects the driver. Use `sslmode=require` on PostgreSQL over a network. |
 | `DATABASE_SCHEMA` | no | PostgreSQL only: the schema that holds the tables and the migrations journal. Default `octohatchery`. A lowercase name (letters, digits, `_`, not starting with `pg_`). Created when missing. Several tools, or several OctoHatchery installs, can share one database with one schema each. SQLite ignores it. See the upgrade note below for installs from before this setting. |
 | `DOCKER_HOST` | no | Where the Docker daemon is. Default is the mounted socket `/var/run/docker.sock`. |
+| `DIND_CERTS_DIR` | no | Host folder in the layout Docker reads private registry CAs from (`<registry>/ca.crt`, for example `/etc/docker/certs.d`). Mounted read-only at `/etc/docker/certs.d` in every Docker-in-Docker daemon, so jobs can pull from and push to registries signed by that CA. Unset = no mount. An absolute path on the host, not in the app container. |
 | `PUBLIC_URL` | yes | The HTTPS URL GitHub reaches you at. Webhooks are registered as `<PUBLIC_URL>/webhooks/github`. |
 | `GITHUB_AUTH` | yes | `app` or `pat`. |
 | `GITHUB_APP_ID` | with `app` | The GitHub App id. |
@@ -37,6 +38,8 @@ Every node in a cluster needs the same GitHub values and webhook secret, its own
 | `poll_interval_s` | `300` | How often the leader lists queued jobs over the REST API to catch webhooks that were missed. |
 | `stale_runner_minutes` | `5` | A runner without a job for this long is removed and deregistered. |
 | `retention_days` | `30` | Finished jobs, runners and events older than this are deleted, together with their stored logs. |
+| `dind_cache_max_gb` | `20` | Templates with `dockerCache: repo`: a kept daemon store above this size (images plus build cache) is emptied before its next job. |
+| `dind_cache_idle_days` | `7` | Templates with `dockerCache: repo`: the stores of a template and repository with no runner on a host for this many days are removed from that host. `0` keeps them. |
 | `log_max_kb` | `2048` | Most log text stored per job. Beyond it the stored log stops with a notice; the full log stays on GitHub. |
 | `sse_max_clients` | `20` | Maximum open `/events/stream` connections per node. |
 | `sse_idle_s` | `300` | An SSE client that received nothing for this long is disconnected. |

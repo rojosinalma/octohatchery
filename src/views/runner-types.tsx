@@ -2,6 +2,7 @@ import type {
   Host,
   HostImage,
   RunnerDocker,
+  RunnerDockerCache,
   RunnerRunAs,
   RunnerType,
   Slot,
@@ -154,6 +155,20 @@ const TypesTable = ({ types }: { types: RunnerType[] }) => {
               <td class="t-col-num t-nowrap">{`${t.memoryMb} MB`}</td>
               <td>
                 <DockerBadge docker={t.docker} />
+                {t.docker === "dind" && t.dockerCache === "repo" ? (
+                  <>
+                    {" "}
+                    <span
+                      class="t-badge"
+                      data-tone="info"
+                      data-variant="outline"
+                      data-size="xs"
+                      data-tip="Images and build cache are kept per host and repository"
+                    >
+                      cache
+                    </span>
+                  </>
+                ) : null}
               </td>
               <td class="t-col-num">
                 {Object.keys(t.env).length ? (
@@ -374,8 +389,8 @@ export const DOCKER_OPTIONS: {
     desc: (
       <>
         A private Docker daemon starts next to each runner (privileged sidecar)
-        and dies with it. Isolated, about 5 s slower to start, no shared image
-        cache.
+        and dies with it. Isolated, about 2 s slower to start; images are
+        pulled again each job unless the Docker cache below is on.
       </>
     ),
   },
@@ -390,6 +405,12 @@ export const DockerBadge = ({ docker }: { docker: RunnerDocker }) => {
     </span>
   );
 };
+
+/** The Docker cache options in dialog order. */
+export const DOCKER_CACHE_OPTIONS: { value: RunnerDockerCache; label: string }[] = [
+  { value: "none", label: "None — every job starts with an empty daemon" },
+  { value: "repo", label: "Per repository — images and build cache stay for the next job" },
+];
 
 /** The Run as options in dialog order; the label carries its one-line explanation. */
 export const RUN_AS_OPTIONS: { value: RunnerRunAs; label: string }[] = [
@@ -719,6 +740,28 @@ const TypeDialog = ({
               reach: host socket or Docker-in-Docker.
             </p>
           </fieldset>
+          <div class="t-field" data-span="12">
+            <label class="t-label" for="tf-docker-cache">
+              Docker cache (Docker-in-Docker only)
+            </label>
+            <select
+              class="t-select"
+              id="tf-docker-cache"
+              name="dockerCache"
+              aria-describedby="tf-docker-cache-hint"
+            >
+              {DOCKER_CACHE_OPTIONS.map((o) => (
+                <option value={o.value} selected={o.value === "none"} safe>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p class="t-hint" id="tf-docker-cache-hint">
+              Kept per host, template and repository, one job at a time.
+              Containers, volumes and networks are removed before each job.
+              Size cap and idle removal are on the Settings page.
+            </p>
+          </div>
         </div>
         <div class="t-dialog-footer">
           <button class="t-btn" type="button" data-dialog-close>

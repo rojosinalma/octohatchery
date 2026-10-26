@@ -117,6 +117,27 @@ export const SETTING_GROUPS: Group[] = [
     ],
   },
   {
+    id: 'dind-cache',
+    title: 'Docker-in-Docker cache',
+    icon: 'bi-layers',
+    items: [
+      {
+        key: 'dind_cache_max_gb',
+        label: 'Size cap per store',
+        help: 'Templates with the Docker cache on keep each daemon\'s images and build cache for the next job. A store above this size is emptied before its next job.',
+        control: { kind: 'number', min: 1, unit: 'GB' },
+        default: '20',
+      },
+      {
+        key: 'dind_cache_idle_days',
+        label: 'Remove unused stores after',
+        help: 'The stores of a template and repository that ran no job on a host for this long are removed from that host.',
+        control: { kind: 'number', min: 1, unit: 'days' },
+        default: '7',
+      },
+    ],
+  },
+  {
     id: 'logging',
     title: 'Logging',
     icon: 'bi-info-circle',

@@ -23,6 +23,12 @@ export const RUNNER_DOCKER_OPTIONS: readonly RunnerDocker[] = ['none', 'socket',
 /** User a runner container runs as: the one its image declares (the shipped image: `runner`, uid 1001) or root (uid 0). */
 export type RunnerRunAs = 'image' | 'root'
 export const RUNNER_RUN_AS_OPTIONS: readonly RunnerRunAs[] = ['image', 'root']
+/**
+ * What a `dind` daemon keeps between jobs: nothing (a new, empty daemon store per job) or `repo` (a warm store per
+ * node, type and repository, leased to one job at a time and cleaned before each job).
+ */
+export type RunnerDockerCache = 'none' | 'repo'
+export const RUNNER_DOCKER_CACHE_OPTIONS: readonly RunnerDockerCache[] = ['none', 'repo']
 export type RunnerType = {
   id: number
   name: string
@@ -36,6 +42,7 @@ export type RunnerType = {
   secretEnv: string[]
   docker: RunnerDocker
   runAs: RunnerRunAs
+  dockerCache: RunnerDockerCache
   createdAt: string
   updatedAt: string
 }
