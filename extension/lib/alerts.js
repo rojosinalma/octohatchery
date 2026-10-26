@@ -31,6 +31,7 @@ export function countedEvents(settings, events) {
  * @returns {Alert[]}
  */
 export function buildAlerts(settings, events, runners, now) {
+  if (!settings.alertsEnabled) return []
   const repos = new Set(settings.alertRepos)
   const keep = events.filter((e) => settings[SETTING[e.kind]] && (repos.size === 0 || repos.has(e.job.repo)))
   /** @type {Alert[]} */

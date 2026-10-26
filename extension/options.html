@@ -48,6 +48,15 @@
           <div class="t-section-body">
             <div class="t-setting">
               <div class="t-setting-label">
+                <label for="s-alertsEnabled">Notifications</label>
+                <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About notifications">i</button><div class="t-help-box" hidden><p>Off: the extension sends no notifications at all. The alert settings below stay as they are and apply again when you turn this back on. The toolbar counters and the popup work either way, and "Count cancelled jobs as failed" still applies to the counters.</p></div></span>
+              </div>
+              <div class="t-setting-control"><label class="t-check" data-variant="switch"><input class="t-check-input" type="checkbox" role="switch" id="s-alertsEnabled" data-setting="alertsEnabled" /><span class="t-check-label"></span></label></div>
+              <span class="t-setting-state" aria-live="polite"></span>
+            </div>
+            <div class="opt-alert-rows" id="alert-rows">
+            <div class="t-setting">
+              <div class="t-setting-label">
                 <label for="s-alertStarted">A job starts running</label>
                 <span class="t-help" data-tone="info"><button class="t-help-btn" type="button" aria-expanded="false" aria-label="About start alerts">i</button><div class="t-help-box" hidden><p>One notification when a runner takes a job. A job that starts and ends between two polls sends this alert and its result alert.</p></div></span>
               </div>
@@ -91,6 +100,7 @@
             <div class="opt-row-actions">
               <button class="t-btn" data-size="sm" type="button" id="test-alert">Send a test alert</button>
               <span class="t-hint">Alerts use the notifications of the browser and the system. If nothing shows, check that the system lets the browser show notifications.</span>
+            </div>
             </div>
           </div>
         </section>

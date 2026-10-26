@@ -248,6 +248,7 @@ describe('alerts', () => {
 
   test('the settings turn kinds off and filter repos', () => {
     expect(buildAlerts(s({ alertFailed: false }), [{ kind: 'failed', job: done }], runners, 0)).toEqual([])
+    expect(buildAlerts(s({ alertsEnabled: false }), [{ kind: 'failed', job: done }, { kind: 'started', job: done }], runners, 0)).toEqual([])
     expect(buildAlerts(s({ alertRepos: ['acme/other'] }), [{ kind: 'failed', job: done }], runners, 0)).toEqual([])
     expect(buildAlerts(s({ alertRepos: ['acme/app'] }), [{ kind: 'failed', job: done }], runners, 0)).toHaveLength(1)
   })

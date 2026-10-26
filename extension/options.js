@@ -22,6 +22,7 @@ for (const el of /** @type {NodeListOf<HTMLInputElement | HTMLSelectElement>} */
 $('.t-duration[data-setting="pollSeconds"]').dataset.value = String(settings.pollSeconds)
 urlInput.value = settings.url
 showPickers()
+showAlertRows()
 T.upgrade(document)
 T.settingsAutoSave($('#settings'), save)
 
@@ -31,12 +32,24 @@ async function save(key, value) {
   if (!checked.ok) return { ok: false, message: checked.message }
   await sync.set({ [key]: checked.value })
   settings = await loadSettings(sync)
+  if (key === 'alertsEnabled') {
+    showAlertRows()
+    return { ok: true, message: settings.alertsEnabled ? 'Notifications on' : 'Notifications off' }
+  }
   if (key === 'themeFromHatchery') {
     showPickers()
     if (settings.themeFromHatchery && settings.url) await followTheme(settings.url, settings)
     return { ok: true, message: settings.themeFromHatchery ? "Uses the hatchery's look" : 'Pick a skin, palette and mode below' }
   }
   return { ok: true, message: 'Saved' }
+}
+
+// ── alerts: the kind switches, repo filter and test button only matter while notifications are on.
+// "Count cancelled jobs as failed" also drives the counters, so it stays usable. ──
+function showAlertRows() {
+  const box = $('#alert-rows')
+  box.dataset.off = String(!settings.alertsEnabled)
+  for (const el of box.querySelectorAll('input:not(#s-cancelledAsFailed), button')) /** @type {HTMLInputElement} */ (el).disabled = !settings.alertsEnabled
 }
 
 // ── appearance: the skin and palette pickers apply only when the extension does not follow the hatchery ──
@@ -168,6 +181,7 @@ function renderRepos(repos) {
       (r) => `<label class="t-check"><input class="t-check-input" type="checkbox" value="${esc(r)}" ${picked.has(r) ? 'checked' : ''}><span class="t-check-label">${esc(r)}${repos.includes(r) ? '' : '<span class="t-check-desc">no longer adopted</span>'}</span></label>`,
     )
     .join('')
+  showAlertRows()
 }
 
 async function loadRepos() {

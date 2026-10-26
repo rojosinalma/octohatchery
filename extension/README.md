@@ -93,7 +93,7 @@ The tooltip on the icon always lists every counter. A `?` badge means no URL is 
 
 **Alerts**
 
-You turn each alert on or off: a job starts running, a job succeeds, a job fails. You can also limit alerts to some repos. The counters always count every repo. A click on an alert opens the job's page. When four or more jobs of one kind change in the same poll, you get one alert that lists them.
+**Notifications** turns every alert on or off at once. The counters and the popup work either way. You turn each alert on or off: a job starts running, a job succeeds, a job fails. You can also limit alerts to some repos. The counters always count every repo. A click on an alert opens the job's page. When four or more jobs of one kind change in the same poll, you get one alert that lists them.
 
 What counts as what:
 

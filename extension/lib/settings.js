@@ -13,6 +13,7 @@ export const MAX_POLL_S = 3600
  * @typedef {{
  *   url: string,
  *   pollSeconds: number,
+ *   alertsEnabled: boolean,
  *   alertStarted: boolean,
  *   alertSucceeded: boolean,
  *   alertFailed: boolean,
@@ -31,6 +32,7 @@ export const MAX_POLL_S = 3600
 export const DEFAULTS = Object.freeze({
   url: '',
   pollSeconds: 60,
+  alertsEnabled: true,
   alertStarted: true,
   alertSucceeded: true,
   alertFailed: true,
@@ -44,7 +46,7 @@ export const DEFAULTS = Object.freeze({
   themeFromHatchery: true,
 })
 
-const BOOLEAN_KEYS = ['alertStarted', 'alertSucceeded', 'alertFailed', 'cancelledAsFailed', 'counterSucceeded', 'counterFailed', 'resetOnOpen', 'themeFromHatchery']
+const BOOLEAN_KEYS = ['alertsEnabled', 'alertStarted', 'alertSucceeded', 'alertFailed', 'cancelledAsFailed', 'counterSucceeded', 'counterFailed', 'resetOnOpen', 'themeFromHatchery']
 
 /**
  * The origin of a hatchery URL (`https://host[:port]`), or null when it is not an http(s) URL.
