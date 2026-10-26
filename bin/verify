@@ -23,8 +23,8 @@ if [ -n "$extra" ] && [ -f "$extra" ]; then
   while IFS= read -r p; do [ -n "$p" ] && [ "${p#\#}" = "$p" ] && patterns+=("$p"); done < "$extra"
 fi
 # Generic hits that are not private: the runner image's own home, the example domain, the vendored tailor files,
-# reverse-proxy products named in the docs, and the agent-workspace folder kept out by the ignore files.
-allow='/home/runner/|example\.internal|^public/tailor/|Authentik|^\.(git|docker)ignore:[0-9]+:\.openchamber'
+# and reverse-proxy products named in the docs.
+allow='/home/runner/|example\.internal|^public/tailor/|Authentik'
 leaks=0
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   for p in "${patterns[@]}"; do

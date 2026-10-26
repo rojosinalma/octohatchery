@@ -202,7 +202,7 @@ Each tab is its own URL; the Templates entry in the navbar stays active on both.
   saved cell) re-fetch `GET /templates?partial=slots` and swap the block in place, so the
   used / free counts follow the runners. A refresh waits while a slot field has focus and runs
   when the field is left, so a number being typed is never overwritten.
-- Image select: every option says where the image is missing (`… · missing on tiny`), from the
+- Image select: every option says where the image is missing (`… · missing on node-b`), from the
   inventory the hosts report. When the picked image is missing on a host that has slots for this
   template, a warning appears under the field with one **Pull on <host>** button per host; the
   button queues the pull (`POST /api/hosts/:name/images/pull`), shows a spinner, and turns into a

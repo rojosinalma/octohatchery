@@ -83,8 +83,8 @@ describe('scheduler', () => {
   test('missing secret env fails the spawn, requeues with a retry counter, ignores after the limit', async () => {
     await fresh()
     await service.adoptRepo('acme/app', 'user')
-    await service.setSlots({ host: TEST_HOST, type: 'deploy', count: 1 }, 'user') // deploy needs DEPLOYER_TOKEN
-    delete Bun.env.DEPLOYER_TOKEN
+    await service.setSlots({ host: TEST_HOST, type: 'deploy', count: 1 }, 'user') // deploy needs DEPLOY_TOKEN
+    delete Bun.env.DEPLOY_TOKEN
     const job = await queue('acme/app', 1, ['self-hosted', 'deploy'], '2026-01-01T00:00:01Z')
     for (let i = 1; i < MAX_CLAIM_RETRIES; i++) {
       expect(await claim()).toHaveLength(0)
@@ -97,7 +97,7 @@ describe('scheduler', () => {
     const failed = await service.listRunners({ state: 'failed' })
     expect(failed).toHaveLength(MAX_CLAIM_RETRIES)
     const events = await service.listEvents()
-    expect(events.some((e) => e.action === 'job.ignored' && String(e.detail.reason).includes('DEPLOYER_TOKEN'))).toBe(true)
+    expect(events.some((e) => e.action === 'job.ignored' && String(e.detail.reason).includes('DEPLOY_TOKEN'))).toBe(true)
   })
 
   test('manual spawn needs a free slot; kill removes the container', async () => {

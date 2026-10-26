@@ -22,7 +22,7 @@ export const SEED_RUNNER_TYPES: readonly SeedType[] = [
     image: DEFAULT_RUNNER_IMAGE,
     cpus: 1,
     memoryMb: 1024,
-    secretEnv: ['DEPLOYER_TOKEN'],
+    secretEnv: ['DEPLOY_TOKEN'],
   },
   {
     name: 'generic',

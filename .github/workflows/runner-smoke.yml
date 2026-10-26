@@ -14,6 +14,10 @@ on:
           - generic
           - deploy
           - generic-docker-in-docker
+      secret_env:
+        description: deploy only, the secretEnv name the type passes in
+        type: string
+        default: DEPLOY_TOKEN
 
 permissions:
   contents: read
@@ -107,12 +111,11 @@ jobs:
           rm -rf "$RUNNER_TEMP/t"
           echo "shared in both directions"
 
-      - name: Reach the deploy target
+      # The node passes the type's secretEnv values in; the value itself is never printed.
+      - name: Secret from the node is set
         if: inputs.runner_type == 'deploy'
+        env:
+          NAME: ${{ inputs.secret_env }}
         run: |
-          : "${DEPLOYER_URL:?deploy runners need DEPLOYER_URL}"
-          : "${DEPLOYER_TOKEN:?deploy runners need DEPLOYER_TOKEN}"
-          ca=(); [ -n "${DEPLOYER_CA:-}" ] && ca=(--cacert "$DEPLOYER_CA")
-          code=$(curl -sS -o /dev/null -w '%{http_code}' "${ca[@]}" -H "Authorization: Bearer $DEPLOYER_TOKEN" "$DEPLOYER_URL/api/services")
-          echo "deployer answered $code"
-          [ "$code" != 401 ] && [ "$code" != 000 ]
+          [ -n "${!NAME:-}" ] || { echo "::error::$NAME is not set: add it to the deploy type's secretEnv and to the node's .env"; exit 1; }
+          echo "$NAME is set"

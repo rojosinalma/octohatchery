@@ -10,6 +10,5 @@ coverage
 docs
 test
 *.md
-.openchamber
 .idea
 .DS_Store

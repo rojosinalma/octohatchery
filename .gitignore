@@ -16,7 +16,6 @@ coverage/
 *.tsbuildinfo
 .eslintcache
 .cache/
-.openchamber/
 
 # editors and OS
 .idea/
