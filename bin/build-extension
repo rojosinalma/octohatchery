@@ -11,6 +11,8 @@
 //   <out>/firefox/                            unpacked Firefox build
 //   <out>/octohatchery-extension-firefox.zip  Firefox build, files at the root (about:debugging loads it as is)
 //   <out>/octohatchery-extension.crx          with --crx: the Chrome build, signed
+//   <out>/policy/                             scripts that let a browser install the .crx (Linux, Windows, macOS),
+//                                             with the extension ID filled in when the key file exists
 // When the key file exists, the Chrome manifest carries its public key, so the unpacked folder and the .crx
 // get the same extension ID wherever they are loaded from.
 import { $ } from 'bun'
@@ -81,6 +83,14 @@ const chromeDir = join(out, 'chrome', NAME)
 const firefoxDir = join(out, 'firefox')
 assemble(chromeDir, 'chrome')
 assemble(firefoxDir, 'firefox')
+// Policy scripts: the extension ID becomes their default, so they work without --id for this build.
+rmSync(join(out, 'policy'), { recursive: true, force: true })
+mkdirSync(join(out, 'policy'), { recursive: true })
+for (const f of readdirSync(join(src, 'policy'))) {
+  const text = readFileSync(join(src, 'policy', f), 'utf8').replaceAll('__EXTENSION_ID__', extensionId || '__EXTENSION_ID__')
+  writeFileSync(join(out, 'policy', f), text, { mode: f.endsWith('.sh') ? 0o755 : 0o644 })
+}
+
 if (crx) await packCrx()
 
 if (noZip) {

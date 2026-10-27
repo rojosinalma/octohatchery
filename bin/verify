@@ -54,6 +54,7 @@ done
 # build (tailor config, manifests for Chrome and Firefox) works. The build goes to a temp folder.
 step "browser extension"
 for f in extension/*.js extension/lib/*.js; do bun build --no-bundle "$f" >/dev/null; done
+bash -n extension/policy/*.sh
 ext_out=$(mktemp -d)
 bin/build-extension --no-zip "$ext_out" >/dev/null
 for t in chrome/octohatchery-extension firefox; do bun -e "JSON.parse(require('fs').readFileSync('$ext_out/$t/manifest.json','utf8'))"; done

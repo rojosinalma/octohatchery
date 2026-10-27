@@ -25,11 +25,53 @@ This writes two zips to `dist/extension/`. The file names have no version in the
 
 To update, unzip the new build over the same folder, then click the reload arrow on the extension's card. You do not need to remove the extension or load it again, and it keeps its settings.
 
-**Signed .crx**
+**Signed .crx (Chrome, Vivaldi, Brave, Edge, Chromium)**
 
-`bin/build-extension --crx` also writes `dist/extension/octohatchery-extension.crx`, signed with your own key. Google Chrome installs a `.crx` from outside the Chrome Web Store only when a policy allows it. Set `ExtensionInstallAllowlist` to the extension ID and `ExtensionInstallSources` to the place the file comes from, or use `ExtensionSettings`. Without such a policy it refuses the file with `CRX_REQUIRED_PROOF_MISSING`. Chromium installs it in developer mode when you drop it on `chrome://extensions`. For a normal Chrome, load the folder unpacked as described above.
+`bin/build-extension --crx` also writes `dist/extension/octohatchery-extension.crx`, signed with your own key. A browser installs a `.crx` from outside the Chrome Web Store only when a machine policy allows it. Without the policy it refuses the file with `CRX_REQUIRED_PROOF_MISSING`. Two policies are needed:
 
-The signing key is `.git/info/extension-key.pem` (or the file in `EXTENSION_KEY`). The first `--crx` build creates it. Git does not track it, so keep a copy. The key fixes the extension ID: the unpacked build carries its public key too, so the folder and the `.crx` get the same ID. A new key means a new extension to the browser, which starts with empty settings.
+- `ExtensionInstallSources`: the places a `.crx` may come from. `file:///*` allows a file you drag onto the extensions page. Add the URL you download it from (for example `https://github.com/*`) to install it with one click.
+- `ExtensionInstallAllowlist`: the extension ID. This is only needed when a blocklist is set, but it does no harm.
+
+The build writes three scripts to `dist/extension/policy/` that set both policies. Each script has the extension ID of that build filled in, so `--id` is not needed. Each one finds the supported browsers that are installed, or you name them with `--browser` (`chrome`, `chromium`, `brave`, `edge`, `vivaldi` or `all`).
+
+*Linux.* The script writes `octohatchery-extension.json` into each browser's policy folder, for example `/etc/opt/chrome/policies/managed/` or `/etc/vivaldi/policies/managed/`. It needs root.
+
+```sh
+sudo ./install-policy-linux.sh                                   # every installed browser, local files only
+sudo ./install-policy-linux.sh --browser vivaldi --source "https://github.com/*"
+sudo ./install-policy-linux.sh --remove                          # undo
+```
+
+If another file in the same folder already sets one of the two policies, the script warns you. The browser then uses only one of the two files, so merge the entries into one file.
+
+*Windows.* Open PowerShell with **Run as administrator**. The script adds entries under `HKLM\SOFTWARE\Policies\<vendor>\<browser>`, for example `Google\Chrome` or `Vivaldi`. It keeps the entries that are already there and adds each entry once. `-WhatIf` shows the changes without making them.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass                      # allows this script in this window only
+.\install-policy-windows.ps1                                    # every installed browser, local files only
+.\install-policy-windows.ps1 -Browser vivaldi -Source "https://github.com/*"
+.\install-policy-windows.ps1 -Browser vivaldi -Remove           # undo: removes only these entries
+```
+
+*macOS.* Browsers on macOS read machine policies from configuration profiles. The script writes a profile (`octohatchery-extension-policy.mobileconfig`) and opens it. It does not need `sudo`.
+
+```sh
+./install-policy-macos.sh                                        # every browser in /Applications, local files only
+./install-policy-macos.sh --browser vivaldi --source "https://github.com/*"
+```
+
+Then open **System Settings > General > Device Management** (on older macOS: **Profiles**), double-click **OctoHatchery extension install** and click **Install**. To undo, remove that profile there. A Mac that a company manages may refuse a profile that you install yourself. In that case ask your administrator to set the two policies.
+
+On every system, after the script:
+
+1. Restart the browser completely.
+2. Open `chrome://policy` (or `vivaldi://policy`, `brave://policy`, `edge://policy`) and click **Reload policies**. Both policies must show the status **OK**.
+3. Remove the unpacked copy of the extension, if you have one.
+4. Drag `octohatchery-extension.crx` onto the extensions page, or open its download link when you added that source. The browser marks the extension as not from the Web Store. That is expected.
+
+To update, install the new `.crx` the same way. It keeps the extension ID, so the browser updates the extension and keeps its settings.
+
+The signing key is `.git/info/extension-key.pem` (or the file in `EXTENSION_KEY`). The first `--crx` build creates it. Git does not track it, so keep a copy. The key fixes the extension ID: the unpacked build carries its public key too, so the folder and the `.crx` get the same ID. A new key means a new extension to the browser, which starts with empty settings. It also means new policy scripts, because they hold the ID.
 
 **Firefox 128 or newer**
 
@@ -129,7 +171,7 @@ The extension collects no data and sends nothing anywhere except to the hatchery
 ## Development
 
 - `extension/` is the source. `lib/` holds the logic with no browser calls (settings, API client, change detection, counters, alerts, icon drawing). The tests are in `test/extension/`.
-- `bin/build-extension` copies the source and the vendored tailor files from `public/tailor/` into `dist/extension/`, writes the version from `package.json` into the manifests, and zips the result. `--no-zip` skips the zips. `--crx` also packs a signed `.crx` with Chrome's own packer (set `CHROME` when Chrome or Chromium is not on `PATH`).
+- `bin/build-extension` copies the source and the vendored tailor files from `public/tailor/` into `dist/extension/`, writes the version from `package.json` into the manifests, and zips the result. `--no-zip` skips the zips. `--crx` also packs a signed `.crx` with Chrome's own packer (set `CHROME` when Chrome or Chromium is not on `PATH`). The policy scripts come from `extension/policy/`, and the build fills in the extension ID.
 - `bin/verify` runs the tests, checks that every script parses, and builds the extension into a temporary folder.
 
 The pages use tailor, the same design system as the dashboard. Extension pages may not run inline scripts, so `theme.js` does the pre-paint theme switch that `tailor-head.html` does on the dashboard.
